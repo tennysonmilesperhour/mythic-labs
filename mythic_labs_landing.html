@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mythic Labs</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f5f0;
+  --bg-warm: #f0ece4;
+  --bg-deep: #e8e2d8;
+  --fg: #1a1814;
+  --fg-dim: #6a6560;
+  --fg-ghost: #a09a94;
+  --accent: #8b7355;
+  --accent-light: #c4a882;
+  --accent-glow: rgba(139,115,85,0.12);
+  --font-display: 'Cormorant Garamond', serif;
+  --font-body: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== CANVAS — Living texture ===== */
+#canvas-bg {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+  opacity: 0.4;
+}
+
+/* ===== NAV ===== */
+nav {
+  position: fixed; top: 0; left: 0; width: 100%; z-index: 100;
+  padding: 32px 48px; display: flex; justify-content: space-between; align-items: center;
+  background: rgba(247,245,240,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(26,24,20,0.06);
+}
+nav .logo {
+  font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.25em;
+  text-transform: uppercase; color: var(--fg);
+}
+nav .logo span { color: var(--accent); }
+nav .links {
+  display: flex; gap: 40px;
+  font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+nav .links a {
+  color: var(--fg-dim); text-decoration: none;
+  transition: color 0.3s;
+}
+nav .links a:hover { color: var(--fg); }
+
+/* ===== HERO — Editorial, warm, spacious ===== */
+#hero {
+  min-height: 100vh; display: flex; flex-direction: column;
+  justify-content: center; padding: 0 48px; position: relative;
+}
+.hero-meta {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.4em;
+  text-transform: uppercase; color: var(--accent);
+  margin-bottom: 48px; display: flex; align-items: center; gap: 20px;
+}
+.hero-meta::before {
+  content: ''; width: 64px; height: 1px; background: var(--accent);
+}
+.hero-title {
+  font-family: var(--font-display); font-size: clamp(3.5rem, 8vw, 7rem);
+  font-weight: 300; line-height: 0.95; letter-spacing: -0.02em;
+  max-width: 900px; margin-bottom: 40px;
+}
+.hero-title .line { display: block; }
+.hero-body {
+  font-size: 1.15rem; font-weight: 300;
+  color: var(--fg-dim); max-width: 480px; line-height: 1.8;
+  margin-bottom: 48px;
+}
+.hero-cta {
+  font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.25em;
+  text-transform: uppercase; color: var(--bg); text-decoration: none;
+  padding: 16px 36px; background: var(--accent);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex; align-items: center; gap: 12px;
+}
+.hero-cta:hover { background: var(--fg); transform: translateY(-2px); }
+
+.hero-scroll {
+  position: absolute; bottom: 48px; left: 48px;
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--fg-ghost);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.hero-scroll .line {
+  width: 1px; height: 48px; background: linear-gradient(to bottom, var(--fg-ghost), transparent);
+}
+
+/* ===== PHILOSOPHY — Warm editorial ===== */
+#philosophy {
+  padding: 160px 48px; background: var(--bg-warm);
+  border-top: 1px solid rgba(26,24,20,0.06);
+}
+.phil-label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 64px;
+}
+.phil-statement {
+  font-family: var(--font-display); font-size: clamp(2.5rem, 5vw, 4.5rem);
+  font-weight: 300; line-height: 1.05; letter-spacing: -0.01em;
+  max-width: 850px; margin-bottom: 80px;
+}
+.phil-statement .accent { color: var(--accent); }
+
+.phil-content {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 80px; max-width: 1100px;
+}
+.phil-text {
+  font-size: 1.05rem; color: var(--fg-dim); line-height: 1.9; font-weight: 300;
+}
+.phil-text p { margin-bottom: 24px; }
+.phil-list {
+  list-style: none; border-top: 1px solid rgba(26,24,20,0.08);
+}
+.phil-list li {
+  padding: 20px 0; border-bottom: 1px solid rgba(26,24,20,0.08);
+  font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--fg-dim);
+  display: flex; justify-content: space-between; align-items: center;
+  transition: all 0.3s ease;
+}
+.phil-list li:hover { color: var(--fg); padding-left: 12px; }
+.phil-list li::after {
+  content: '->'; color: var(--accent); opacity: 0;
+  transition: opacity 0.3s;
+}
+.phil-list li:hover::after { opacity: 1; }
+
+/* ===== METHOD — Three columns with warm borders ===== */
+#method {
+  padding: 160px 48px;
+  border-top: 1px solid rgba(26,24,20,0.06);
+}
+.method-label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 64px;
+}
+.method-header {
+  font-family: var(--font-display); font-size: clamp(2rem, 4vw, 3.5rem);
+  font-weight: 300; line-height: 1.1; max-width: 700px; margin-bottom: 80px;
+}
+.method-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: rgba(26,24,20,0.08); max-width: 1200px;
+}
+.method-cell {
+  background: var(--bg); padding: 56px 40px;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative; overflow: hidden;
+}
+.method-cell::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 0; height: 2px; background: var(--accent);
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.method-cell:hover { background: var(--bg-warm); }
+.method-cell:hover::before { width: 100%; }
+.method-cell .num {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.2em;
+  color: var(--accent); text-transform: uppercase; margin-bottom: 28px;
+  opacity: 0.6;
+}
+.method-cell h3 {
+  font-family: var(--font-display); font-size: 1.6rem; font-weight: 400;
+  margin-bottom: 16px;
+}
+.method-cell p {
+  font-size: 0.95rem; color: var(--fg-dim); line-height: 1.7; font-weight: 300;
+}
+
+/* ===== CONTRAST — Split with warm tones ===== */
+#contrast {
+  padding: 160px 48px; background: var(--bg-warm);
+  border-top: 1px solid rgba(26,24,20,0.06);
+}
+.contrast-label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 64px;
+}
+.contrast-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  border: 1px solid rgba(26,24,20,0.1); max-width: 1000px;
+  overflow: hidden;
+}
+.contrast-col { padding: 0; }
+.contrast-col:first-child { border-right: 1px solid rgba(26,24,20,0.1); }
+.contrast-col .head {
+  padding: 28px 32px; border-bottom: 1px solid rgba(26,24,20,0.1);
+  font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.2em;
+  text-transform: uppercase; font-weight: 500;
+}
+.contrast-col .head.left { color: var(--fg-ghost); background: rgba(26,24,20,0.02); }
+.contrast-col .head.right { color: var(--accent); background: rgba(139,115,85,0.06); }
+.contrast-col .row {
+  padding: 22px 32px; border-bottom: 1px solid rgba(26,24,20,0.06);
+  font-size: 0.95rem; line-height: 1.6;
+  transition: background 0.3s;
+}
+.contrast-col .row:hover { background: rgba(26,24,20,0.02); }
+.contrast-col .row.left { color: var(--fg-ghost); }
+.contrast-col .row.right { color: var(--fg-dim); }
+.contrast-col .row:last-child { border-bottom: none; }
+
+/* ===== CTA — Warm glow ===== */
+#cta {
+  padding: 160px 48px; text-align: center;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 50%, var(--bg) 100%);
+  border-top: 1px solid rgba(26,24,20,0.06);
+  position: relative; overflow: hidden;
+}
+#cta::before {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px; height: 600px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(139,115,85,0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+#cta .cta-label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 32px;
+  position: relative; z-index: 2;
+}
+#cta h2 {
+  font-family: var(--font-display); font-size: clamp(2.2rem, 4.5vw, 3.8rem);
+  font-weight: 300; line-height: 1.1;
+  max-width: 700px; margin: 0 auto 24px; position: relative; z-index: 2;
+}
+#cta h2 .accent { color: var(--accent); }
+#cta p {
+  font-size: 1.05rem; color: var(--fg-dim); max-width: 480px;
+  line-height: 1.7; margin: 0 auto 40px; position: relative; z-index: 2;
+}
+#cta .cta-btn {
+  font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--bg); text-decoration: none;
+  padding: 18px 44px; background: var(--accent);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-block; position: relative; z-index: 2;
+}
+#cta .cta-btn:hover { background: var(--fg); transform: translateY(-2px); }
+
+/* ===== CONTACT ===== */
+#contact {
+  padding: 120px 48px; text-align: center; background: var(--bg-warm);
+  border-top: 1px solid rgba(26,24,20,0.06);
+}
+#contact .contact-label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 24px;
+}
+#contact h2 {
+  font-family: var(--font-display); font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 300; line-height: 1.2; margin-bottom: 16px;
+}
+#contact p {
+  font-size: 1.05rem; color: var(--fg-dim); max-width: 440px;
+  line-height: 1.7; margin: 0 auto 32px;
+}
+#contact a {
+  font-family: var(--font-mono); font-size: 0.85rem; letter-spacing: 0.1em;
+  color: var(--fg); text-decoration: none; padding: 14px 28px;
+  border: 1px solid rgba(26,24,20,0.2);
+  transition: all 0.3s ease;
+}
+#contact a:hover { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+/* ===== FOOTER ===== */
+footer {
+  padding: 32px 48px; display: flex; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--fg-ghost);
+  border-top: 1px solid rgba(26,24,20,0.06);
+}
+
+/* ===== MOBILE ===== */
+@media (max-width: 900px) {
+  nav { padding: 20px 24px; }
+  nav .links { display: none; }
+  #hero, #philosophy, #method, #contrast, #cta, #contact { padding: 80px 24px; }
+  .hero-title { font-size: clamp(2.5rem, 10vw, 3.5rem); }
+  .phil-content { grid-template-columns: 1fr; gap: 40px; }
+  .method-grid { grid-template-columns: 1fr; }
+  .contrast-grid { grid-template-columns: 1fr; }
+  .contrast-col:first-child { border-right: none; border-bottom: 1px solid rgba(26,24,20,0.1); }
+  footer { padding: 24px; flex-direction: column; gap: 8px; text-align: center; }
+}
+</style>
+</head>
+<body>
+<canvas id="canvas-bg"></canvas>
+
+<nav>
+  <div class="logo">MYTHIC <span>LABS</span></div>
+  <div class="links">
+    <a href="#philosophy">Philosophy</a>
+    <a href="#method">Method</a>
+    <a href="#contrast">Contrast</a>
+    <a href="#contact">Contact</a>
+  </div>
+</nav>
+
+<section id="hero">
+  <div class="hero-meta">Diagnostic Union Technicians</div>
+  <h1 class="hero-title">
+    <span class="line">Revealing brand</span>
+    <span class="line">identity through</span>
+    <span class="line">archetypal analysis.</span>
+  </h1>
+  <p class="hero-body">Jungian psychology and architectural dynamics to discover the deep structural identity of products, brands, and audiences. Built from the foundation up.</p>
+  <a href="#philosophy" class="hero-cta">Begin the descent -></a>
+  <div class="hero-scroll">
+    <span>Scroll</span>
+    <div class="line"></div>
+  </div>
+</section>
+
+<section id="philosophy">
+  <div class="phil-label">The Diagnostic Lens</div>
+  <h2 class="phil-statement">We approach each brand as a <span class="accent">human individual</span> on the path to integration.</h2>
+  <div class="phil-content">
+    <div class="phil-text">
+      <p>Like a Jungian analyst diagnosing unconscious patterns, we diagnose the archetypal structure of your product or organization. We do not impose a personality. We discover what is already there.</p>
+      <p>The foundational identity wants to emerge, to complete its own hero's journey, to become architecturally whole. The brand is not a mask. It is a Self in the process of becoming.</p>
+    </div>
+    <ul class="phil-list">
+      <li>Archetypal Structure Mapping</li>
+      <li>Collective Unconscious Resonance</li>
+      <li>Complementary Architecture Dynamics</li>
+      <li>Identity Integration Assessment</li>
+      <li>Shadow &amp; Light Analysis</li>
+      <li>Spatial Psychology Calibration</li>
+    </ul>
+  </div>
+</section>
+
+<section id="method">
+  <div class="method-label">The Threefold Path</div>
+  <h2 class="method-header">Foundation-up architecture for deep structural clarity.</h2>
+  <div class="method-grid">
+    <div class="method-cell">
+      <div class="num">Phase 01</div>
+      <h3>Archetypal Discovery</h3>
+      <p>Map the foundational identity structure. What archetypal pattern does it naturally embody? What deep human need does it address? We uncover what is already present.</p>
+    </div>
+    <div class="method-cell">
+      <div class="num">Phase 02</div>
+      <h3>Architectural Design</h3>
+      <p>Build structural relationships between brand, product, and audience using complementary dynamics and spatial psychology. Every element emerges from the same foundation.</p>
+    </div>
+    <div class="method-cell">
+      <div class="num">Phase 03</div>
+      <h3>Unified Expression</h3>
+      <p>Brand identity, product interface, spatial design, and service architecture express the same structural truth. Deep clarity. No disconnect.</p>
+    </div>
+  </div>
+</section>
+
+<section id="contrast">
+  <div class="contrast-label">The Contrast</div>
+  <div class="contrast-grid">
+    <div class="contrast-col">
+      <div class="head left">Traditional Agency</div>
+      <div class="row left">Archetype as brand costume</div>
+      <div class="row left">Surface-down design process</div>
+      <div class="row left">Audience segmentation by preference</div>
+      <div class="row left">Brand and product as separate</div>
+      <div class="row left">Strategy as ongoing busywork</div>
+      <div class="row left">Competitive differentiation</div>
+      <div class="row left">Trend-aligned relevance</div>
+    </div>
+    <div class="contrast-col">
+      <div class="head right">Mythic Labs</div>
+      <div class="row right">Archetype as structural truth</div>
+      <div class="row right">Foundation-up discovery process</div>
+      <div class="row right">Audience identity architecture</div>
+      <div class="row right">Brand and product unified</div>
+      <div class="row right">Strategy as structural clarity</div>
+      <div class="row right">Archetypal alignment</div>
+      <div class="row right">Universal resonance</div>
+    </div>
+  </div>
+</section>
+
+<section id="cta">
+  <div class="cta-label">The Invitation</div>
+  <h2>Your brand has an <span class="accent">archetypal foundation.</span> Let's uncover it.</h2>
+  <p>We work with product-led companies and founders who have outgrown strategic theater. Ready to discover the deep structural identity of what you are building?</p>
+  <a href="#contact" class="cta-btn">Begin the diagnostic</a>
+</section>
+
+<section id="contact">
+  <div class="contact-label">The Threshold</div>
+  <h2>Every journey begins with a single step.</h2>
+  <p>We begin every engagement with a diagnostic conversation. No pitch, no theater. Just deep structural listening.</p>
+  <a href="mailto:hello@mythiclabs.studio">hello@mythiclabs.studio</a>
+</section>
+
+<footer>
+  <span>Mythic Labs 2026</span>
+  <span>Diagnostic Union Technicians</span>
+</footer>
+
+<script>
+// ===== WARM CANVAS TEXTURE =====
+const canvas = document.getElementById('canvas-bg');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+let time = 0;
+function draw() {
+  time += 0.002;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Subtle warm gradient orbs
+  for (let i = 0; i < 3; i++) {
+    const x = canvas.width * (0.2 + i * 0.3 + Math.sin(time + i) * 0.1);
+    const y = canvas.height * (0.3 + Math.cos(time * 0.7 + i * 2) * 0.2);
+    const r = 300 + Math.sin(time + i) * 100;
+
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, 'rgba(196, 168, 130, 0.03)');
+    grad.addColorStop(1, 'rgba(196, 168, 130, 0)');
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const t = document.querySelector(a.getAttribute('href'));
+    if (t) t.scrollIntoView({ behavior: 'smooth' });
+  });
+});
+</script>
+</body>
+</html>
