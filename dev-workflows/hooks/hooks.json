@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '(git push|git push -u|git push --force)'; then echo '[mythic-brain/dev-workflows] git push detected — confirm PR draft state if applicable.' >&2; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
