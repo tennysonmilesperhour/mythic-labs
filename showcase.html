@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capability Diagnostic — Mythic Labs × Claude Code</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f5f0;
+  --bg-warm: #f0ece4;
+  --bg-deep: #e8e2d8;
+  --fg: #1a1814;
+  --fg-dim: #6a6560;
+  --fg-ghost: #a09a94;
+  --accent: #8b7355;
+  --accent-light: #c4a882;
+  --accent-glow: rgba(139,115,85,0.12);
+  --line: rgba(26,24,20,0.08);
+  --line-soft: rgba(26,24,20,0.05);
+  --font-display: 'Cormorant Garamond', serif;
+  --font-body: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+/* ===== NAV ===== */
+nav {
+  position: fixed; top: 0; left: 0; width: 100%; z-index: 100;
+  padding: 24px 48px; display: flex; justify-content: space-between; align-items: center;
+  background: rgba(247,245,240,0.88);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+nav .logo {
+  font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.25em;
+  text-transform: uppercase; color: var(--fg);
+}
+nav .logo span { color: var(--accent); }
+nav .links {
+  display: flex; gap: 32px;
+  font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+nav .links a {
+  color: var(--fg-dim); text-decoration: none;
+  transition: color 0.3s;
+}
+nav .links a:hover { color: var(--accent); }
+
+/* ===== HERO ===== */
+#hero {
+  min-height: 92vh; display: flex; flex-direction: column;
+  justify-content: center; padding: 140px 48px 80px; position: relative;
+}
+.hero-meta {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.4em;
+  text-transform: uppercase; color: var(--accent);
+  margin-bottom: 40px; display: flex; align-items: center; gap: 20px;
+}
+.hero-meta::before {
+  content: ''; width: 64px; height: 1px; background: var(--accent);
+}
+.hero-title {
+  font-family: var(--font-display); font-size: clamp(3rem, 7vw, 6rem);
+  font-weight: 300; line-height: 0.98; letter-spacing: -0.02em;
+  max-width: 1000px; margin-bottom: 36px;
+}
+.hero-title .line { display: block; }
+.hero-title .accent { color: var(--accent); font-style: italic; }
+.hero-body {
+  font-size: 1.1rem; font-weight: 300;
+  color: var(--fg-dim); max-width: 580px; line-height: 1.8;
+  margin-bottom: 48px;
+}
+
+.env-strip {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px; background: var(--line); max-width: 1100px;
+  border: 1px solid var(--line);
+}
+.env-cell {
+  background: var(--bg); padding: 20px 24px;
+}
+.env-cell .k {
+  font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+}
+.env-cell .v {
+  font-family: var(--font-mono); font-size: 0.82rem; color: var(--fg);
+  word-break: break-all;
+}
+.env-cell .v .dim { color: var(--fg-ghost); }
+
+/* ===== SECTION ===== */
+section {
+  padding: 140px 48px;
+  border-top: 1px solid var(--line);
+}
+section.warm { background: var(--bg-warm); }
+
+.sec-label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.35em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 24px;
+  display: flex; align-items: center; gap: 14px;
+}
+.sec-label::before {
+  content: ''; width: 32px; height: 1px; background: var(--accent);
+}
+.sec-title {
+  font-family: var(--font-display); font-size: clamp(2rem, 4.2vw, 3.4rem);
+  font-weight: 300; line-height: 1.08; letter-spacing: -0.01em;
+  max-width: 780px; margin-bottom: 24px;
+}
+.sec-title .accent { color: var(--accent); font-style: italic; }
+.sec-lede {
+  font-size: 1.05rem; color: var(--fg-dim); line-height: 1.8;
+  max-width: 620px; margin-bottom: 72px; font-weight: 300;
+}
+
+/* ===== TOOL GRID ===== */
+.tool-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1px; background: var(--line);
+  border: 1px solid var(--line); max-width: 1300px;
+}
+.tool-card {
+  background: var(--bg); padding: 32px 28px;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative; overflow: hidden;
+  cursor: default;
+}
+section.warm .tool-card { background: var(--bg-warm); }
+.tool-card::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 0; height: 2px; background: var(--accent);
+  transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tool-card:hover::before { width: 100%; }
+.tool-card:hover { background: var(--bg-deep); }
+.tool-card .tag {
+  font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 16px;
+  opacity: 0.7;
+}
+.tool-card h4 {
+  font-family: var(--font-display); font-size: 1.5rem; font-weight: 400;
+  margin-bottom: 14px; letter-spacing: -0.01em;
+}
+.tool-card .name-mono {
+  font-family: var(--font-mono); font-size: 0.95rem; font-weight: 500;
+  color: var(--fg); margin-bottom: 14px;
+}
+.tool-card p {
+  font-size: 0.92rem; color: var(--fg-dim); line-height: 1.65; font-weight: 300;
+}
+.tool-card .pills {
+  margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px;
+}
+.tool-card .pill {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.1em;
+  padding: 4px 10px; border: 1px solid var(--line);
+  color: var(--fg-dim); border-radius: 2px;
+}
+
+/* ===== MCP ROSTER ===== */
+.mcp-roster {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px; max-width: 1300px;
+}
+.mcp-card {
+  background: var(--bg); border: 1px solid var(--line);
+  padding: 32px; position: relative;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+section.warm .mcp-card { background: var(--bg); }
+.mcp-card:hover {
+  border-color: var(--accent); transform: translateY(-2px);
+  box-shadow: 0 12px 40px -20px var(--accent-glow);
+}
+.mcp-card .icon {
+  font-family: var(--font-display); font-size: 1.4rem;
+  font-style: italic; color: var(--accent);
+  margin-bottom: 16px;
+}
+.mcp-card h4 {
+  font-family: var(--font-display); font-size: 1.6rem; font-weight: 400;
+  margin-bottom: 6px;
+}
+.mcp-card .role {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.25em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 18px;
+}
+.mcp-card p {
+  font-size: 0.9rem; color: var(--fg-dim); line-height: 1.7;
+  font-weight: 300; margin-bottom: 18px;
+}
+.mcp-card .ops {
+  font-family: var(--font-mono); font-size: 0.72rem;
+  color: var(--fg-dim); line-height: 1.9;
+  border-top: 1px solid var(--line); padding-top: 14px;
+}
+.mcp-card .count {
+  position: absolute; top: 28px; right: 28px;
+  font-family: var(--font-mono); font-size: 0.62rem;
+  color: var(--accent); letter-spacing: 0.15em;
+}
+
+/* ===== SKILLS LIST ===== */
+.skill-list {
+  max-width: 1100px;
+  border-top: 1px solid var(--line);
+}
+.skill-row {
+  border-bottom: 1px solid var(--line);
+  padding: 28px 4px; display: grid;
+  grid-template-columns: 220px 1fr 200px; gap: 32px;
+  align-items: start;
+  transition: padding 0.3s, background 0.3s;
+}
+.skill-row:hover {
+  padding-left: 16px;
+  background: var(--bg-deep);
+}
+.skill-name {
+  font-family: var(--font-mono); font-size: 0.85rem; font-weight: 500;
+  color: var(--fg); letter-spacing: 0.02em;
+}
+.skill-desc {
+  font-size: 0.95rem; color: var(--fg-dim); line-height: 1.65; font-weight: 300;
+}
+.skill-trigger {
+  font-family: var(--font-mono); font-size: 0.65rem;
+  color: var(--accent); letter-spacing: 0.15em;
+  text-transform: uppercase; opacity: 0.75;
+}
+
+/* ===== PROVENANCE ===== */
+.prov-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  border: 1px solid var(--line); max-width: 1100px;
+  overflow: hidden;
+}
+.prov-col { padding: 48px 40px; }
+.prov-col:first-child {
+  border-right: 1px solid var(--line);
+  background: rgba(139,115,85,0.04);
+}
+.prov-col h5 {
+  font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 28px;
+}
+.prov-col ol, .prov-col ul { list-style: none; }
+.prov-col li {
+  font-size: 0.92rem; line-height: 1.7; color: var(--fg-dim);
+  padding: 12px 0; border-bottom: 1px solid var(--line-soft);
+  font-weight: 300;
+  display: flex; gap: 16px;
+}
+.prov-col li:last-child { border-bottom: none; }
+.prov-col li .step {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  color: var(--accent); flex-shrink: 0; width: 28px;
+}
+.prov-col li code {
+  font-family: var(--font-mono); font-size: 0.82rem;
+  color: var(--fg); background: rgba(26,24,20,0.04);
+  padding: 1px 6px; border-radius: 2px;
+}
+
+/* ===== LIVE DEMO ===== */
+.demo-block {
+  max-width: 1100px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.demo-tabs {
+  display: flex; border-bottom: 1px solid var(--line);
+}
+.demo-tab {
+  flex: 1; padding: 18px 24px; background: none; border: none;
+  font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--fg-ghost); cursor: pointer;
+  border-right: 1px solid var(--line);
+  transition: all 0.3s;
+}
+.demo-tab:last-child { border-right: none; }
+.demo-tab.active { color: var(--accent); background: rgba(139,115,85,0.06); }
+.demo-tab:hover { color: var(--fg); }
+.demo-panel { padding: 40px; display: none; }
+.demo-panel.active { display: block; }
+.demo-panel pre {
+  font-family: var(--font-mono); font-size: 0.78rem;
+  background: #1a1814; color: #e8e2d8;
+  padding: 24px; border-radius: 2px;
+  overflow-x: auto; line-height: 1.65;
+}
+.demo-panel pre .c { color: #a09a94; }
+.demo-panel pre .k { color: #c4a882; }
+.demo-panel pre .s { color: #d4b896; }
+.demo-panel pre .f { color: #c19872; }
+.demo-panel .caption {
+  font-size: 0.88rem; color: var(--fg-dim);
+  margin-bottom: 20px; line-height: 1.7; font-weight: 300;
+}
+
+/* ===== FILTER ===== */
+.filter-bar {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 40px; max-width: 1100px;
+}
+.filter-btn {
+  font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.2em;
+  text-transform: uppercase; padding: 10px 18px;
+  background: none; border: 1px solid var(--line);
+  color: var(--fg-dim); cursor: pointer;
+  transition: all 0.3s;
+}
+.filter-btn:hover { color: var(--fg); border-color: var(--fg-dim); }
+.filter-btn.active {
+  background: var(--accent); color: var(--bg); border-color: var(--accent);
+}
+
+/* ===== FOOTER ===== */
+footer {
+  padding: 48px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 20px;
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--fg-ghost);
+  border-top: 1px solid var(--line);
+  background: var(--bg-warm);
+}
+footer .accent { color: var(--accent); }
+
+/* ===== MOBILE ===== */
+@media (max-width: 900px) {
+  nav { padding: 16px 24px; }
+  nav .links { gap: 16px; font-size: 0.55rem; }
+  #hero, section { padding: 100px 24px; }
+  .skill-row { grid-template-columns: 1fr; gap: 8px; }
+  .prov-grid { grid-template-columns: 1fr; }
+  .prov-col:first-child { border-right: none; border-bottom: 1px solid var(--line); }
+  .demo-tabs { flex-direction: column; }
+  .demo-tab { border-right: none; border-bottom: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Mythic<span>·</span>Labs <span>/</span> Capability Diagnostic</div>
+  <div class="links">
+    <a href="#environment">Environment</a>
+    <a href="#tools">Tools</a>
+    <a href="#agents">Agents</a>
+    <a href="#skills">Skills</a>
+    <a href="#mcp">Integrations</a>
+    <a href="#provenance">Provenance</a>
+  </div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section id="hero">
+  <div class="hero-meta">Live Capability Map · 2026.05.11</div>
+  <h1 class="hero-title">
+    <span class="line">What this session</span>
+    <span class="line"><span class="accent">can actually do</span>,</span>
+    <span class="line">made visible.</span>
+  </h1>
+  <p class="hero-body">
+    A diagnostic readout of the tools, agents, skills, and external integrations
+    available to this Claude Code session — running inside the
+    <strong style="color:var(--fg);font-weight:500;">mythic-labs</strong> repository,
+    powered by Opus 4.7 with a one-million-token context window.
+  </p>
+
+  <div class="env-strip">
+    <div class="env-cell">
+      <div class="k">Model</div>
+      <div class="v">claude-opus-4-7 <span class="dim">[1M]</span></div>
+    </div>
+    <div class="env-cell">
+      <div class="k">Repository</div>
+      <div class="v">mythic-labs <span class="dim">@ main</span></div>
+    </div>
+    <div class="env-cell">
+      <div class="k">Working Branch</div>
+      <div class="v">claude/<span class="dim">portfolio-showcase-page-ovgsL</span></div>
+    </div>
+    <div class="env-cell">
+      <div class="k">Platform</div>
+      <div class="v">Linux 6.18.5 <span class="dim">/ root</span></div>
+    </div>
+    <div class="env-cell">
+      <div class="k">Knowledge Cutoff</div>
+      <div class="v">January 2026</div>
+    </div>
+    <div class="env-cell">
+      <div class="k">Session Date</div>
+      <div class="v">2026-05-11</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TOOLS ===== -->
+<section id="tools" class="warm">
+  <div class="sec-label">I · Native Toolset</div>
+  <h2 class="sec-title">The hands the agent <span class="accent">already has.</span></h2>
+  <p class="sec-lede">
+    These are first-party tools — file system access, a shell, multi-tool parallelism, and the
+    ability to spawn specialized sub-agents. Nothing fancy, but the substrate everything else
+    is built on.
+  </p>
+
+  <div class="tool-grid">
+    <div class="tool-card">
+      <div class="tag">01 · Read</div>
+      <div class="name-mono">Read</div>
+      <p>Reads any local file — including PDFs (page ranges), Jupyter notebooks (cells + outputs), and images rendered visually.</p>
+      <div class="pills"><span class="pill">text</span><span class="pill">pdf</span><span class="pill">image</span><span class="pill">ipynb</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">02 · Write</div>
+      <div class="name-mono">Write</div>
+      <p>Creates new files or fully rewrites them. Used to produce this page from scratch.</p>
+      <div class="pills"><span class="pill">create</span><span class="pill">overwrite</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">03 · Edit</div>
+      <div class="name-mono">Edit</div>
+      <p>Surgical string replacement in existing files. Preferred over rewrites — only the diff travels over the wire.</p>
+      <div class="pills"><span class="pill">diff</span><span class="pill">replace_all</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">04 · Shell</div>
+      <div class="name-mono">Bash</div>
+      <p>Sandboxed shell. Supports background processes, parallel calls, and structured timeouts. Persistent CWD, ephemeral state.</p>
+      <div class="pills"><span class="pill">parallel</span><span class="pill">background</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">05 · Delegate</div>
+      <div class="name-mono">Agent</div>
+      <p>Spawn specialized sub-agents (Explore, Plan, general-purpose, etc.) with isolated context — optionally in their own git worktree.</p>
+      <div class="pills"><span class="pill">subagent</span><span class="pill">worktree</span><span class="pill">parallel</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">06 · Ask</div>
+      <div class="name-mono">AskUserQuestion</div>
+      <p>Mid-execution clarification with structured choices, multi-select, and preview content for each option.</p>
+      <div class="pills"><span class="pill">structured</span><span class="pill">preview</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">07 · Skill</div>
+      <div class="name-mono">Skill</div>
+      <p>Invoke a registered skill (init, review, simplify, security-review, etc.) with optional arguments.</p>
+      <div class="pills"><span class="pill">slash</span><span class="pill">skill</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">08 · Discover</div>
+      <div class="name-mono">ToolSearch</div>
+      <p>Lazy-loads deferred tool schemas by name or keyword query — keeps the prompt lean until a capability is needed.</p>
+      <div class="pills"><span class="pill">deferred</span><span class="pill">search</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">09 · Background</div>
+      <div class="name-mono">Monitor</div>
+      <p>Stream events from a long-running background process; wakes the session on each line of output.</p>
+      <div class="pills"><span class="pill">stream</span><span class="pill">events</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">10 · Plan</div>
+      <div class="name-mono">TodoWrite / ExitPlanMode</div>
+      <p>Multi-step task tracking with one-at-a-time completion. ExitPlanMode submits a finalized plan for approval.</p>
+      <div class="pills"><span class="pill">todos</span><span class="pill">plan-mode</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">11 · Web</div>
+      <div class="name-mono">WebFetch / WebSearch</div>
+      <p>Pull and parse a URL into markdown, or search the live web with optional domain allow/deny lists.</p>
+      <div class="pills"><span class="pill">fetch</span><span class="pill">search</span></div>
+    </div>
+    <div class="tool-card">
+      <div class="tag">12 · Notify</div>
+      <div class="name-mono">PushNotification</div>
+      <p>Surface system-level notifications to the user when long-running work finishes.</p>
+      <div class="pills"><span class="pill">async</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== AGENTS ===== -->
+<section id="agents">
+  <div class="sec-label">II · Specialized Sub-Agents</div>
+  <h2 class="sec-title">Different agents for <span class="accent">different shapes</span> of thinking.</h2>
+  <p class="sec-lede">
+    Each sub-agent has its own tool allowlist and prompt. The main session delegates to them
+    in parallel when work is independent — keeping the primary context window clear of raw search output.
+  </p>
+
+  <div class="tool-grid">
+    <div class="tool-card">
+      <div class="tag">Read-only · Fast</div>
+      <h4>Explore</h4>
+      <p>Finds files by pattern, greps for symbols, answers "where is X defined?" Configurable breadth: quick, medium, very thorough.</p>
+    </div>
+    <div class="tool-card">
+      <div class="tag">Architecture</div>
+      <h4>Plan</h4>
+      <p>Designs implementation strategy. Returns step-by-step plans, flags critical files, weighs architectural trade-offs.</p>
+    </div>
+    <div class="tool-card">
+      <div class="tag">Open-ended</div>
+      <h4>general-purpose</h4>
+      <p>Full toolbox. For multi-step research, fuzzy keyword hunts, or any task that doesn't fit a more specialized agent.</p>
+    </div>
+    <div class="tool-card">
+      <div class="tag">Q&A</div>
+      <h4>claude-code-guide</h4>
+      <p>Answers questions about Claude Code CLI, the Claude Agent SDK, and the Claude API — hooks, MCP servers, SDK usage, etc.</p>
+    </div>
+    <div class="tool-card">
+      <div class="tag">Config</div>
+      <h4>statusline-setup</h4>
+      <p>Configures the user's Claude Code status line in <code style="font-family:var(--font-mono);font-size:0.85em;">settings.json</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SKILLS ===== -->
+<section id="skills" class="warm">
+  <div class="sec-label">III · Skills Library</div>
+  <h2 class="sec-title">Pre-loaded playbooks <span class="accent">for recurring work.</span></h2>
+  <p class="sec-lede">
+    Skills are packaged procedures — bigger than a prompt, smaller than an agent. They trigger
+    automatically when their pattern matches, or on a slash command like <code style="font-family:var(--font-mono);background:rgba(26,24,20,0.04);padding:2px 8px;border-radius:2px;font-size:0.9em;">/review</code>.
+  </p>
+
+  <div class="skill-list">
+    <div class="skill-row">
+      <div class="skill-name">init</div>
+      <div class="skill-desc">Bootstrap a fresh <strong style="color:var(--fg);font-weight:500;">CLAUDE.md</strong> file by surveying the codebase and documenting conventions, commands, and architecture.</div>
+      <div class="skill-trigger">/init</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">review</div>
+      <div class="skill-desc">Run a structured code review on a pull request — diff analysis, risk surfacing, suggested questions.</div>
+      <div class="skill-trigger">/review</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">security-review</div>
+      <div class="skill-desc">Audit pending branch changes for vulnerabilities (OWASP top 10, secret leakage, injection, auth gaps).</div>
+      <div class="skill-trigger">/security-review</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">simplify</div>
+      <div class="skill-desc">Re-examine just-written code for reuse, redundancy, and over-engineering. Fixes what it finds.</div>
+      <div class="skill-trigger">/simplify</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">claude-api</div>
+      <div class="skill-desc">Build, debug, or migrate Anthropic SDK applications. Auto-includes prompt caching guidance; handles model upgrades (4.5 → 4.7).</div>
+      <div class="skill-trigger">auto · sdk import</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">update-config</div>
+      <div class="skill-desc">Edit <code>settings.json</code> — permissions, env vars, hooks, automated behaviors ("from now on when X…"). The harness, not memory, executes hooks.</div>
+      <div class="skill-trigger">auto · settings</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">keybindings-help</div>
+      <div class="skill-desc">Customize <code>~/.claude/keybindings.json</code> — rebind keys, add chord shortcuts, change submit behavior.</div>
+      <div class="skill-trigger">auto · keys</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">session-start-hook</div>
+      <div class="skill-desc">Wire up SessionStart hooks so Claude Code on the web can run tests and linters automatically when a session opens.</div>
+      <div class="skill-trigger">auto · web setup</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">fewer-permission-prompts</div>
+      <div class="skill-desc">Scan recent transcripts, identify safe read-only Bash/MCP calls, and add an allowlist to <code>.claude/settings.json</code>.</div>
+      <div class="skill-trigger">/fewer-permission-prompts</div>
+    </div>
+    <div class="skill-row">
+      <div class="skill-name">loop</div>
+      <div class="skill-desc">Schedule a prompt or slash command to run on a recurring interval (e.g. <code>/loop 5m /babysit-prs</code>). Default 10m.</div>
+      <div class="skill-trigger">/loop</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== MCP ===== -->
+<section id="mcp">
+  <div class="sec-label">IV · MCP Integrations</div>
+  <h2 class="sec-title">External systems, <span class="accent">native to the loop.</span></h2>
+  <p class="sec-lede">
+    Twelve Model Context Protocol servers expose hundreds of tools — GitHub, Supabase, Vercel,
+    Canva, Wix, Gmail, Google Calendar, Google Drive, scholarly search, and a persistent thought
+    store. Schemas are deferred and loaded on demand via <code style="font-family:var(--font-mono);background:rgba(26,24,20,0.04);padding:2px 8px;border-radius:2px;font-size:0.9em;">ToolSearch</code>.
+  </p>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="dev">Dev & Deploy</button>
+    <button class="filter-btn" data-filter="content">Content & Design</button>
+    <button class="filter-btn" data-filter="comms">Comms & Productivity</button>
+    <button class="filter-btn" data-filter="research">Research & Memory</button>
+  </div>
+
+  <div class="mcp-roster">
+
+    <div class="mcp-card" data-cat="dev">
+      <div class="count">~50 tools</div>
+      <div class="icon">github</div>
+      <h4>GitHub</h4>
+      <div class="role">Source · Reviews · CI</div>
+      <p>Read PRs, post review comments, create branches, push files, merge, manage releases, search code, subscribe to PR activity webhooks for autofix loops.</p>
+      <div class="ops">pull_request_read · pull_request_review_write<br>create_pull_request · push_files<br>subscribe_pr_activity · search_code</div>
+    </div>
+
+    <div class="mcp-card" data-cat="dev">
+      <div class="count">~30 tools</div>
+      <div class="icon">supabase</div>
+      <h4>Supabase</h4>
+      <div class="role">Database · Edge · Auth</div>
+      <p>List/create projects, apply migrations, execute SQL, deploy edge functions, fetch logs, run advisors, manage branches, generate TypeScript types.</p>
+      <div class="ops">execute_sql · apply_migration<br>deploy_edge_function · get_advisors<br>generate_typescript_types</div>
+    </div>
+
+    <div class="mcp-card" data-cat="dev">
+      <div class="count">~16 tools</div>
+      <div class="icon">vercel</div>
+      <h4>Vercel</h4>
+      <div class="role">Hosting · Deploys</div>
+      <p>Trigger deploys, fetch build & runtime logs, manage projects and teams, check domain availability and pricing, interact with toolbar threads.</p>
+      <div class="ops">deploy_to_vercel · get_deployment_build_logs<br>check_domain_availability_and_price<br>get_runtime_logs</div>
+    </div>
+
+    <div class="mcp-card" data-cat="content">
+      <div class="count">~30 tools</div>
+      <div class="icon">canva</div>
+      <h4>Canva</h4>
+      <div class="role">Design Generation</div>
+      <p>Generate or import designs, perform editing transactions, manage folders and brand kits, export to multiple formats, comment & reply on canvases.</p>
+      <div class="ops">generate_design · perform_editing_operations<br>export_design · list_brand_kits<br>upload_asset_from_url</div>
+    </div>
+
+    <div class="mcp-card" data-cat="content">
+      <div class="count">~15 tools</div>
+      <div class="icon">wix</div>
+      <h4>Wix</h4>
+      <div class="role">Site Builder · CLI · SDK</div>
+      <p>Create and manage Wix sites, call Wix REST APIs, search Build / Headless / SDK / WDS / REST docs, upload images, generate business guides.</p>
+      <div class="ops">WixSiteBuilder · CallWixSiteAPI<br>SearchWixSDKDocumentation<br>UploadImageToWixSite</div>
+    </div>
+
+    <div class="mcp-card" data-cat="comms">
+      <div class="count">~14 tools</div>
+      <div class="icon">gmail</div>
+      <h4>Gmail</h4>
+      <div class="role">Mailbox Ops</div>
+      <p>Search threads, read full conversations, draft replies, manage labels (create / update / delete), label or unlabel messages and threads.</p>
+      <div class="ops">search_threads · create_draft<br>get_thread · list_labels<br>label_thread · unlabel_message</div>
+    </div>
+
+    <div class="mcp-card" data-cat="comms">
+      <div class="count">~8 tools</div>
+      <div class="icon">calendar</div>
+      <h4>Google Calendar</h4>
+      <div class="role">Scheduling</div>
+      <p>List calendars and events, create / update / delete events, respond to invites, ask the server to suggest meeting times.</p>
+      <div class="ops">list_events · create_event<br>suggest_time · respond_to_event</div>
+    </div>
+
+    <div class="mcp-card" data-cat="comms">
+      <div class="count">~8 tools</div>
+      <div class="icon">drive</div>
+      <h4>Google Drive</h4>
+      <div class="role">File Storage</div>
+      <p>Search and read file content, copy and create files, inspect file metadata and permissions, list recently touched files.</p>
+      <div class="ops">search_files · read_file_content<br>copy_file · get_file_permissions</div>
+    </div>
+
+    <div class="mcp-card" data-cat="research">
+      <div class="count">~7 tools</div>
+      <div class="icon">articles</div>
+      <h4>Scholarly Articles</h4>
+      <div class="role">Literature Search</div>
+      <p>Search academic articles, look up by citation, fetch full text, find related work, check copyright status, convert between article ID formats.</p>
+      <div class="ops">search_articles · get_full_text_article<br>find_related_articles<br>lookup_article_by_citation</div>
+    </div>
+
+    <div class="mcp-card" data-cat="research">
+      <div class="count">~6 tools</div>
+      <div class="icon">memory</div>
+      <h4>Thought Store</h4>
+      <div class="role">Long-term Memory</div>
+      <p>Capture thoughts, search the thought corpus, list recent entries, view aggregate statistics — a persistent memory layer across sessions.</p>
+      <div class="ops">capture_thought · search_thoughts<br>list_thoughts · thought_stats</div>
+    </div>
+
+    <div class="mcp-card" data-cat="dev">
+      <div class="count">2 tools</div>
+      <div class="icon">auth · α</div>
+      <h4>OAuth Service A</h4>
+      <div class="role">Authentication Bridge</div>
+      <p>Begin and complete an authentication handshake — bridge for a downstream service that needs delegated credentials.</p>
+      <div class="ops">authenticate<br>complete_authentication</div>
+    </div>
+
+    <div class="mcp-card" data-cat="dev">
+      <div class="count">2 tools</div>
+      <div class="icon">auth · β</div>
+      <h4>OAuth Service B</h4>
+      <div class="role">Authentication Bridge</div>
+      <p>Second authentication flow available to this session — same pattern, different target service.</p>
+      <div class="ops">authenticate<br>complete_authentication</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===== LIVE DEMO ===== -->
+<section id="demo" class="warm">
+  <div class="sec-label">V · Live Diagnostic</div>
+  <h2 class="sec-title">Reading <span class="accent">this very repo</span>, in this very session.</h2>
+  <p class="sec-lede">
+    Three tabs of evidence pulled directly from the current working directory. Tab one is the
+    repo tree. Tab two is the README. Tab three is a sketch of how this page itself was assembled.
+  </p>
+
+  <div class="demo-block">
+    <div class="demo-tabs">
+      <button class="demo-tab active" data-tab="tree">Repository Tree</button>
+      <button class="demo-tab" data-tab="readme">README Excerpt</button>
+      <button class="demo-tab" data-tab="build">Build Sequence</button>
+    </div>
+
+    <div class="demo-panel active" data-panel="tree">
+      <p class="caption">Pulled via <code>ls -la</code> and <code>git branch -a</code> at session start.</p>
+<pre><span class="c"># /home/user/mythic-labs</span>
+<span class="f">drwxr-xr-x</span>  .git/
+<span class="f">-rw-r--r--</span>  README.md                  <span class="c"># 2.1 KB · brand manifesto</span>
+<span class="f">-rw-r--r--</span>  mythic_labs_landing.html   <span class="c"># 17.2 KB · existing landing page</span>
+<span class="f">-rw-r--r--</span>  showcase.html              <span class="c"># this file ← just written</span>
+
+<span class="c"># git branches</span>
+<span class="k">*</span> claude/portfolio-showcase-page-ovgsL   <span class="c"># active</span>
+  main
+  remotes/origin/claude/portfolio-showcase-page-ovgsL
+  remotes/origin/main</pre>
+    </div>
+
+    <div class="demo-panel" data-panel="readme">
+      <p class="caption">First lines of <code>README.md</code> — read with the <code>Read</code> tool, used to match the showcase's voice and palette to the existing brand.</p>
+<pre><span class="k"># Mythic Labs</span>
+
+<span class="s">**Archetypal Architecture for Brands &amp; Products**</span>
+
+<span class="c">Diagnostic Union Technicians</span>
+
+---
+
+<span class="k">## What We Do</span>
+
+Mythic Labs uses Jungian psychology and architectural dynamics to
+discover the deep structural identity of products, brands, and
+audiences. We build everything from that foundation up.
+
+<span class="s">We do not build brands. We uncover their archetypal foundations.</span></pre>
+    </div>
+
+    <div class="demo-panel" data-panel="build">
+      <p class="caption">A trace of the tool calls that produced this page, in order.</p>
+<pre><span class="c">// session: claude-opus-4-7 · 2026-05-11</span>
+
+<span class="f">Bash</span>(<span class="s">"ls -la &amp;&amp; git status &amp;&amp; git branch -a"</span>)
+  <span class="c">→ confirmed repo state, current branch, no dirty tree</span>
+
+<span class="f">Read</span>(<span class="s">"/home/user/mythic-labs/README.md"</span>)
+  <span class="c">→ absorbed the Mythic Labs voice &amp; threefold-path structure</span>
+
+<span class="f">Read</span>(<span class="s">"mythic_labs_landing.html"</span>, lines <span class="k">1–100</span>)
+<span class="f">Read</span>(<span class="s">"mythic_labs_landing.html"</span>, lines <span class="k">100–300</span>)
+  <span class="c">→ extracted CSS variables, type scale, section rhythm</span>
+
+<span class="f">Write</span>(<span class="s">"/home/user/mythic-labs/showcase.html"</span>)
+  <span class="c">→ produced this document (single-file, no build step)</span>
+
+<span class="c">// next, on user request:</span>
+<span class="f">Bash</span>(<span class="s">"git add showcase.html &amp;&amp; git commit ... &amp;&amp; git push"</span>)
+<span class="f">mcp__github__create_pull_request</span>(<span class="s">"draft"</span>)</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ===== PROVENANCE ===== -->
+<section id="provenance">
+  <div class="sec-label">VI · Build Provenance</div>
+  <h2 class="sec-title">Every input <span class="accent">that produced this page.</span></h2>
+  <p class="sec-lede">
+    Transparent accounting of what was accessed, in what order, and to what end.
+  </p>
+
+  <div class="prov-grid">
+    <div class="prov-col">
+      <h5>Files Touched</h5>
+      <ul>
+        <li><span class="step">→</span><span><code>README.md</code> — read once, to anchor copy in the brand's actual voice (Jungian / archetypal / diagnostic).</span></li>
+        <li><span class="step">→</span><span><code>mythic_labs_landing.html</code> — read twice, to inherit the design system (typography stack, color tokens, section pacing).</span></li>
+        <li><span class="step">→</span><span><code>showcase.html</code> — written once. The file you are looking at.</span></li>
+      </ul>
+    </div>
+    <div class="prov-col">
+      <h5>Tools Used</h5>
+      <ul>
+        <li><span class="step">01</span><span><code>Bash</code> for repo introspection (<code>ls</code>, <code>git status</code>, <code>git branch -a</code>).</span></li>
+        <li><span class="step">02</span><span><code>Read</code> for <code>README.md</code> and two ranges of the existing landing HTML.</span></li>
+        <li><span class="step">03</span><span><code>Write</code> for this single-file output. No build step, no dependencies.</span></li>
+        <li><span class="step">04</span><span><code>ToolSearch</code> deferred — schemas for GitHub, Supabase, Vercel, etc. were enumerated by name but not invoked.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer>
+  <div>Mythic Labs <span class="accent">·</span> Capability Diagnostic <span class="accent">·</span> 2026.05.11</div>
+  <div>Generated by <span class="accent">claude-opus-4-7</span> · 1M context</div>
+  <div>branch <span class="accent">claude/portfolio-showcase-page-ovgsL</span></div>
+</footer>
+
+<script>
+  // Demo tabs
+  document.querySelectorAll('.demo-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.demo-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelector(`.demo-panel[data-panel="${target}"]`).classList.add('active');
+    });
+  });
+
+  // MCP filter
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filter = btn.dataset.filter;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.mcp-card').forEach(card => {
+        const show = filter === 'all' || card.dataset.cat === filter;
+        card.style.display = show ? '' : 'none';
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
