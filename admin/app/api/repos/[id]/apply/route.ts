@@ -11,7 +11,7 @@ export async function POST(
   try {
     const db = serviceClient();
     const { data: repo, error } = await db
-      .from("repos")
+      .from("mythic_repos")
       .select("*")
       .eq("id", params.id)
       .eq("user_id", ADMIN_USER_ID)

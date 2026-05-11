@@ -1,5 +1,10 @@
 import { serviceClient, ADMIN_USER_ID } from "./supabase";
 
+// Tables live in public with a "mythic_" prefix so this app can co-tenant
+// inside an existing Supabase project. See supabase/migrations/0001_initial_schema.sql.
+const T_REPOS = "mythic_repos";
+const T_REPO_PLUGINS = "mythic_repo_plugins";
+
 export type Repo = {
   id: string;
   user_id: string;
@@ -20,7 +25,7 @@ export type RepoPlugin = {
 export async function listRepos(): Promise<Repo[]> {
   const db = serviceClient();
   const { data, error } = await db
-    .from("repos")
+    .from(T_REPOS)
     .select("*")
     .eq("user_id", ADMIN_USER_ID)
     .order("created_at", { ascending: false });
@@ -31,7 +36,7 @@ export async function listRepos(): Promise<Repo[]> {
 export async function addRepo(owner: string, repo: string): Promise<Repo> {
   const db = serviceClient();
   const { data, error } = await db
-    .from("repos")
+    .from(T_REPOS)
     .insert({
       user_id: ADMIN_USER_ID,
       owner: owner.trim(),
@@ -46,7 +51,7 @@ export async function addRepo(owner: string, repo: string): Promise<Repo> {
 export async function deleteRepo(id: string): Promise<void> {
   const db = serviceClient();
   const { error } = await db
-    .from("repos")
+    .from(T_REPOS)
     .delete()
     .eq("id", id)
     .eq("user_id", ADMIN_USER_ID);
@@ -56,7 +61,7 @@ export async function deleteRepo(id: string): Promise<void> {
 export async function listRepoPlugins(repoId: string): Promise<RepoPlugin[]> {
   const db = serviceClient();
   const { data, error } = await db
-    .from("repo_plugins")
+    .from(T_REPO_PLUGINS)
     .select("*")
     .eq("repo_id", repoId);
   if (error) throw error;
@@ -70,7 +75,7 @@ export async function setRepoPlugin(
 ): Promise<void> {
   const db = serviceClient();
   const { error } = await db
-    .from("repo_plugins")
+    .from(T_REPO_PLUGINS)
     .upsert(
       { repo_id: repoId, plugin_slug: slug, enabled },
       { onConflict: "repo_id,plugin_slug" }
@@ -84,7 +89,7 @@ export async function markApplied(
 ): Promise<void> {
   const db = serviceClient();
   const { error } = await db
-    .from("repos")
+    .from(T_REPOS)
     .update({
       last_applied_at: new Date().toISOString(),
       last_applied_sha: sha,
