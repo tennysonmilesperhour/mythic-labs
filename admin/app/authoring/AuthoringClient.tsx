@@ -93,10 +93,20 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
 
   return (
     <div>
-      <p className="text-fg-dim text-sm leading-relaxed mb-8 max-w-2xl">
-        Register an MCP server inside a plugin's <code className="font-mono text-fg text-sm">.mcp.json</code>. Any repo
-        that enables this plugin inherits the server.
-      </p>
+      <div className="bg-bg border border-line p-4 mb-8 max-w-3xl">
+        <div className="mono-label mb-2">What this does</div>
+        <p className="text-fg-dim text-sm leading-relaxed">
+          Picks a plugin in the brain repo, opens its{" "}
+          <code className="font-mono text-fg text-sm">.mcp.json</code>, and adds
+          (or updates) the MCP server you describe below. Every consuming repo
+          that has this plugin enabled inherits the server on its next session —
+          no need to commit anything to those repos.
+        </p>
+        <p className="text-fg-ghost text-xs leading-relaxed mt-3 font-mono">
+          Example · plugin: comms · name: gmail · command: npx · args:
+          @gongrzhe/server-gmail-autoauth-mcp
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
         <Field label="Plugin">
@@ -207,10 +217,26 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
 
   return (
     <div>
-      <p className="text-fg-dim text-sm leading-relaxed mb-8 max-w-2xl">
-        Author a new slash command. It will be invocable as <code className="font-mono text-fg text-sm">/{`<plugin>`}:{`<name>`}</code> in any
-        consuming session that has this plugin enabled.
-      </p>
+      <div className="bg-bg border border-line p-4 mb-8 max-w-3xl">
+        <div className="mono-label mb-2">What this does</div>
+        <p className="text-fg-dim text-sm leading-relaxed">
+          Writes a new <code className="font-mono text-fg text-sm">.md</code>{" "}
+          file under{" "}
+          <code className="font-mono text-fg text-sm">
+            &lt;plugin&gt;/commands/
+          </code>{" "}
+          in the brain repo with the frontmatter Claude Code needs. After commit
+          it becomes invocable as{" "}
+          <code className="font-mono text-fg text-sm">
+            /&lt;plugin&gt;:&lt;name&gt;
+          </code>{" "}
+          in every consuming repo that has this plugin enabled.
+        </p>
+        <p className="text-fg-ghost text-xs leading-relaxed mt-3 font-mono">
+          Example · plugin: brand-systems · name: diagnose · description: Run
+          archetypal analysis on the provided artifact.
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
         <Field label="Plugin">
@@ -327,10 +353,20 @@ function VerifyForm() {
 
   return (
     <div>
-      <p className="text-fg-dim text-sm leading-relaxed mb-8 max-w-2xl">
-        Check whether a repo is correctly wired to the brain marketplace. Reads
-        its <code className="font-mono text-fg text-sm">.claude/settings.json</code> on GitHub and reports drift.
-      </p>
+      <div className="bg-bg border border-line p-4 mb-8 max-w-3xl">
+        <div className="mono-label mb-2">What this does</div>
+        <p className="text-fg-dim text-sm leading-relaxed">
+          Fetches a repo's{" "}
+          <code className="font-mono text-fg text-sm">
+            .claude/settings.json
+          </code>{" "}
+          directly from GitHub and audits it: is the brain marketplace declared,
+          which plugins does the repo claim to enable, are any of them unknown
+          (typos or removed), and which are missing from its config. Catches
+          drift between what this dashboard thinks is on a repo and what's
+          actually committed.
+        </p>
+      </div>
 
       <div className="flex gap-3 mb-8">
         <input

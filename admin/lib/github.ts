@@ -67,6 +67,25 @@ export async function writeFile(
 }
 
 /**
+ * Fetch basic metadata for a repo: fork status + default branch.
+ * Returns null if the repo is inaccessible (private + token doesn't have access, or doesn't exist).
+ */
+export async function getRepoMeta(
+  owner: string,
+  repo: string
+): Promise<{ is_fork: boolean; default_branch: string } | null> {
+  try {
+    const res = await gh().repos.get({ owner, repo });
+    return {
+      is_fork: !!res.data.fork,
+      default_branch: res.data.default_branch || "main",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Read a directory listing from a repo.
  */
 export async function readDir(

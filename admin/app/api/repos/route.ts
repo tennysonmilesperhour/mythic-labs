@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { addRepo, listRepos } from "@/lib/db";
+import { getRepoMeta } from "@/lib/github";
 
 export async function GET() {
   try {
@@ -38,7 +39,8 @@ export async function POST(req: Request) {
         continue;
       }
       try {
-        await addRepo(parsed.owner, parsed.repo);
+        const meta = await getRepoMeta(parsed.owner, parsed.repo);
+        await addRepo(parsed.owner, parsed.repo, meta || undefined);
         created.push(`${parsed.owner}/${parsed.repo}`);
       } catch (err: unknown) {
         failed.push({ line, reason: (err as Error).message });

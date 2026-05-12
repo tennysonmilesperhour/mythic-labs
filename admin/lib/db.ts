@@ -11,6 +11,7 @@ export type Repo = {
   owner: string;
   repo: string;
   default_branch: string;
+  is_fork: boolean | null;
   last_applied_at: string | null;
   last_applied_sha: string | null;
   created_at: string;
@@ -33,19 +34,41 @@ export async function listRepos(): Promise<Repo[]> {
   return (data || []) as Repo[];
 }
 
-export async function addRepo(owner: string, repo: string): Promise<Repo> {
+export async function addRepo(
+  owner: string,
+  repo: string,
+  meta?: { is_fork?: boolean; default_branch?: string }
+): Promise<Repo> {
   const db = serviceClient();
+  const row: Record<string, unknown> = {
+    user_id: ADMIN_USER_ID,
+    owner: owner.trim(),
+    repo: repo.trim(),
+  };
+  if (meta?.is_fork !== undefined) row.is_fork = meta.is_fork;
+  if (meta?.default_branch) row.default_branch = meta.default_branch;
   const { data, error } = await db
     .from(T_REPOS)
-    .insert({
-      user_id: ADMIN_USER_ID,
-      owner: owner.trim(),
-      repo: repo.trim(),
-    })
+    .insert(row)
     .select()
     .single();
   if (error) throw error;
   return data as Repo;
+}
+
+export async function backfillRepoMeta(
+  repoId: string,
+  meta: { is_fork: boolean; default_branch: string }
+): Promise<void> {
+  const db = serviceClient();
+  const { error } = await db
+    .from(T_REPOS)
+    .update({
+      is_fork: meta.is_fork,
+      default_branch: meta.default_branch,
+    })
+    .eq("id", repoId);
+  if (error) throw error;
 }
 
 export async function deleteRepo(id: string): Promise<void> {
