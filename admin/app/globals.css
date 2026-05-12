@@ -10,18 +10,38 @@
   --fg-dim: #6a6560;
   --fg-ghost: #a09a94;
   --accent: #8b7355;
+  --accent-light: #c4a882;
+  --accent-glow: rgba(139, 115, 85, 0.12);
+  --hairline: rgba(26, 24, 20, 0.08);
+  --hairline-soft: rgba(26, 24, 20, 0.05);
+
+  /* Motion language (cribbed from the landing page) */
+  --ease-mythic: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 200ms;
+  --motion-base: 400ms;
+  --motion-slow: 600ms;
+
+  /* Paper-stack elevations */
+  --shadow-paper: 0 1px 0 rgba(26, 24, 20, 0.04),
+    0 1px 3px rgba(26, 24, 20, 0.03);
+  --shadow-lifted: 0 8px 32px rgba(26, 24, 20, 0.08),
+    0 2px 8px rgba(26, 24, 20, 0.04);
+  --shadow-glow: 0 0 0 1px rgba(139, 115, 85, 0.15),
+    0 0 24px rgba(139, 115, 85, 0.08);
 }
 
-html, body {
+html,
+body {
   background: var(--bg);
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
 }
 
 body {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 300;
   font-feature-settings: "ss01";
+  overflow-x: hidden;
 }
 
 ::selection {
@@ -29,27 +49,193 @@ body {
   color: var(--bg);
 }
 
-/* Subtle scroll styling */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
-  background: rgba(26,24,20,0.12);
+  background: rgba(26, 24, 20, 0.12);
   border-radius: 6px;
   border: 2px solid var(--bg);
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(26,24,20,0.2); }
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(26, 24, 20, 0.2);
+}
 
-/* Mono-label utility (used everywhere) */
+/* ─────────── Typographic specimens ─────────── */
+
 .mono-label {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 0.6rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--accent);
 }
 
+.mono-label-dim {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--fg-ghost);
+}
+
 .serif-display {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: "Cormorant Garamond", serif;
   font-weight: 300;
   letter-spacing: -0.01em;
+  font-style: normal;
+}
+
+/* Hairline with a leading accent rule — the landing's "::before { width:64px }" trick. */
+.hairline-accent {
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+}
+.hairline-accent::before {
+  content: "";
+  width: 64px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.hairline-accent-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.hairline-accent-sm::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: var(--accent);
+}
+
+/* Tabular lining figures — used for stat numerals so they don't dance. */
+.tnum {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Drop cap — used once per major description for editorial weight. */
+.dropcap::first-letter {
+  font-family: "Cormorant Garamond", serif;
+  font-weight: 400;
+  font-size: 3.5em;
+  float: left;
+  line-height: 0.85;
+  margin: 0.1em 0.12em 0 0;
+  color: var(--accent);
+}
+
+/* ─────────── Motion ─────────── */
+
+.ease-mythic {
+  transition-timing-function: var(--ease-mythic);
+}
+
+/* Expanding accent line at the top of a hover card. */
+.accent-sweep {
+  position: relative;
+  overflow: hidden;
+}
+.accent-sweep::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  background: var(--accent);
+  transition: width var(--motion-slow) var(--ease-mythic);
+}
+.accent-sweep:hover::before,
+.accent-sweep[data-active="true"]::before {
+  width: 100%;
+}
+
+/* Subtle lift for primary CTAs. */
+.lift-on-hover {
+  transition: transform var(--motion-base) var(--ease-mythic),
+    background-color var(--motion-base) var(--ease-mythic),
+    box-shadow var(--motion-base) var(--ease-mythic);
+}
+.lift-on-hover:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lifted);
+}
+
+/* Glass surface — used for the sidebar and floating bars. */
+.glass {
+  background: rgba(247, 245, 240, 0.72);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+
+.glass-warm {
+  background: rgba(240, 236, 228, 0.78);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+
+/* Radial accent glow behind primary CTAs / hero sections. */
+.glow-anchor {
+  position: relative;
+  isolation: isolate;
+}
+.glow-anchor::after {
+  content: "";
+  position: absolute;
+  inset: -40% -20%;
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    var(--accent-glow) 0%,
+    transparent 65%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Living-canvas wrapper — always behind page content. */
+.living-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+/* Lift the actual page content above the canvas. */
+.page-stack {
+  position: relative;
+  z-index: 1;
+}
+
+/* Hover-shift list items — the landing's phil-list pattern. */
+.hover-shift {
+  transition: padding-left var(--motion-base) var(--ease-mythic),
+    color var(--motion-base) var(--ease-mythic);
+}
+.hover-shift:hover {
+  padding-left: 8px;
+  color: var(--fg);
+}
+
+/* Subtle pulse for "applied" / live state dots. */
+@keyframes mythic-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+.pulse-dot {
+  animation: mythic-pulse 3.2s ease-in-out infinite;
 }

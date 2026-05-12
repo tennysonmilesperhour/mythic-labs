@@ -30,23 +30,26 @@ export default async function ReposPage() {
 
   return (
     <div>
-      <div className="mono-label mb-6">01 · Repos</div>
-      <h1 className="serif-display text-5xl mb-4 leading-tight">
+      <div className="hairline-accent mb-10">
+        <span className="mono-label">01 · Repos</span>
+      </div>
+
+      <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
         Consuming repos
       </h1>
-      <p className="text-fg-dim text-base max-w-2xl mb-10 leading-relaxed">
+      <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">
         Each card is one repo. Click a plugin chip to toggle it. Hit{" "}
         <span className="text-fg">Apply</span> to commit the configuration to
         GitHub. Use the filters to focus on the repos you actually develop in.
       </p>
 
       {initialError ? (
-        <div className="border border-line bg-bg-warm p-6 mb-8">
+        <div className="border border-line bg-bg-warm/80 p-6 mb-8 glow-anchor">
           <div className="mono-label mb-2">Not configured</div>
           <p className="text-fg-dim text-sm leading-relaxed">{initialError}</p>
           <p className="text-fg-ghost text-xs mt-3 font-mono">
-            Set env vars in Vercel: GITHUB_TOKEN,
-            NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+            Set env vars in Vercel: GITHUB_TOKEN, NEXT_PUBLIC_SUPABASE_URL,
+            SUPABASE_SERVICE_ROLE_KEY.
           </p>
         </div>
       ) : null}

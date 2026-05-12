@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Repo } from "@/lib/db";
 import type { Marketplace } from "@/lib/brain";
+import {
+  GlyphApplied,
+  GlyphArrow,
+  GlyphClose,
+  GlyphFork,
+  GlyphPending,
+  GlyphPlus,
+} from "@/components/Glyphs";
 
 type Filter = "all" | "owned" | "forked" | "applied" | "pending";
 
@@ -27,8 +35,7 @@ export default function ReposClient({
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
 
-  // Lazy backfill: if any repo has is_fork === null, fire a one-shot
-  // server endpoint that hydrates GitHub metadata, then refresh.
+  // Lazy backfill if any repo is missing is_fork.
   useEffect(() => {
     const stale = repos.some((r) => r.is_fork === null);
     if (!stale) return;
@@ -40,7 +47,7 @@ export default function ReposClient({
         const r2 = await fetch("/api/repos").then((r) => r.json());
         if (!cancelled && r2.repos) setRepos(r2.repos);
       } catch {
-        // Silent — backfill is best-effort.
+        /* best effort */
       }
     })();
     return () => {
@@ -64,7 +71,13 @@ export default function ReposClient({
     const owned = repos.filter((r) => r.is_fork !== true).length;
     const forked = repos.filter((r) => r.is_fork === true).length;
     const applied = repos.filter((r) => r.last_applied_at).length;
-    return { all: repos.length, owned, forked, applied, pending: repos.length - applied };
+    return {
+      all: repos.length,
+      owned,
+      forked,
+      applied,
+      pending: repos.length - applied,
+    };
   }, [repos]);
 
   const addRepos = () => {
@@ -116,7 +129,6 @@ export default function ReposClient({
         ...s,
         [repoId]: `applied · ${json.commit_sha.slice(0, 7)}`,
       }));
-      // Reflect last_applied locally so the badge updates without refetch.
       setRepos((rs) =>
         rs.map((r) =>
           r.id === repoId
@@ -170,7 +182,7 @@ export default function ReposClient({
   return (
     <div>
       {/* Filter + search bar */}
-      <div className="flex items-center gap-px bg-line border border-line mb-6">
+      <div className="flex items-stretch gap-px bg-line border border-line mb-6">
         <FilterChip
           label="All"
           count={counts.all}
@@ -201,32 +213,37 @@ export default function ReposClient({
           active={filter === "pending"}
           onClick={() => setFilter("pending")}
         />
-        <div className="flex-1 bg-bg flex items-center px-4">
+        <div className="flex-1 bg-bg/70 flex items-center px-4">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="search…"
+            placeholder="search by name…"
             className="w-full bg-transparent border-0 outline-none font-mono text-xs text-fg placeholder:text-fg-ghost py-3"
           />
         </div>
         <button
           onClick={() => setShowAdd((v) => !v)}
-          className="font-mono text-[0.65rem] tracking-[0.25em] uppercase px-6 py-3 bg-fg text-bg hover:bg-accent transition"
+          className="lift-on-hover flex items-center gap-2 font-mono text-[0.65rem] tracking-[0.25em] uppercase px-5 py-3 bg-fg text-bg"
         >
-          {showAdd ? "Close" : "+ Add"}
+          {showAdd ? "Close" : (
+            <>
+              <GlyphPlus size={12} /> Add
+            </>
+          )}
         </button>
       </div>
 
-      {/* Collapsible add panel */}
+      {/* Add panel */}
       {showAdd ? (
-        <div className="border border-line bg-bg-warm p-6 mb-6">
-          <div className="mono-label mb-3">Paste repos</div>
+        <div className="border border-line bg-bg-warm/80 p-6 mb-6">
+          <div className="mono-label mb-4">Paste repos</div>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             rows={4}
             placeholder={"owner/repo\nhttps://github.com/owner/another-repo\n…"}
-            className="w-full bg-bg border border-line p-3 font-mono text-sm leading-relaxed text-fg placeholder:text-fg-ghost focus:outline-none focus:border-accent transition"
+            className="w-full bg-bg/70 border border-line p-3 font-mono text-sm leading-relaxed text-fg placeholder:text-fg-ghost focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] transition"
+            style={{ transition: "border-color var(--motion-base) var(--ease-mythic), box-shadow var(--motion-base) var(--ease-mythic)" }}
           />
           <div className="flex items-center justify-between mt-3">
             <div className="font-mono text-xs text-fg-ghost">
@@ -236,7 +253,7 @@ export default function ReposClient({
             <button
               onClick={addRepos}
               disabled={busy || !input.trim()}
-              className="font-mono text-[0.65rem] tracking-[0.25em] uppercase px-6 py-2 bg-accent text-bg hover:bg-fg transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="lift-on-hover font-mono text-[0.65rem] tracking-[0.25em] uppercase px-6 py-2.5 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
             >
               {busy ? "Adding…" : "Add"}
             </button>
@@ -249,13 +266,15 @@ export default function ReposClient({
 
       {/* Repo grid */}
       {repos.length === 0 ? (
-        <div className="text-fg-ghost text-sm font-mono py-16 text-center border border-dashed border-line">
-          no repos yet · click + Add to paste some in
-        </div>
+        <EmptyState
+          title="No repos enrolled yet"
+          body="Click + Add to paste a list of owner/repo lines. The dashboard will detect each repo's fork status and default branch automatically."
+        />
       ) : filtered.length === 0 ? (
-        <div className="text-fg-ghost text-sm font-mono py-16 text-center border border-dashed border-line">
-          no repos match this filter
-        </div>
+        <EmptyState
+          title="Nothing matches this filter"
+          body="Try a different chip or clear the search to widen the view."
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((r) => (
@@ -292,22 +311,46 @@ function FilterChip({
     <button
       onClick={onClick}
       className={`
-        px-4 py-3 font-mono text-[0.65rem] tracking-[0.2em] uppercase transition
-        flex items-baseline gap-2
+        relative px-4 py-3 font-mono text-[0.65rem] tracking-[0.25em] uppercase
+        flex items-baseline gap-2 ease-mythic
         ${
           active
             ? "bg-[rgba(139,115,85,0.08)] text-accent"
-            : "bg-bg text-fg-dim hover:text-fg"
+            : "bg-bg/70 text-fg-dim hover:text-fg"
         }
       `}
+      style={{
+        transition:
+          "color var(--motion-base) var(--ease-mythic), background-color var(--motion-base) var(--ease-mythic)",
+      }}
     >
-      <span>{label}</span>
+      {active ? (
+        <span
+          className="absolute left-3 top-1/2 -translate-y-1/2 h-1 w-1 rounded-full bg-accent"
+          aria-hidden="true"
+        />
+      ) : null}
+      <span className={active ? "pl-3" : ""}>{label}</span>
       <span
-        className={`text-[0.6rem] ${active ? "text-accent" : "text-fg-ghost"}`}
+        className={`tnum text-[0.6rem] ${active ? "text-accent" : "text-fg-ghost"}`}
       >
         {count}
       </span>
     </button>
+  );
+}
+
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="border border-dashed border-line bg-bg-warm/40 py-16 px-8 text-center">
+      <div className="hairline-accent-sm justify-center mb-4 inline-flex">
+        <span className="mono-label">Threshold</span>
+      </div>
+      <div className="serif-display text-2xl text-fg mb-3">{title}</div>
+      <p className="text-fg-dim text-sm max-w-md mx-auto leading-relaxed">
+        {body}
+      </p>
+    </div>
   );
 }
 
@@ -333,41 +376,61 @@ function RepoCard({
   const anyEnabled = Object.values(pluginState).some(Boolean);
   const enabledCount = Object.values(pluginState).filter(Boolean).length;
   const totalPlugins = marketplace?.plugins.length ?? 0;
+  const isApplied = !!repo.last_applied_at;
   const hasError = applyState?.startsWith("error:");
 
   return (
-    <div className="border border-line bg-bg p-4 flex flex-col gap-3 h-full">
+    <div
+      className="accent-sweep border border-line bg-bg/80 p-4 flex flex-col gap-3 h-full ease-mythic"
+      style={{
+        transition: "background-color var(--motion-base) var(--ease-mythic)",
+      }}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="font-mono text-xs text-fg truncate" title={`${repo.owner}/${repo.repo}`}>
+          <div
+            className="font-mono text-xs text-fg truncate"
+            title={`${repo.owner}/${repo.repo}`}
+          >
             <span className="text-fg-ghost">{repo.owner}/</span>
             {repo.repo}
           </div>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-2">
             {repo.is_fork === true ? (
-              <span className="font-mono text-[0.55rem] tracking-[0.15em] uppercase text-fg-ghost border border-line px-1.5 py-0.5">
-                fork
+              <span className="font-mono text-[0.55rem] tracking-[0.2em] uppercase text-fg-ghost border border-line px-1.5 py-0.5 flex items-center gap-1">
+                <GlyphFork size={10} /> fork
               </span>
             ) : null}
-            <span className="font-mono text-[0.6rem] text-fg-ghost">
+            <span className="font-mono text-[0.6rem] text-fg-ghost tracking-[0.1em]">
               {repo.default_branch}
             </span>
             <span
-              className={`font-mono text-[0.6rem] ${
-                repo.last_applied_at ? "text-accent" : "text-fg-ghost"
+              className={`flex items-center gap-1 font-mono text-[0.6rem] tracking-[0.1em] ${
+                isApplied ? "text-accent" : "text-fg-ghost"
               }`}
+              title={
+                isApplied
+                  ? `last applied ${new Date(repo.last_applied_at!).toLocaleString()}`
+                  : "no settings.json committed yet"
+              }
             >
-              {repo.last_applied_at ? "● applied" : "○ pending"}
+              {isApplied ? (
+                <GlyphApplied size={12} className="pulse-dot" />
+              ) : (
+                <GlyphPending size={12} />
+              )}
+              {isApplied ? "applied" : "pending"}
             </span>
           </div>
         </div>
         <button
           onClick={onRemove}
-          className="font-mono text-[0.55rem] tracking-[0.15em] uppercase text-fg-ghost hover:text-fg transition shrink-0"
+          className="text-fg-ghost hover:text-fg ease-mythic shrink-0 p-1"
           title="Remove from dashboard"
+          style={{ transition: "color var(--motion-base) var(--ease-mythic)" }}
         >
-          ✕
+          <GlyphClose size={11} />
         </button>
       </div>
 
@@ -381,14 +444,25 @@ function RepoCard({
               onClick={() => onToggle(p.name, !on)}
               title={`${p.name} · ${p.description || ""}`}
               className={`
-                font-mono text-[0.6rem] tracking-[0.1em] px-2 py-1 border transition
+                relative font-mono text-[0.62rem] tracking-[0.12em] px-2.5 py-1
+                border ease-mythic
                 ${
                   on
-                    ? "border-accent bg-[rgba(139,115,85,0.08)] text-fg"
-                    : "border-line bg-bg text-fg-ghost hover:text-fg-dim hover:border-fg-ghost"
+                    ? "border-accent text-fg bg-[rgba(139,115,85,0.1)]"
+                    : "border-line text-fg-ghost hover:text-fg-dim hover:border-fg-ghost bg-bg/70"
                 }
               `}
+              style={{
+                transition:
+                  "color var(--motion-base) var(--ease-mythic), border-color var(--motion-base) var(--ease-mythic), background-color var(--motion-base) var(--ease-mythic)",
+              }}
             >
+              {on ? (
+                <span
+                  className="absolute -left-[3px] top-1/2 -translate-y-1/2 h-2 w-[2px] bg-accent"
+                  aria-hidden="true"
+                />
+              ) : null}
               {shortenPluginName(p.name)}
             </button>
           );
@@ -396,14 +470,19 @@ function RepoCard({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between mt-auto pt-3 border-t border-line-soft gap-2">
+      <div className="flex items-center justify-between mt-auto pt-3 border-t border-line gap-2">
         <div
-          className={`font-mono text-[0.6rem] truncate flex-1 min-w-0 ${
+          className={`font-mono text-[0.6rem] truncate flex-1 min-w-0 tracking-[0.1em] ${
             hasError ? "text-accent" : "text-fg-ghost"
           }`}
           title={applyState}
         >
-          {applyState || `${enabledCount}/${totalPlugins} enabled`}
+          {applyState || (
+            <>
+              <span className="text-fg-dim tnum">{enabledCount}</span>
+              <span className="text-fg-ghost"> / {totalPlugins} enabled</span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
@@ -414,15 +493,19 @@ function RepoCard({
                 ? "Disable everything and write the cleared config"
                 : "Nothing to disable"
             }
-            className="font-mono text-[0.6rem] tracking-[0.15em] uppercase px-2 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim transition disabled:opacity-30 disabled:cursor-not-allowed"
+            className="font-mono text-[0.6rem] tracking-[0.2em] uppercase px-2.5 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim ease-mythic disabled:opacity-30 disabled:cursor-not-allowed"
+            style={{
+              transition:
+                "color var(--motion-base) var(--ease-mythic), border-color var(--motion-base) var(--ease-mythic)",
+            }}
           >
             Clear
           </button>
           <button
             onClick={onApply}
-            className="font-mono text-[0.6rem] tracking-[0.15em] uppercase px-3 py-1.5 bg-fg text-bg hover:bg-accent transition"
+            className="lift-on-hover flex items-center gap-1.5 font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-1.5 bg-fg text-bg"
           >
-            Apply
+            Apply <GlyphArrow size={10} />
           </button>
         </div>
       </div>
@@ -430,10 +513,6 @@ function RepoCard({
   );
 }
 
-/**
- * Plugin names can be long; in the compact chip we drop redundant words.
- * brand-systems → brand · dev-workflows → dev · content-ops → content · etc.
- */
 function shortenPluginName(name: string): string {
   return name
     .replace(/^brand-systems$/, "brand")
