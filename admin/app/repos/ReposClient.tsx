@@ -75,6 +75,37 @@ export default function ReposClient({
     }
   };
 
+  const disableAllRepo = async (repoId: string) => {
+    if (
+      !confirm(
+        "Disable all plugins for this repo and write the cleared settings.json to GitHub?"
+      )
+    )
+      return;
+    setApplyState((s) => ({ ...s, [repoId]: "disabling all…" }));
+    const res = await fetch(`/api/repos/${repoId}/disable-all`, {
+      method: "POST",
+    });
+    const json = await res.json();
+    if (json.error) {
+      setApplyState((s) => ({ ...s, [repoId]: `error: ${json.error}` }));
+      return;
+    }
+    // Reflect new "all off" state in the UI immediately.
+    setPluginState((s) => {
+      const next = { ...(s[repoId] || {}) };
+      for (const slug of Object.keys(next)) next[slug] = false;
+      (marketplace?.plugins || []).forEach((p) => {
+        next[p.name] = false;
+      });
+      return { ...s, [repoId]: next };
+    });
+    setApplyState((s) => ({
+      ...s,
+      [repoId]: `disabled all · ${json.commit_sha.slice(0, 7)}`,
+    }));
+  };
+
   const removeRepo = async (repoId: string) => {
     if (!confirm("Remove this repo from the dashboard? (does not touch GitHub)"))
       return;
@@ -127,6 +158,7 @@ export default function ReposClient({
               applyState={applyState[r.id]}
               onToggle={(slug, enabled) => togglePlugin(r.id, slug, enabled)}
               onApply={() => applyRepo(r.id)}
+              onDisableAll={() => disableAllRepo(r.id)}
               onRemove={() => removeRepo(r.id)}
             />
           ))}
@@ -143,6 +175,7 @@ function RepoCard({
   applyState,
   onToggle,
   onApply,
+  onDisableAll,
   onRemove,
 }: {
   repo: Repo;
@@ -151,8 +184,10 @@ function RepoCard({
   applyState: string | undefined;
   onToggle: (slug: string, enabled: boolean) => void;
   onApply: () => void;
+  onDisableAll: () => void;
   onRemove: () => void;
 }) {
+  const anyEnabled = Object.values(pluginState).some(Boolean);
   return (
     <div className="border border-line bg-bg p-6">
       <div className="flex items-start justify-between mb-6">
@@ -223,8 +258,8 @@ function RepoCard({
         })}
       </div>
 
-      <div className="flex items-center justify-between border-t border-line pt-4">
-        <div className="font-mono text-[0.65rem] text-fg-ghost">
+      <div className="flex items-center justify-between border-t border-line pt-4 gap-4">
+        <div className="font-mono text-[0.65rem] text-fg-ghost flex-1 min-w-0 truncate">
           {applyState || (
             <>
               Click apply to write{" "}
@@ -232,12 +267,26 @@ function RepoCard({
             </>
           )}
         </div>
-        <button
-          onClick={onApply}
-          className="font-mono text-[0.65rem] tracking-[0.25em] uppercase px-6 py-2 bg-fg text-bg hover:bg-accent transition"
-        >
-          Apply →
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onDisableAll}
+            disabled={!anyEnabled}
+            title={
+              anyEnabled
+                ? "Turn off every plugin and write the cleared settings.json"
+                : "Nothing enabled to disable"
+            }
+            className="font-mono text-[0.65rem] tracking-[0.25em] uppercase px-4 py-2 border border-line text-fg-dim hover:text-fg hover:border-fg-dim transition disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-line disabled:hover:text-fg-dim"
+          >
+            Disable all
+          </button>
+          <button
+            onClick={onApply}
+            className="font-mono text-[0.65rem] tracking-[0.25em] uppercase px-6 py-2 bg-fg text-bg hover:bg-accent transition"
+          >
+            Apply →
+          </button>
+        </div>
       </div>
     </div>
   );
