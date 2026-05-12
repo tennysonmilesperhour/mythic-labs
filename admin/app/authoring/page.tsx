@@ -1,5 +1,6 @@
 import { fetchMarketplace } from "@/lib/brain";
 import AuthoringClient from "./AuthoringClient";
+import { GlyphCommand, GlyphMcp, GlyphApplied } from "@/components/Glyphs";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +15,14 @@ export default async function AuthoringPage() {
 
   return (
     <div>
-      <div className="mono-label mb-6">03 · Authoring</div>
-      <h1 className="serif-display text-5xl mb-4 leading-tight">
+      <div className="hairline-accent mb-10">
+        <span className="mono-label">03 · Authoring</span>
+      </div>
+
+      <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
         Extend the brain
       </h1>
-      <p className="text-fg-dim text-base max-w-2xl mb-10 leading-relaxed">
+      <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">
         The <span className="text-fg">Brain</span> page shows what already
         exists. This page is where you add to it — without opening an editor,
         cloning the repo, or remembering frontmatter conventions. Every action
@@ -26,22 +30,21 @@ export default async function AuthoringPage() {
         repo on the next session.
       </p>
 
-      {/* What each tool does */}
-      <div className="grid grid-cols-3 gap-px bg-line border border-line mb-10">
+      <div className="grid grid-cols-3 gap-px bg-line border border-line mb-12">
         <Explainer
-          symbol="◈"
+          glyph={<GlyphMcp size={20} className="text-accent" />}
           title="Add MCP server"
           subtitle="Register an integration"
           body="MCP servers are tools Claude can call — GitHub, Supabase, Vercel, Gmail, etc. Register one here and every repo with that plugin enabled gets the tool. The token list stays out of context until needed."
         />
         <Explainer
-          symbol="/"
+          glyph={<GlyphCommand size={20} className="text-accent" />}
           title="Create command"
           subtitle="Make a new slash command"
           body="Slash commands are pre-built workflows you can invoke in any consuming session. /brand-systems:diagnose is one. Author another here — it's available as /<plugin>:<name> the next time you type /."
         />
         <Explainer
-          symbol="✓"
+          glyph={<GlyphApplied size={20} className="text-accent" />}
           title="Verify wiring"
           subtitle="Audit a consuming repo"
           body="Check if a repo's .claude/settings.json correctly references the brain and which plugins it has enabled. Catches drift between what the dashboard shows and what's actually on GitHub."
@@ -49,7 +52,7 @@ export default async function AuthoringPage() {
       </div>
 
       {error ? (
-        <div className="border border-line bg-bg-warm p-6 mb-8">
+        <div className="border border-line bg-bg-warm/80 p-6 mb-8">
           <div className="mono-label mb-2">Marketplace unavailable</div>
           <p className="text-fg-dim text-sm">{error}</p>
         </div>
@@ -61,24 +64,24 @@ export default async function AuthoringPage() {
 }
 
 function Explainer({
-  symbol,
+  glyph,
   title,
   subtitle,
   body,
 }: {
-  symbol: string;
+  glyph: React.ReactNode;
   title: string;
   subtitle: string;
   body: string;
 }) {
   return (
-    <div className="bg-bg p-5">
-      <div className="flex items-baseline gap-3 mb-1">
-        <span className="font-mono text-base text-accent">{symbol}</span>
-        <span className="serif-display text-lg">{title}</span>
+    <div className="bg-bg/80 p-6 accent-sweep">
+      <div className="mb-4">{glyph}</div>
+      <div className="serif-display text-[1.4rem] leading-tight mb-1">
+        {title}
       </div>
-      <div className="mono-label mb-3 opacity-70">{subtitle}</div>
-      <p className="text-fg-dim text-[0.8rem] leading-relaxed">{body}</p>
+      <div className="mono-label-dim mb-4">{subtitle}</div>
+      <p className="text-fg-dim text-[0.85rem] leading-[1.7]">{body}</p>
     </div>
   );
 }

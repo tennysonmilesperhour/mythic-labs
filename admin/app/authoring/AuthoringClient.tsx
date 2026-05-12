@@ -14,7 +14,7 @@ export default function AuthoringClient({
 
   return (
     <div>
-      <div className="flex border border-line">
+      <div className="flex border border-line bg-line gap-px">
         {(
           [
             ["mcp", "Add MCP server"],
@@ -25,18 +25,23 @@ export default function AuthoringClient({
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 py-4 px-6 font-mono text-[0.7rem] tracking-[0.2em] uppercase transition border-r border-line last:border-r-0 ${
+            data-active={tab === key}
+            className={`accent-sweep relative flex-1 py-4 px-6 font-mono text-[0.7rem] tracking-[0.25em] uppercase ease-mythic ${
               tab === key
-                ? "bg-[rgba(139,115,85,0.06)] text-accent"
-                : "bg-bg text-fg-ghost hover:text-fg"
+                ? "bg-[rgba(139,115,85,0.08)] text-accent"
+                : "bg-bg/70 text-fg-ghost hover:text-fg"
             }`}
+            style={{
+              transition:
+                "color var(--motion-base) var(--ease-mythic), background-color var(--motion-base) var(--ease-mythic)",
+            }}
           >
             {label}
           </button>
         ))}
       </div>
 
-      <div className="border border-t-0 border-line bg-bg-warm p-8">
+      <div className="border border-t-0 border-line bg-bg-warm/80 p-9">
         {tab === "mcp" ? <McpForm marketplace={marketplace} /> : null}
         {tab === "command" ? <CommandForm marketplace={marketplace} /> : null}
         {tab === "verify" ? <VerifyForm /> : null}
@@ -93,7 +98,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
 
   return (
     <div>
-      <div className="bg-bg border border-line p-4 mb-8 max-w-3xl">
+      <div className="bg-bg/70 border border-line p-5 mb-8 max-w-3xl">
         <div className="mono-label mb-2">What this does</div>
         <p className="text-fg-dim text-sm leading-relaxed">
           Picks a plugin in the brain repo, opens its{" "}
@@ -113,7 +118,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
           <select
             value={plugin}
             onChange={(e) => setPlugin(e.target.value)}
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg"
           >
             {marketplace.plugins.map((p) => (
               <option key={p.name} value={p.name}>
@@ -127,7 +132,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
             value={serverName}
             onChange={(e) => setServerName(e.target.value)}
             placeholder="e.g. github"
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -136,7 +141,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
         <input
           value={command}
           onChange={(e) => setCommand(e.target.value)}
-          className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg"
+          className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg"
         />
       </Field>
 
@@ -147,7 +152,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
             onChange={(e) => setArgsText(e.target.value)}
             rows={3}
             placeholder={"@anthropic-ai/github-mcp-server"}
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -159,7 +164,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
             onChange={(e) => setEnvText(e.target.value)}
             rows={3}
             placeholder={"GITHUB_TOKEN=${env:GITHUB_TOKEN}"}
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -169,7 +174,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
         <button
           onClick={submit}
           disabled={busy || !plugin || !serverName || !command}
-          className="font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 py-3 bg-accent text-bg hover:bg-fg transition disabled:opacity-40"
+          className="lift-on-hover font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 py-3 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? "Committing…" : "Commit to brain"}
         </button>
@@ -217,7 +222,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
 
   return (
     <div>
-      <div className="bg-bg border border-line p-4 mb-8 max-w-3xl">
+      <div className="bg-bg/70 border border-line p-5 mb-8 max-w-3xl">
         <div className="mono-label mb-2">What this does</div>
         <p className="text-fg-dim text-sm leading-relaxed">
           Writes a new <code className="font-mono text-fg text-sm">.md</code>{" "}
@@ -243,7 +248,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
           <select
             value={plugin}
             onChange={(e) => setPlugin(e.target.value)}
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg"
           >
             {marketplace.plugins.map((p) => (
               <option key={p.name} value={p.name}>
@@ -257,7 +262,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. diagnose"
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -267,7 +272,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Run an archetypal diagnosis on the provided artifact."
-          className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+          className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
         />
       </Field>
 
@@ -277,7 +282,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
             value={argHint}
             onChange={(e) => setArgHint(e.target.value)}
             placeholder="<brand-name | URL | paste artifact>"
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -291,7 +296,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
             placeholder={
               "Steps:\n\n1. Do X with $ARGUMENTS\n2. Then Y\n3. Report in the format …"
             }
-            className="w-full bg-bg border border-line px-4 py-3 font-mono text-sm text-fg leading-relaxed placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg leading-relaxed placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -301,7 +306,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
         <button
           onClick={submit}
           disabled={busy || !plugin || !name || !description || !body}
-          className="font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 py-3 bg-accent text-bg hover:bg-fg transition disabled:opacity-40"
+          className="lift-on-hover font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 py-3 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? "Committing…" : "Create command"}
         </button>
@@ -353,7 +358,7 @@ function VerifyForm() {
 
   return (
     <div>
-      <div className="bg-bg border border-line p-4 mb-8 max-w-3xl">
+      <div className="bg-bg/70 border border-line p-5 mb-8 max-w-3xl">
         <div className="mono-label mb-2">What this does</div>
         <p className="text-fg-dim text-sm leading-relaxed">
           Fetches a repo's{" "}
@@ -378,7 +383,7 @@ function VerifyForm() {
         <button
           onClick={submit}
           disabled={busy || !target.trim()}
-          className="font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 bg-accent text-bg hover:bg-fg transition disabled:opacity-40"
+          className="lift-on-hover font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? "Checking…" : "Verify"}
         </button>
