@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "dev-workflows",
+  "version": "0.1.0",
+  "description": "Engineering workflows — PR triage, deploy helpers, branch hygiene, and autofix loops. Light-touch hooks that run only when relevant.",
+  "author": {
+    "name": "Mythic Labs"
+  },
+  "keywords": ["github", "ci", "deploy", "pr-review", "hooks"]
+}

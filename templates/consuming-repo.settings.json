@@ -1,0 +1,20 @@
+{
+  "_comment": "Drop this at .claude/settings.json in any repo to wire it up to the Mythic Labs central brain. Flip enabledPlugins values to true/false to control what loads in that repo. Disabled plugins cost zero context tokens.",
+
+  "extraKnownMarketplaces": {
+    "mythic-brain": {
+      "source": {
+        "source": "github",
+        "repo": "tennysonmilesperhour/mythic-labs"
+      }
+    }
+  },
+
+  "enabledPlugins": {
+    "brand-systems@mythic-brain": false,
+    "dev-workflows@mythic-brain": true,
+    "content-ops@mythic-brain": false,
+    "comms@mythic-brain": false,
+    "research@mythic-brain": false
+  }
+}

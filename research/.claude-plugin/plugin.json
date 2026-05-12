@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "research",
+  "version": "0.1.0",
+  "description": "Scholarly literature search, citation lookup, and persistent thought capture. A second-brain layer that survives the end of any individual session.",
+  "author": {
+    "name": "Mythic Labs"
+  },
+  "keywords": ["research", "citations", "thoughts", "memory", "literature"]
+}

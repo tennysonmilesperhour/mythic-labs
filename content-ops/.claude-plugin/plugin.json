@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "content-ops",
+  "version": "0.1.0",
+  "description": "Content production workflows — design generation, site building, and asset pipelines. Coordinates Canva, Wix, and Google Drive operations against a brand's archetypal foundation.",
+  "author": {
+    "name": "Mythic Labs"
+  },
+  "keywords": ["canva", "wix", "design", "assets", "content"]
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "mythic-brain",
+  "displayName": "Mythic Labs · Central Brain",
+  "description": "Tennyson's centralized skills, agents, hooks, and MCP configurations. Other repos consume specific plugins on demand via .claude/settings.json.",
+  "version": "0.1.0",
+  "owner": {
+    "name": "Tennyson",
+    "url": "https://github.com/tennysonmilesperhour/mythic-labs"
+  },
+  "plugins": [
+    {
+      "name": "brand-systems",
+      "source": "./brand-systems",
+      "description": "Archetypal brand diagnosis, voice/tone analysis, and Mythic Labs methodology. Jungian structural identity work for products, brands, and audiences."
+    },
+    {
+      "name": "dev-workflows",
+      "source": "./dev-workflows",
+      "description": "PR review, security audit, deploy helpers, and CI autofix patterns. Bundles MCP access to GitHub, Supabase, and Vercel where applicable."
+    },
+    {
+      "name": "content-ops",
+      "source": "./content-ops",
+      "description": "Design generation, site building, asset pipelines. MCP access to Canva, Wix, and Google Drive."
+    },
+    {
+      "name": "comms",
+      "source": "./comms",
+      "description": "Inbox triage, calendar scheduling, meeting prep. MCP access to Gmail and Google Calendar."
+    },
+    {
+      "name": "research",
+      "source": "./research",
+      "description": "Scholarly literature search, citation lookup, and persistent thought capture. MCP access to article databases and the thought store."
+    }
+  ]
+}
