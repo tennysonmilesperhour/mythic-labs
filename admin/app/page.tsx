@@ -12,7 +12,6 @@ export default async function Overview() {
   ]);
 
   const pluginCount = marketplace?.plugins.length ?? 0;
-  const appliedCount = repos.filter((r) => r.last_applied_at).length;
 
   return (
     <div>
@@ -28,16 +27,17 @@ export default async function Overview() {
       </h1>
 
       <p className="text-fg-dim text-[1.05rem] leading-[1.85] max-w-2xl mb-16 font-light dropcap">
-        This dashboard is the control room for your Claude Code skills, agents,
-        commands, hooks, and MCP servers. It keeps every repo in sync with one
-        source of truth so you stop copy-pasting configs and start shipping.
+        This dashboard is the catalogue for your Claude Code skills, agents,
+        commands, hooks, and MCP servers. The method lives once in mythic-labs,
+        and every repo inherits it from your machine or your organization — so
+        you stop copy-pasting configs and start shipping.
       </p>
 
       {/* Stats — tabular numerals, generous gap */}
       <div className="grid grid-cols-4 gap-px bg-line border border-line mb-24">
-        <Stat label="Repos enrolled" value={repos.length} />
-        <Stat label="Applied" value={appliedCount} />
         <Stat label="Plugins available" value={pluginCount} />
+        <Stat label="Brain version" value={marketplace?.version ?? "—"} mono />
+        <Stat label="Tracked exceptions" value={repos.length} />
         <Stat label="Source" value="mythic-labs" mono />
       </div>
 
@@ -68,10 +68,10 @@ export default async function Overview() {
             color="accent"
             rows={[
               "Skills, agents, commands live once in mythic-labs",
-              "Toggle plugins per repo here — one click writes settings.json",
-              "MCP changes propagate to every consuming repo automatically",
-              "See every repo's wiring in one grid, color-coded",
-              "Disable all in one click. Re-enable with one click.",
+              "Enable once per machine or organization — every repo inherits it",
+              "Update a skill once → every session picks it up on its next refresh",
+              "Skills follow the open SKILL.md standard, so they work beyond Claude",
+              "Repos that need something different get a config you copy, checked against GitHub",
             ]}
           />
         </div>
@@ -85,13 +85,13 @@ export default async function Overview() {
         <div className="grid grid-cols-3 gap-px bg-line border border-line">
           <Step
             num="01"
-            title="You toggle"
-            body="Pick which plugins each repo loads — brand-systems, dev-workflows, content-ops, research, comms."
+            title="Enable once"
+            body="Install the brain at user scope on your machine, or sync it for your whole organization from claude.ai."
           />
           <Step
             num="02"
-            title="We commit"
-            body="One click writes a .claude/settings.json into the repo, pointing at mythic-labs as the brain."
+            title="Improve centrally"
+            body="Edit a skill in mythic-labs, run its evals, push. Sessions pick up the new version when the marketplace refreshes."
           />
           <Step
             num="03"
@@ -110,7 +110,7 @@ export default async function Overview() {
           <Card
             num="01"
             title="Repos"
-            desc="Pick which plugins each repo loads, then one-click Apply to commit the config."
+            desc="Enable the brain for your machine or organization, and track the few repos that need different plugins."
             href="/repos"
           />
           <Card

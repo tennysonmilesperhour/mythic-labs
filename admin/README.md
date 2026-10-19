@@ -1,6 +1,6 @@
 # Mythic Labs · Brain Admin
 
-A small Next.js app that manages which of your other repos consume the Mythic Labs central brain (this repo's plugin marketplace).
+A small Next.js app for the Mythic Labs central brain (this repo's plugin marketplace): browse the catalogue, get the install commands, and check the few repos that override your default. It never writes to consuming repos.
 
 **Single-admin, no-login by design.** Multi-user is a future add (Supabase auth).
 
@@ -10,7 +10,7 @@ A small Next.js app that manages which of your other repos consume the Mythic La
 
 | Section | What it lets you do |
 |---|---|
-| **Repos** | Paste a list of `owner/repo` URLs. Toggle which plugins each repo should load. Click **Apply** and the dashboard writes `.claude/settings.json` directly to that repo via GitHub. |
+| **Repos** | Install paths for your machine (user scope) and your organization (claude.ai sync). Below them, track repos that need a different plugin set: toggle chips, **Copy JSON** to commit yourself, and **Check** to compare against what's on GitHub (read-only). |
 | **Brain** | Reads `.claude-plugin/marketplace.json` and every plugin manifest in this repo. Browse every skill, agent, command, hook the brain ships. |
 | **Authoring** | Three forms: register an MCP server in a plugin, draft a new slash command, or verify a consuming repo's wiring. All commits go straight to the brain repo. |
 
@@ -26,7 +26,7 @@ In your Supabase project SQL editor, run:
 admin/supabase/migrations/0001_initial_schema.sql
 ```
 
-That creates `users`, `repos`, `repo_plugins` and seeds a hardcoded admin user.
+That creates `mythic_users`, `mythic_repos`, `mythic_repo_plugins` and seeds a hardcoded admin user.
 
 Note the project URL and these two keys:
 - **Publishable key** (anon, safe to expose) → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
@@ -35,8 +35,8 @@ Note the project URL and these two keys:
 ### 2 · GitHub PAT
 
 Create a fine-grained Personal Access Token with:
-- **Repository access**: every repo you want to manage from the dashboard
-- **Permissions**: `Contents: read & write`
+- **Repository access**: `mythic-labs`, plus any repo you want **Check** to read
+- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring commits there); `Contents: read` is enough everywhere else
 
 Save the token; it goes into Vercel env as `GITHUB_TOKEN`.
 
@@ -90,19 +90,20 @@ admin/
 │   ├── brain/                    ← / brain
 │   ├── authoring/                ← / authoring · AuthoringClient
 │   └── api/
-│       ├── repos/*               ← CRUD + apply settings.json
+│       ├── repos/*               ← tracked-exception CRUD (Supabase only)
 │       ├── marketplace/          ← reads brain marketplace.json
 │       ├── plugins/[slug]/       ← reads plugin manifest + skills/agents
 │       ├── verify/[owner]/[repo] ← inspects consuming repo wiring
 │       └── authoring/
 │           ├── mcp/              ← commits .mcp.json into a plugin
 │           └── command/          ← commits commands/<name>.md
-├── components/Sidebar.tsx
+├── components/                   ← Sidebar, LivingCanvas, Glyphs, CopyBlock
 ├── lib/
 │   ├── supabase.ts               ← service-role client factory
 │   ├── db.ts                     ← typed repo + plugin queries
-│   ├── github.ts                 ← Octokit reads/writes
-│   └── brain.ts                  ← marketplace + plugin inventory
+│   ├── github.ts                 ← Octokit reads; writes only to the brain repo
+│   ├── brain.ts                  ← marketplace + plugin inventory
+│   └── settings.ts               ← renders per-repo settings.json (client-safe)
 └── supabase/migrations/          ← SQL schema
 ```
 

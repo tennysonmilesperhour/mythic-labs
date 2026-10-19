@@ -3,26 +3,43 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Repo } from "@/lib/db";
 import type { Marketplace } from "@/lib/brain";
+import { renderSettingsJson } from "@/lib/settings";
 import {
   GlyphApplied,
-  GlyphArrow,
   GlyphClose,
   GlyphFork,
   GlyphPending,
   GlyphPlus,
 } from "@/components/Glyphs";
 
-type Filter = "all" | "owned" | "forked" | "applied" | "pending";
+type Filter = "all" | "owned" | "forked";
+
+type CheckState =
+  | { kind: "checking" }
+  | { kind: "matches"; text: string }
+  | { kind: "drift"; text: string }
+  | { kind: "default"; text: string }
+  | { kind: "error"; text: string }
+  | { kind: "copied"; text: string };
+
+type VerifyResponse = {
+  ok?: boolean;
+  reason?: string;
+  enabled?: string[];
+  error?: string;
+};
 
 type Props = {
   initialRepos: Repo[];
   marketplace: Marketplace | null;
+  brainRepo: string;
   initialPluginState: Record<string, Record<string, boolean>>;
 };
 
 export default function ReposClient({
   initialRepos,
   marketplace,
+  brainRepo,
   initialPluginState,
 }: Props) {
   const [repos, setRepos] = useState<Repo[]>(initialRepos);
@@ -30,12 +47,11 @@ export default function ReposClient({
   const [input, setInput] = useState("");
   const [busy, startTransition] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
-  const [applyState, setApplyState] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState<Record<string, CheckState>>({});
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
 
-  // Lazy backfill if any repo is missing is_fork.
   useEffect(() => {
     const stale = repos.some((r) => r.is_fork === null);
     if (!stale) return;
@@ -61,24 +77,18 @@ export default function ReposClient({
       if (q && !`${r.owner}/${r.repo}`.toLowerCase().includes(q)) return false;
       if (filter === "owned" && r.is_fork === true) return false;
       if (filter === "forked" && r.is_fork !== true) return false;
-      if (filter === "applied" && !r.last_applied_at) return false;
-      if (filter === "pending" && r.last_applied_at) return false;
       return true;
     });
   }, [repos, filter, search]);
 
-  const counts = useMemo(() => {
-    const owned = repos.filter((r) => r.is_fork !== true).length;
-    const forked = repos.filter((r) => r.is_fork === true).length;
-    const applied = repos.filter((r) => r.last_applied_at).length;
-    return {
+  const counts = useMemo(
+    () => ({
       all: repos.length,
-      owned,
-      forked,
-      applied,
-      pending: repos.length - applied,
-    };
-  }, [repos]);
+      owned: repos.filter((r) => r.is_fork !== true).length,
+      forked: repos.filter((r) => r.is_fork === true).length,
+    }),
+    [repos]
+  );
 
   const addRepos = () => {
     if (!input.trim()) return;
@@ -118,58 +128,45 @@ export default function ReposClient({
     });
   };
 
-  const applyRepo = async (repoId: string) => {
-    setApplyState((s) => ({ ...s, [repoId]: "applying…" }));
-    const res = await fetch(`/api/repos/${repoId}/apply`, { method: "POST" });
-    const json = await res.json();
-    if (json.error) {
-      setApplyState((s) => ({ ...s, [repoId]: `error: ${json.error}` }));
-    } else {
-      setApplyState((s) => ({
-        ...s,
-        [repoId]: `applied · ${json.commit_sha.slice(0, 7)}`,
-      }));
-      setRepos((rs) =>
-        rs.map((r) =>
-          r.id === repoId
-            ? {
-                ...r,
-                last_applied_at: new Date().toISOString(),
-                last_applied_sha: json.commit_sha,
-              }
-            : r
-        )
+  const wantedFor = (repoId: string) => {
+    const enabled: Record<string, boolean> = {};
+    for (const p of marketplace?.plugins || []) {
+      enabled[p.name] = pluginState[repoId]?.[p.name] ?? false;
+    }
+    return enabled;
+  };
+
+  const checkRepo = async (repo: Repo) => {
+    setStatus((s) => ({ ...s, [repo.id]: { kind: "checking" } }));
+    try {
+      const res = await fetch(
+        `/api/verify/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}`
       );
+      const json = (await res.json()) as VerifyResponse;
+      setStatus((s) => ({ ...s, [repo.id]: readVerify(json, wantedFor(repo.id)) }));
+    } catch (err: unknown) {
+      setStatus((s) => ({
+        ...s,
+        [repo.id]: { kind: "error", text: (err as Error).message },
+      }));
     }
   };
 
-  const disableAllRepo = async (repoId: string) => {
-    if (
-      !confirm(
-        "Disable all plugins for this repo and write the cleared settings.json to GitHub?"
-      )
-    )
-      return;
-    setApplyState((s) => ({ ...s, [repoId]: "disabling…" }));
-    const res = await fetch(`/api/repos/${repoId}/disable-all`, {
-      method: "POST",
-    });
-    const json = await res.json();
-    if (json.error) {
-      setApplyState((s) => ({ ...s, [repoId]: `error: ${json.error}` }));
-      return;
+  const copySnippet = async (repoId: string) => {
+    if (!marketplace) return;
+    const json = renderSettingsJson(brainRepo, marketplace.name, wantedFor(repoId));
+    try {
+      await navigator.clipboard.writeText(json);
+      setStatus((s) => ({
+        ...s,
+        [repoId]: { kind: "copied", text: "copied · paste into .claude/settings.json" },
+      }));
+    } catch {
+      setStatus((s) => ({
+        ...s,
+        [repoId]: { kind: "error", text: "clipboard blocked by the browser" },
+      }));
     }
-    setPluginState((s) => {
-      const next = { ...(s[repoId] || {}) };
-      (marketplace?.plugins || []).forEach((p) => {
-        next[p.name] = false;
-      });
-      return { ...s, [repoId]: next };
-    });
-    setApplyState((s) => ({
-      ...s,
-      [repoId]: `disabled · ${json.commit_sha.slice(0, 7)}`,
-    }));
   };
 
   const removeRepo = async (repoId: string) => {
@@ -181,38 +178,10 @@ export default function ReposClient({
 
   return (
     <div>
-      {/* Filter + search bar */}
       <div className="flex items-stretch gap-px bg-line border border-line mb-6">
-        <FilterChip
-          label="All"
-          count={counts.all}
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
-        />
-        <FilterChip
-          label="Owned"
-          count={counts.owned}
-          active={filter === "owned"}
-          onClick={() => setFilter("owned")}
-        />
-        <FilterChip
-          label="Forked"
-          count={counts.forked}
-          active={filter === "forked"}
-          onClick={() => setFilter("forked")}
-        />
-        <FilterChip
-          label="Applied"
-          count={counts.applied}
-          active={filter === "applied"}
-          onClick={() => setFilter("applied")}
-        />
-        <FilterChip
-          label="Pending"
-          count={counts.pending}
-          active={filter === "pending"}
-          onClick={() => setFilter("pending")}
-        />
+        <FilterChip label="All" count={counts.all} active={filter === "all"} onClick={() => setFilter("all")} />
+        <FilterChip label="Owned" count={counts.owned} active={filter === "owned"} onClick={() => setFilter("owned")} />
+        <FilterChip label="Forked" count={counts.forked} active={filter === "forked"} onClick={() => setFilter("forked")} />
         <div className="flex-1 bg-bg/70 flex items-center px-4">
           <input
             value={search}
@@ -233,7 +202,6 @@ export default function ReposClient({
         </button>
       </div>
 
-      {/* Add panel */}
       {showAdd ? (
         <div className="border border-line bg-bg-warm/80 p-6 mb-6">
           <div className="mono-label mb-4">Paste repos</div>
@@ -264,11 +232,10 @@ export default function ReposClient({
         </div>
       ) : null}
 
-      {/* Repo grid */}
       {repos.length === 0 ? (
         <EmptyState
-          title="No repos enrolled yet"
-          body="Click + Add to paste a list of owner/repo lines. The dashboard will detect each repo's fork status and default branch automatically."
+          title="No exceptions tracked yet"
+          body="Most repos need nothing here — they inherit your user or organization default. Add a repo only when it needs a different plugin set."
         />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -283,10 +250,10 @@ export default function ReposClient({
               repo={r}
               marketplace={marketplace}
               pluginState={pluginState[r.id] || {}}
-              applyState={applyState[r.id]}
+              status={status[r.id]}
               onToggle={(slug, enabled) => togglePlugin(r.id, slug, enabled)}
-              onApply={() => applyRepo(r.id)}
-              onDisableAll={() => disableAllRepo(r.id)}
+              onCheck={() => checkRepo(r)}
+              onCopy={() => copySnippet(r.id)}
               onRemove={() => removeRepo(r.id)}
             />
           ))}
@@ -294,6 +261,33 @@ export default function ReposClient({
       )}
     </div>
   );
+}
+
+function readVerify(
+  json: VerifyResponse,
+  wanted: Record<string, boolean>
+): CheckState {
+  if (json.error) return { kind: "error", text: json.error };
+  if (json.reason === "missing") {
+    return { kind: "default", text: "no repo file · uses your default" };
+  }
+  if (json.reason === "invalid_json") {
+    return { kind: "error", text: "repo settings.json is not valid JSON" };
+  }
+  if (!json.ok) {
+    return { kind: "drift", text: "repo file doesn't declare the brain" };
+  }
+  const actual = new Set(json.enabled || []);
+  const want = new Set(Object.keys(wanted).filter((k) => wanted[k]));
+  const extra = Array.from(actual).filter((p) => !want.has(p));
+  const missing = Array.from(want).filter((p) => !actual.has(p));
+  if (extra.length === 0 && missing.length === 0) {
+    return { kind: "matches", text: "repo file matches" };
+  }
+  const parts = [];
+  if (missing.length) parts.push(`missing ${missing.join(", ")}`);
+  if (extra.length) parts.push(`extra ${extra.join(", ")}`);
+  return { kind: "drift", text: `drift · ${parts.join(" · ")}` };
 }
 
 function FilterChip({
@@ -331,9 +325,7 @@ function FilterChip({
         />
       ) : null}
       <span className={active ? "pl-3" : ""}>{label}</span>
-      <span
-        className={`tnum text-[0.6rem] ${active ? "text-accent" : "text-fg-ghost"}`}
-      >
+      <span className={`tnum text-[0.6rem] ${active ? "text-accent" : "text-fg-ghost"}`}>
         {count}
       </span>
     </button>
@@ -347,9 +339,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
         <span className="mono-label">Threshold</span>
       </div>
       <div className="serif-display text-2xl text-fg mb-3">{title}</div>
-      <p className="text-fg-dim text-sm max-w-md mx-auto leading-relaxed">
-        {body}
-      </p>
+      <p className="text-fg-dim text-sm max-w-md mx-auto leading-relaxed">{body}</p>
     </div>
   );
 }
@@ -358,41 +348,40 @@ function RepoCard({
   repo,
   marketplace,
   pluginState,
-  applyState,
+  status,
   onToggle,
-  onApply,
-  onDisableAll,
+  onCheck,
+  onCopy,
   onRemove,
 }: {
   repo: Repo;
   marketplace: Marketplace | null;
   pluginState: Record<string, boolean>;
-  applyState: string | undefined;
+  status: CheckState | undefined;
   onToggle: (slug: string, enabled: boolean) => void;
-  onApply: () => void;
-  onDisableAll: () => void;
+  onCheck: () => void;
+  onCopy: () => void;
   onRemove: () => void;
 }) {
-  const anyEnabled = Object.values(pluginState).some(Boolean);
   const enabledCount = Object.values(pluginState).filter(Boolean).length;
   const totalPlugins = marketplace?.plugins.length ?? 0;
-  const isApplied = !!repo.last_applied_at;
-  const hasError = applyState?.startsWith("error:");
+  const statusText =
+    status?.kind === "checking" ? "checking GitHub…" : status?.text;
+  const statusTone =
+    status?.kind === "matches" || status?.kind === "copied"
+      ? "text-accent"
+      : status?.kind === "drift" || status?.kind === "error"
+        ? "text-fg"
+        : "text-fg-ghost";
 
   return (
     <div
       className="accent-sweep border border-line bg-bg/80 p-4 flex flex-col gap-3 h-full ease-mythic"
-      style={{
-        transition: "background-color var(--motion-base) var(--ease-mythic)",
-      }}
+      style={{ transition: "background-color var(--motion-base) var(--ease-mythic)" }}
     >
-      {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div
-            className="font-mono text-xs text-fg truncate"
-            title={`${repo.owner}/${repo.repo}`}
-          >
+          <div className="font-mono text-xs text-fg truncate" title={`${repo.owner}/${repo.repo}`}>
             <span className="text-fg-ghost">{repo.owner}/</span>
             {repo.repo}
           </div>
@@ -405,23 +394,11 @@ function RepoCard({
             <span className="font-mono text-[0.6rem] text-fg-ghost tracking-[0.1em]">
               {repo.default_branch}
             </span>
-            <span
-              className={`flex items-center gap-1 font-mono text-[0.6rem] tracking-[0.1em] ${
-                isApplied ? "text-accent" : "text-fg-ghost"
-              }`}
-              title={
-                isApplied
-                  ? `last applied ${new Date(repo.last_applied_at!).toLocaleString()}`
-                  : "no settings.json committed yet"
-              }
-            >
-              {isApplied ? (
-                <GlyphApplied size={12} className="pulse-dot" />
-              ) : (
-                <GlyphPending size={12} />
-              )}
-              {isApplied ? "applied" : "pending"}
-            </span>
+            {status?.kind === "matches" ? (
+              <GlyphApplied size={12} className="text-accent" title="Repo file matches" />
+            ) : status?.kind === "drift" ? (
+              <GlyphPending size={12} className="text-fg" title="Drift detected" />
+            ) : null}
           </div>
         </div>
         <button
@@ -434,7 +411,6 @@ function RepoCard({
         </button>
       </div>
 
-      {/* Plugin chips */}
       <div className="flex flex-wrap gap-1.5">
         {(marketplace?.plugins || []).map((p) => {
           const on = pluginState[p.name] ?? false;
@@ -469,43 +445,38 @@ function RepoCard({
         })}
       </div>
 
-      {/* Footer */}
       <div className="flex items-center justify-between mt-auto pt-3 border-t border-line gap-2">
         <div
-          className={`font-mono text-[0.6rem] truncate flex-1 min-w-0 tracking-[0.1em] ${
-            hasError ? "text-accent" : "text-fg-ghost"
-          }`}
-          title={applyState}
+          className={`font-mono text-[0.6rem] truncate flex-1 min-w-0 tracking-[0.1em] ${statusTone}`}
+          title={statusText}
         >
-          {applyState || (
+          {statusText || (
             <>
               <span className="text-fg-dim tnum">{enabledCount}</span>
-              <span className="text-fg-ghost"> / {totalPlugins} enabled</span>
+              <span className="text-fg-ghost"> / {totalPlugins} wanted</span>
             </>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={onDisableAll}
-            disabled={!anyEnabled}
-            title={
-              anyEnabled
-                ? "Disable everything and write the cleared config"
-                : "Nothing to disable"
-            }
-            className="font-mono text-[0.6rem] tracking-[0.2em] uppercase px-2.5 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim ease-mythic disabled:opacity-30 disabled:cursor-not-allowed"
+            onClick={onCheck}
+            disabled={status?.kind === "checking"}
+            title="Compare this repo's .claude/settings.json on GitHub with the chips above (read-only)"
+            className="font-mono text-[0.6rem] tracking-[0.2em] uppercase px-2.5 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim ease-mythic disabled:opacity-40"
             style={{
               transition:
                 "color var(--motion-base) var(--ease-mythic), border-color var(--motion-base) var(--ease-mythic)",
             }}
           >
-            Clear
+            Check
           </button>
           <button
-            onClick={onApply}
-            className="lift-on-hover flex items-center gap-1.5 font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-1.5 bg-fg text-bg"
+            onClick={onCopy}
+            disabled={!marketplace}
+            title="Copy a .claude/settings.json for this repo — commit it yourself"
+            className="lift-on-hover font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-1.5 bg-fg text-bg disabled:opacity-40"
           >
-            Apply <GlyphArrow size={10} />
+            Copy JSON
           </button>
         </div>
       </div>
