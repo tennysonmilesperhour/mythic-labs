@@ -1,10 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "brand-systems",
-  "version": "0.1.0",
-  "description": "Archetypal brand diagnosis. Discover the structural identity of products, brands, and audiences using Jungian psychology and architectural dynamics. Foundation-up, not surface-down.",
+  "version": "0.2.0",
+  "description": "The Mythic Labs method for archetypal brand work: Discovery (archetype-diagnosis), Architecture (brand-architecture), Shadow (shadow-analysis), and Expression (unified-expression), plus voice audits. Evidence-bound, foundation-up, not surface-down.",
   "author": {
     "name": "Mythic Labs"
   },
-  "keywords": ["brand", "archetype", "jungian", "diagnosis", "voice", "tone"]
+  "keywords": ["brand", "archetype", "jungian", "diagnosis", "architecture", "shadow", "expression", "voice"]
 }

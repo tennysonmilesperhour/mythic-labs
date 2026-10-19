@@ -1,9 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "mythic-brain",
-  "displayName": "Mythic Labs · Central Brain",
-  "description": "Tennyson's centralized skills, agents, hooks, and MCP configurations. Other repos consume specific plugins on demand via .claude/settings.json.",
-  "version": "0.1.0",
+  "description": "Tennyson's centralized skills, agents, hooks, and MCP configurations. Enable once at user or organization scope; per-repo .claude/settings.json only for exceptions.",
+  "version": "0.2.0",
   "owner": {
     "name": "Tennyson",
     "url": "https://github.com/tennysonmilesperhour/mythic-labs"
@@ -12,7 +11,7 @@
     {
       "name": "brand-systems",
       "source": "./brand-systems",
-      "description": "Archetypal brand diagnosis, voice/tone analysis, and Mythic Labs methodology. Jungian structural identity work for products, brands, and audiences."
+      "description": "The Mythic Labs method: Discovery, Architecture, Shadow, and Expression for products, brands, and audiences, plus voice audits. Jungian structural identity work, evidence-bound."
     },
     {
       "name": "dev-workflows",
