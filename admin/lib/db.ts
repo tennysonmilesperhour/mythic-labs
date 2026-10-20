@@ -105,18 +105,3 @@ export async function setRepoPlugin(
     );
   if (error) throw error;
 }
-
-export async function markApplied(
-  repoId: string,
-  sha: string
-): Promise<void> {
-  const db = serviceClient();
-  const { error } = await db
-    .from(T_REPOS)
-    .update({
-      last_applied_at: new Date().toISOString(),
-      last_applied_sha: sha,
-    })
-    .eq("id", repoId);
-  if (error) throw error;
-}

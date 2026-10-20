@@ -11,8 +11,13 @@ You are checking whether a piece of copy matches the brand's established archety
 
 Ask for (or accept):
 1. The copy under review
-2. The brand's established archetype (or run `archetype-diagnosis` first if unknown)
+2. The anchor, in order of preference:
+   - An **Expression Spec** from `unified-expression` — audit against its rules,
+     starting with the ones listed under its AUDIT HOOK
+   - The brand's established archetype (run `archetype-diagnosis` first if unknown)
 3. Optionally, 2–3 anchor examples of on-brand prior work
+
+When auditing against a spec, cite the rule number for every drift.
 
 ## Audit Dimensions
 

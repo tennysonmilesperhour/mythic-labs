@@ -3,7 +3,7 @@ import { readFile, readDir, BRAIN_OWNER, BRAIN_REPO } from "./github";
 
 export type Marketplace = {
   name: string;
-  displayName?: string;
+  version?: string;
   description?: string;
   plugins: Array<{ name: string; source: string; description?: string }>;
 };
@@ -140,31 +140,4 @@ async function listMarkdownInDir(
   }
 
   return out;
-}
-
-/**
- * Build the contents of a consuming repo's .claude/settings.json.
- */
-export function renderSettingsJson(
-  brainOwner: string,
-  brainRepo: string,
-  marketplaceName: string,
-  enabled: Record<string, boolean>
-): string {
-  const obj = {
-    _comment:
-      "Auto-managed by Mythic Labs · Brain Admin. Edit via the dashboard.",
-    extraKnownMarketplaces: {
-      [marketplaceName]: {
-        source: { source: "github", repo: `${brainOwner}/${brainRepo}` },
-      },
-    },
-    enabledPlugins: Object.fromEntries(
-      Object.entries(enabled).map(([slug, on]) => [
-        `${slug}@${marketplaceName}`,
-        on,
-      ])
-    ),
-  };
-  return JSON.stringify(obj, null, 2) + "\n";
 }
