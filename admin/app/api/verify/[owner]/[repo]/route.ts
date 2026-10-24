@@ -8,11 +8,12 @@ import { fetchMarketplace } from "@/lib/brain";
  */
 export async function GET(
   _req: Request,
-  { params }: { params: { owner: string; repo: string } }
+  { params }: { params: Promise<{ owner: string; repo: string }> }
 ) {
   try {
+    const resolvedParams = await params;
     const [file, marketplace] = await Promise.all([
-      readFile(params.owner, params.repo, ".claude/settings.json"),
+      readFile(resolvedParams.owner, resolvedParams.repo, ".claude/settings.json"),
       fetchMarketplace(),
     ]);
 
@@ -20,7 +21,7 @@ export async function GET(
       return NextResponse.json({
         ok: false,
         reason: "missing",
-        message: `.claude/settings.json not found in ${params.owner}/${params.repo}`,
+        message: `.claude/settings.json not found in ${resolvedParams.owner}/${resolvedParams.repo}`,
       });
     }
 
