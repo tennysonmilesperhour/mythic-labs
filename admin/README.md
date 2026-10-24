@@ -1,6 +1,6 @@
 # Mythic Labs · Brain Admin
 
-A small Next.js app for the Mythic Labs central brain (this repo's plugin marketplace): browse the catalogue, get the install commands, and check the few repos that override your default. It never writes to consuming repos.
+A small Next.js app for the Mythic Labs central brain (this repo's plugin marketplace): manage everything you're building, browse the catalogue, get the install commands, and check the few repos that override your default. It never writes to consuming repos.
 
 **Single-admin, no-login by design.** Multi-user is a future add (Supabase auth).
 
@@ -10,6 +10,7 @@ A small Next.js app for the Mythic Labs central brain (this repo's plugin market
 
 | Section | What it lets you do |
 |---|---|
+| **Projects** | Project manager for every repo or idea. Toggle each between Active, Building, Planned and Paused (buttons or drag on the board). Board, list and timeline views. Each project has a plan (milestones → tasks → subtasks with checkboxes, status, priority, due dates and an assigned agent), a changelog (log by hand or import merged PRs/commits from GitHub), a decision log (ADR style), notes, an activity feed, assigned agents, connected tools, tags, links, and a Handoff tab that writes an agent brief or a `PROJECT.md`. **Import from GitHub** adds all your repos in one pass. |
 | **Repos** | Install paths for your machine (user scope) and your organization (claude.ai sync). Below them, track repos that need a different plugin set: toggle chips, **Copy JSON** to commit yourself, and **Check** to compare against what's on GitHub (read-only). |
 | **Brain** | Reads `.claude-plugin/marketplace.json` and every plugin manifest in this repo. Browse every skill, agent, command, hook the brain ships. |
 | **Authoring** | Three forms: register an MCP server in a plugin, draft a new slash command, or verify a consuming repo's wiring. All commits go straight to the brain repo. |
@@ -24,9 +25,10 @@ In your Supabase project SQL editor, run:
 
 ```
 admin/supabase/migrations/0001_initial_schema.sql
+admin/supabase/migrations/0002_project_manager.sql
 ```
 
-That creates `mythic_users`, `mythic_repos`, `mythic_repo_plugins` and seeds a hardcoded admin user.
+0001 creates `mythic_users`, `mythic_repos`, `mythic_repo_plugins` and seeds a hardcoded admin user. 0002 adds the project manager: `mythic_projects`, `mythic_milestones`, `mythic_tasks`, `mythic_project_entries`.
 
 Note the project URL and these two keys:
 - **Publishable key** (anon, safe to expose) → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
@@ -35,8 +37,8 @@ Note the project URL and these two keys:
 ### 2 · GitHub PAT
 
 Create a fine-grained Personal Access Token with:
-- **Repository access**: `mythic-labs`, plus any repo you want **Check** to read
-- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring commits there); `Contents: read` is enough everywhere else
+- **Repository access**: `mythic-labs`, plus any repo you want **Check** to read or track in **Projects** (its changelog importer reads PRs and commits)
+- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring commits there); `Contents: read` and `Pull requests: read` everywhere else
 
 Save the token; it goes into Vercel env as `GITHUB_TOKEN`.
 
@@ -86,10 +88,14 @@ Visit http://localhost:3000.
 admin/
 ├── app/                          ← Next.js app router pages
 │   ├── page.tsx                  ← / overview
+│   ├── projects/                 ← / projects (board) · [id] (plan, logs, setup, handoff)
 │   ├── repos/                    ← / repos · server + ReposClient
 │   ├── brain/                    ← / brain
 │   ├── authoring/                ← / authoring · AuthoringClient
 │   └── api/
+│       ├── projects/*            ← projects + nested milestones/tasks/entries, GitHub activity
+│       ├── tasks|milestones|entries/[id] ← edit/delete one item
+│       ├── github/repos          ← repos the token can read (project import)
 │       ├── repos/*               ← tracked-exception CRUD (Supabase only)
 │       ├── marketplace/          ← reads brain marketplace.json
 │       ├── plugins/[slug]/       ← reads plugin manifest + skills/agents
@@ -101,6 +107,8 @@ admin/
 ├── lib/
 │   ├── supabase.ts               ← service-role client factory
 │   ├── db.ts                     ← typed repo + plugin queries
+│   ├── projects.ts               ← project manager queries (server)
+│   ├── projectTypes.ts           ← project types, stats, Markdown export (client-safe)
 │   ├── github.ts                 ← Octokit reads; writes only to the brain repo
 │   ├── brain.ts                  ← marketplace + plugin inventory
 │   └── settings.ts               ← renders per-repo settings.json (client-safe)

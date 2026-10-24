@@ -104,3 +104,72 @@ export async function readDir(
     throw err;
   }
 }
+
+/**
+ * Every repo the token can see (owned, collaborator, org member). Used to
+ * import repos into the project manager.
+ */
+export async function listMyRepos(): Promise<
+  Array<{
+    owner: string;
+    repo: string;
+    description: string;
+    pushed_at: string | null;
+    fork: boolean;
+    archived: boolean;
+    private: boolean;
+  }>
+> {
+  const repos = await gh().paginate(gh().repos.listForAuthenticatedUser, {
+    per_page: 100,
+    sort: "pushed",
+    affiliation: "owner,collaborator,organization_member",
+  });
+  return repos.map((r) => ({
+    owner: r.owner.login,
+    repo: r.name,
+    description: r.description || "",
+    pushed_at: r.pushed_at || null,
+    fork: !!r.fork,
+    archived: !!r.archived,
+    private: !!r.private,
+  }));
+}
+
+/**
+ * Recent activity for a project's repo: merged PRs, commits, latest release.
+ * Read-only; feeds the changelog importer.
+ */
+export async function repoActivity(owner: string, repo: string) {
+  const [meta, pulls, commits, release] = await Promise.all([
+    gh().repos.get({ owner, repo }),
+    gh().pulls.list({ owner, repo, state: "closed", sort: "updated", direction: "desc", per_page: 30 }),
+    gh().repos.listCommits({ owner, repo, per_page: 20 }),
+    gh().repos.getLatestRelease({ owner, repo }).catch(() => null),
+  ]);
+  return {
+    html_url: meta.data.html_url,
+    homepage: meta.data.homepage || null,
+    default_branch: meta.data.default_branch,
+    open_issues: meta.data.open_issues_count,
+    pushed_at: meta.data.pushed_at,
+    latest_release: release
+      ? { tag: release.data.tag_name, url: release.data.html_url, published_at: release.data.published_at }
+      : null,
+    merged_pulls: pulls.data
+      .filter((p) => p.merged_at)
+      .map((p) => ({
+        number: p.number,
+        title: p.title,
+        url: p.html_url,
+        merged_at: p.merged_at as string,
+        body: (p.body || "").slice(0, 500),
+      })),
+    commits: commits.data.map((c) => ({
+      sha: c.sha.slice(0, 7),
+      title: c.commit.message.split("\n")[0],
+      url: c.html_url,
+      date: c.commit.author?.date || null,
+    })),
+  };
+}

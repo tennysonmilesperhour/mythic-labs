@@ -33,7 +33,7 @@ mythic-labs/
 ├── templates/
 │   └── consuming-repo.settings.json   ← per-repo override template
 │
-├── admin/                        ← Next.js dashboard (catalogue, install paths, drift check)
+├── admin/                        ← Next.js dashboard (projects, catalogue, install paths, drift check)
 │
 ├── README.md                     ← brand manifesto
 ├── mythic_labs_landing.html      ← public landing
@@ -180,4 +180,5 @@ Results land in `evals/results/` (gitignored). Validate structure separately wit
 - **Marketplace catalog** → `.claude-plugin/marketplace.json`
 - **Per-repo override template** → `templates/consuming-repo.settings.json`
 - **Dashboard** → `admin/` (deployed on Vercel)
+- **Project manager** (status, plans, changelogs, decisions across all repos) → `admin/app/projects/`, schema in `admin/supabase/migrations/0002_project_manager.sql`
 - **Skill evals** → `<plugin>/evals/`

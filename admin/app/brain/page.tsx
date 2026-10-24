@@ -19,7 +19,7 @@ export default async function BrainPage() {
   return (
     <div>
       <div className="hairline-accent mb-10">
-        <span className="mono-label">02 · Brain</span>
+        <span className="mono-label">03 · Brain</span>
       </div>
 
       <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
