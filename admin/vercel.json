@@ -1,0 +1,3 @@
+{
+  "installCommand": "npx --yes npm@12.2.1 ci --ignore-scripts"
+}
