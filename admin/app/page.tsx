@@ -1,15 +1,20 @@
 import Link from "next/link";
 import { listRepos } from "@/lib/db";
+import { listProjectSummaries } from "@/lib/projects";
 import { fetchMarketplace } from "@/lib/brain";
 import { GlyphArrow } from "@/components/Glyphs";
 
 export const dynamic = "force-dynamic";
 
 export default async function Overview() {
-  const [repos, marketplace] = await Promise.all([
+  const [repos, marketplace, pm] = await Promise.all([
     listRepos().catch(() => []),
     fetchMarketplace().catch(() => null),
+    listProjectSummaries().catch(() => ({ projects: [] })),
   ]);
+  const activeProjects = pm.projects.filter(
+    (p) => p.status === "active" || p.status === "building"
+  ).length;
 
   const pluginCount = marketplace?.plugins.length ?? 0;
 
@@ -35,10 +40,10 @@ export default async function Overview() {
 
       {/* Stats — tabular numerals, generous gap */}
       <div className="grid grid-cols-4 gap-px bg-line border border-line mb-24">
+        <Stat label="Projects in motion" value={activeProjects} />
         <Stat label="Plugins available" value={pluginCount} />
-        <Stat label="Brain version" value={marketplace?.version ?? "—"} mono />
         <Stat label="Tracked exceptions" value={repos.length} />
-        <Stat label="Source" value="mythic-labs" mono />
+        <Stat label="Brain version" value={marketplace?.version ?? "—"} mono />
       </div>
 
       {/* Problem / solution */}
@@ -106,21 +111,27 @@ export default async function Overview() {
         <div className="hairline-accent-sm mb-6">
           <span className="mono-label">Where to go next</span>
         </div>
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-2 gap-5">
           <Card
             num="01"
+            title="Projects"
+            desc="Everything you're building: status, plans, changelogs, decisions, agents and tools."
+            href="/projects"
+          />
+          <Card
+            num="02"
             title="Repos"
             desc="Enable the brain for your machine or organization, and track the few repos that need different plugins."
             href="/repos"
           />
           <Card
-            num="02"
+            num="03"
             title="Brain"
             desc="Browse every skill, agent, command, hook, and MCP server in the marketplace."
             href="/brain"
           />
           <Card
-            num="03"
+            num="04"
             title="Authoring"
             desc="Extend the brain itself: register new MCP servers, draft slash commands, verify wiring."
             href="/authoring"

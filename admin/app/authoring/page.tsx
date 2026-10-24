@@ -16,7 +16,7 @@ export default async function AuthoringPage() {
   return (
     <div>
       <div className="hairline-accent mb-10">
-        <span className="mono-label">03 · Authoring</span>
+        <span className="mono-label">04 · Authoring</span>
       </div>
 
       <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">

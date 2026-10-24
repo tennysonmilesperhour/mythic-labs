@@ -39,7 +39,7 @@ export default async function ReposPage() {
   return (
     <div>
       <div className="hairline-accent mb-10">
-        <span className="mono-label">01 · Repos</span>
+        <span className="mono-label">02 · Repos</span>
       </div>
 
       <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
