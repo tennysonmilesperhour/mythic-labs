@@ -1,8 +1,8 @@
 import { body, handle } from "@/lib/api";
-import { createProjects, listProjectSummaries } from "@/lib/projects";
+import { createProjects, getHub } from "@/lib/projects";
 
 export async function GET() {
-  return handle(() => listProjectSummaries());
+  return handle(() => getHub());
 }
 
 // Accepts one project ({ name, ... }) or many ({ items: [...] }).

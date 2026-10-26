@@ -10,7 +10,7 @@ A small Next.js app for the Mythic Labs central brain (this repo's plugin market
 
 | Section | What it lets you do |
 |---|---|
-| **Projects** | Project manager for every repo or idea. Toggle each between Active, Building, Planned and Paused (buttons or drag on the board). Board, list and timeline views. Each project has a plan (milestones → tasks → subtasks with checkboxes, status, priority, due dates and an assigned agent), a changelog (log by hand or import merged PRs/commits from GitHub), a decision log (ADR style), notes, an activity feed, assigned agents, connected tools, tags, links, and a Handoff tab that writes an agent brief or a `PROJECT.md`. **Import from GitHub** adds all your repos in one pass. |
+| **Projects** | The at-a-glance hub: a one-line status sentence, **Needs attention** (blocked, overdue, stalled agent work, decisions waiting on you, quiet projects, missing next actions), what's in progress, and what's due in 14 days. Below that, the project manager for every repo or idea. Toggle each between Active, Building, Planned and Paused (buttons or drag on the board). Board, list and timeline views. Each project has a plan (milestones → tasks → subtasks with checkboxes, status, priority, due dates and an assigned agent), a changelog (log by hand or import merged PRs/commits from GitHub), a decision log (ADR style), notes, an activity feed, assigned agents, connected tools, tags, links, and a Handoff tab that writes an agent brief or a `PROJECT.md`. **Import from GitHub** adds all your repos in one pass. |
 | **Repos** | Install paths for your machine (user scope) and your organization (claude.ai sync). Below them, track repos that need a different plugin set: toggle chips, **Copy JSON** to commit yourself, and **Check** to compare against what's on GitHub (read-only). |
 | **Brain** | Reads `.claude-plugin/marketplace.json` and every plugin manifest in this repo. Browse every skill, agent, command, hook the brain ships. |
 | **Authoring** | Three forms: register an MCP server in a plugin, draft a new slash command, or verify a consuming repo's wiring. All commits go straight to the brain repo. |
@@ -26,9 +26,10 @@ In your Supabase project SQL editor, run:
 ```
 admin/supabase/migrations/0001_initial_schema.sql
 admin/supabase/migrations/0002_project_manager.sql
+admin/supabase/migrations/0003_agent_roadmap.sql
 ```
 
-0001 creates `mythic_users`, `mythic_repos`, `mythic_repo_plugins` and seeds a hardcoded admin user. 0002 adds the project manager: `mythic_projects`, `mythic_milestones`, `mythic_tasks`, `mythic_project_entries`.
+0001 creates `mythic_users`, `mythic_repos`, `mythic_repo_plugins` and seeds a hardcoded admin user. 0002 adds the project manager: `mythic_projects`, `mythic_milestones`, `mythic_tasks`, `mythic_project_entries`. 0003 adds what agents need: build instructions per project, acceptance criteria and dependencies per task, claim times, and attributed progress entries. All three are safe to re-run.
 
 Note the project URL and these two keys:
 - **Publishable key** (anon, safe to expose) → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
@@ -64,7 +65,31 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ADMIN_USER_ID=00000000-0000-0000-0000-000000000001
+PM_AGENT_TOKEN=<long random string>   # turns on the agent API
 ```
+
+---
+
+## Agent API (autonomous build agents)
+
+The dashboard doubles as the roadmap agents work from. Set `PM_AGENT_TOKEN` (e.g. `openssl rand -hex 32`) to turn it on; every call needs `Authorization: Bearer <token>` and the agent's name (`X-Agent` header or `?agent=`).
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/agent/roadmap` | All projects as Markdown (or `?format=json`): status, ready work, attention flags |
+| `GET /api/agent/projects/:id` | One project as Markdown with task ids |
+| `GET /api/agent/next[?project=]` | Next ready task for this agent, with build instructions, acceptance criteria and active decisions |
+| `POST /api/agent/tasks/:id/claim` | Mark doing and assign. 409 if another agent holds it or it isn't ready |
+| `PATCH /api/agent/tasks/:id` | `{status, note}`; blocked needs a note; done is refused while subtasks are open |
+| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up |
+| `POST /api/agent/projects/:id/entries` | Changelog, progress, note, or decision (always lands as *proposed*) |
+| `PATCH /api/agent/projects/:id` | `{next_action}` only |
+
+**Ready** means: todo, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering.
+
+The `roadmap` skill in `dev-workflows` teaches any agent this loop. Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
+
+The dashboard's own pages and `/api/*` routes are still no-auth (single-admin mode), so keep Vercel Deployment Protection on.
 
 ---
 
@@ -93,6 +118,7 @@ admin/
 │   ├── brain/                    ← / brain
 │   ├── authoring/                ← / authoring · AuthoringClient
 │   └── api/
+│       ├── agent/*               ← token-protected API for autonomous agents
 │       ├── projects/*            ← projects + nested milestones/tasks/entries, GitHub activity
 │       ├── tasks|milestones|entries/[id] ← edit/delete one item
 │       ├── github/repos          ← repos the token can read (project import)
@@ -108,7 +134,8 @@ admin/
 │   ├── supabase.ts               ← service-role client factory
 │   ├── db.ts                     ← typed repo + plugin queries
 │   ├── projects.ts               ← project manager queries (server)
-│   ├── projectTypes.ts           ← project types, stats, Markdown export (client-safe)
+│   ├── projectTypes.ts           ← types, readiness, attention engine, Markdown roadmap (client-safe)
+│   ├── api.ts                    ← route helpers, agent auth
 │   ├── github.ts                 ← Octokit reads; writes only to the brain repo
 │   ├── brain.ts                  ← marketplace + plugin inventory
 │   └── settings.ts               ← renders per-repo settings.json (client-safe)

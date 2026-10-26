@@ -22,7 +22,7 @@ export default async function BrainPage() {
         <span className="mono-label">03 · Brain</span>
       </div>
 
-      <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
+      <h1 className="serif-display text-[2.6rem] md:text-[4rem] leading-[0.95] mb-6">
         The brain itself
       </h1>
       <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">

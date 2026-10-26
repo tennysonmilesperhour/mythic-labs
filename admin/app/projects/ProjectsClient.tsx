@@ -1,19 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
+  PRIORITY_RANK,
+  SOON_DAYS,
   STATUSES,
   STATUS_META,
+  daysFromNow,
+  dueLabel,
   fmtDate,
   isOverdue,
   relTime,
   today,
+  type Hub,
   type Project,
   type ProjectStatus,
   type ProjectSummary,
   type TimelineItem,
 } from "@/lib/projectTypes";
+import { AttentionList, TaskRefList } from "@/components/Glance";
 import {
   Chip,
   PRIORITY_MARK,
@@ -38,16 +45,11 @@ type GhRepo = {
   private: boolean;
 };
 
-const PRIORITY_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
-
-export default function ProjectsClient({
-  initialProjects,
-  timeline,
-}: {
-  initialProjects: ProjectSummary[];
-  timeline: TimelineItem[];
-}) {
-  const [projects, setProjects] = useState(initialProjects);
+export default function ProjectsClient({ hub }: { hub: Hub }) {
+  const router = useRouter();
+  const { timeline } = hub;
+  const [projects, setProjects] = useState(hub.projects);
+  useEffect(() => setProjects(hub.projects), [hub.projects]);
   const [view, setView] = useState<View>("board");
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">("all");
   const [search, setSearch] = useState("");
@@ -88,28 +90,45 @@ export default function ProjectsClient({
       .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || a.sort_order - b.sort_order);
   }, [projects, statusFilter, facet, search]);
 
+  const live = projects.filter((p) => p.status !== "paused");
+
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: projects.length };
     for (const s of STATUSES) c[s] = projects.filter((p) => p.status === s).length;
     return c;
   }, [projects]);
 
-  const totals = useMemo(() => {
-    const soon = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
-    return {
-      open: projects.reduce((n, p) => n + p.stats.total - p.stats.done, 0),
-      doing: projects.reduce((n, p) => n + p.stats.doing, 0),
-      blocked: projects.reduce((n, p) => n + p.stats.blocked, 0),
-      overdue: projects.reduce((n, p) => n + p.stats.overdue, 0),
-      dueSoon: timeline.filter((m) => !m.done && m.target_date && m.target_date >= today() && m.target_date <= soon).length,
-    };
-  }, [projects, timeline]);
+  const soon = daysFromNow(SOON_DAYS);
+  const msSoon = timeline.filter(
+    (m) => !m.done && m.project_status !== "paused" && m.target_date && m.target_date <= soon
+  );
+  const needsYou = hub.attention.filter((a) => a.severity === "high").length;
+  const ready = live.reduce((n, p) => n + p.stats.ready, 0);
+  const headline = useMemo(() => {
+    const bits: string[] = [];
+    bits.push(
+      needsYou
+        ? `${needsYou} thing${needsYou > 1 ? "s" : ""} need${needsYou > 1 ? "" : "s"} you.`
+        : hub.attention.length
+          ? "Nothing urgent."
+          : "All clear."
+    );
+    if (hub.inProgress.length) {
+      const n = new Set(hub.inProgress.map((t) => t.project_id)).size;
+      bits.push(`${hub.inProgress.length} task${hub.inProgress.length > 1 ? "s" : ""} in progress across ${n} project${n > 1 ? "s" : ""}.`);
+    }
+    if (ready) bits.push(`${ready} ready to pick up.`);
+    const nextMs = msSoon.find((m) => (m.target_date ?? "") >= today()) ?? msSoon[0];
+    if (nextMs) bits.push(`Next milestone: ${nextMs.title} (${nextMs.project_name}) ${dueLabel(nextMs.target_date)}.`);
+    return bits.join(" ");
+  }, [needsYou, hub, ready, msSoon]);
 
   const setStatus = async (id: string, status: ProjectStatus) => {
     const prev = projects;
     setProjects((ps) => ps.map((p) => (p.id === id ? { ...p, status } : p)));
     try {
       await api(`/api/projects/${id}`, "PATCH", { status });
+      router.refresh();
     } catch (err: unknown) {
       setProjects(prev);
       setFlash(`Could not change status: ${(err as Error).message}`);
@@ -117,13 +136,7 @@ export default function ProjectsClient({
   };
 
   const added = (created: Project[], failed: Array<{ name: string; reason: string }>) => {
-    setProjects((ps) => [
-      ...created.map((p) => ({
-        ...p,
-        stats: { total: 0, done: 0, doing: 0, blocked: 0, overdue: 0, nextMilestone: null, lastActivity: p.created_at },
-      })),
-      ...ps,
-    ]);
+    router.refresh();
     setFlash(
       `Added ${created.length}` +
         (failed.length ? ` · skipped ${failed.length} (${failed.map((f) => `${f.name}: ${f.reason}`).join(", ")})` : "")
@@ -133,14 +146,40 @@ export default function ProjectsClient({
 
   return (
     <div>
-      {/* Pulse strip */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line mb-10">
-        <Pulse label="In motion" value={counts.active + counts.building} sub="active + building" />
-        <Pulse label="Open tasks" value={totals.open} sub={`${totals.doing} in progress`} />
-        <Pulse label="Blocked" value={totals.blocked} warn={totals.blocked > 0} />
-        <Pulse label="Overdue" value={totals.overdue} warn={totals.overdue > 0} />
-        <Pulse label="Milestones · 14d" value={totals.dueSoon} />
-      </div>
+      {projects.length ? (
+        <>
+          <p className="serif-display text-[1.3rem] md:text-[1.7rem] leading-snug text-fg max-w-4xl mb-8">{headline}</p>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line mb-8">
+            <Pulse label="Needs you" value={needsYou} warn={needsYou > 0} sub={`${hub.attention.length} flags total`} />
+            <Pulse label="In motion" value={counts.active + counts.building} sub="active + building" />
+            <Pulse label="In progress" value={hub.inProgress.length} sub="tasks being worked" />
+            <Pulse label="Ready" value={ready} sub="unblocked, can start now" />
+            <Pulse label={`Due · ${SOON_DAYS}d`} value={hub.upcoming.length + msSoon.length} sub={`${msSoon.length} milestones`} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-8 mb-14">
+            <section>
+              <PanelHead label="Needs attention" count={hub.attention.length} />
+              <AttentionList items={hub.attention} limit={8} empty="Nothing flagged. Every live project has a next action, ready work, and nothing late." />
+            </section>
+            <div className="flex flex-col gap-8">
+              <section>
+                <PanelHead label="In progress now" count={hub.inProgress.length} />
+                <TaskRefList tasks={hub.inProgress} empty="No task is marked doing." show="since" />
+              </section>
+              <section>
+                <PanelHead label={`Due in ${SOON_DAYS} days`} count={hub.upcoming.length} />
+                <TaskRefList tasks={hub.upcoming} empty="No task due soon." show="due" />
+              </section>
+            </div>
+          </div>
+
+          <div className="hairline-accent-sm mb-6">
+            <span className="mono-label">All projects</span>
+          </div>
+        </>
+      ) : null}
 
       {/* Controls */}
       <div className="flex flex-wrap items-stretch gap-px bg-line border border-line mb-6">
@@ -271,6 +310,15 @@ export default function ProjectsClient({
   );
 }
 
+function PanelHead({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-baseline gap-3 mb-3">
+      <span className="mono-label">{label}</span>
+      <span className="font-mono text-[0.6rem] text-fg-ghost tnum">{count}</span>
+    </div>
+  );
+}
+
 function Pulse({ label, value, sub, warn }: { label: string; value: number; sub?: string; warn?: boolean }) {
   return (
     <div className="bg-bg/85 p-5">
@@ -294,6 +342,10 @@ function ProjectCard({
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
+  const flags = {
+    high: p.attention.filter((a) => a.severity === "high").length,
+    medium: p.attention.filter((a) => a.severity === "medium").length,
+  };
   return (
     <Link
       href={`/projects/${p.id}`}
@@ -323,12 +375,14 @@ function ProjectCard({
       ) : null}
       <Progress done={p.stats.done} total={p.stats.total} />
       <div className="flex flex-wrap gap-1 mt-3">
-        {p.stats.blocked ? <Chip tone="solid">{p.stats.blocked} blocked</Chip> : null}
-        {p.stats.overdue ? <Chip tone="solid">{p.stats.overdue} overdue</Chip> : null}
+        {flags.high ? <Chip tone="solid" title={p.attention.map((a) => a.title).join("\n")}>{flags.high} need you</Chip> : null}
+        {flags.medium ? <Chip title={p.attention.map((a) => a.title).join("\n")}>{flags.medium} to watch</Chip> : null}
+        {p.stats.ready ? <Chip tone="accent">{p.stats.ready} ready</Chip> : null}
+        {p.stats.doing ? <Chip>{p.stats.doing} doing</Chip> : null}
         {p.agents.slice(0, 3).map((a) => (
           <Chip key={a} tone="accent">@{a}</Chip>
         ))}
-        {p.tools.slice(0, 3).map((t) => (
+        {p.tools.slice(0, 2).map((t) => (
           <Chip key={t}>{t}</Chip>
         ))}
       </div>
@@ -649,7 +703,7 @@ function ImportPanel({
                       setPicked(next);
                     }}
                   />
-                  <span className="font-mono text-xs text-fg w-64 truncate">
+                  <span className="font-mono text-xs text-fg w-40 md:w-64 shrink-0 truncate">
                     <span className="text-fg-ghost">{r.owner}/</span>
                     {r.repo}
                   </span>

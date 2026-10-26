@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { GlyphMark } from "./Glyphs";
 
-const NAV = [
+export const NAV = [
   { href: "/", label: "Overview", num: "00" },
   { href: "/projects", label: "Projects", num: "01" },
   { href: "/repos", label: "Repos", num: "02" },
@@ -16,7 +16,7 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="glass fixed left-0 top-0 h-screen w-64 border-r border-line flex flex-col z-30">
+    <aside className="glass fixed left-0 top-0 h-screen w-64 border-r border-line hidden md:flex flex-col z-30">
       {/* Logo block */}
       <div className="px-8 pt-8 pb-7 border-b border-line">
         <div className="flex items-center gap-3 mb-4">
@@ -109,5 +109,29 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+  );
+}
+
+/** Phones: a sticky top bar instead of the sidebar. */
+export function MobileNav() {
+  const pathname = usePathname();
+  return (
+    <nav className="glass sticky top-0 z-30 md:hidden border-b border-line flex items-center gap-1 overflow-x-auto px-3 py-2">
+      <GlyphMark size={14} className="text-accent shrink-0 mr-2" />
+      {NAV.map((item) => {
+        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`font-mono text-[0.6rem] tracking-[0.18em] uppercase px-2.5 py-1.5 shrink-0 ${
+              active ? "text-fg border-b border-accent" : "text-fg-dim"
+            }`}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

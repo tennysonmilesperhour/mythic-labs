@@ -212,6 +212,8 @@ body {
 .page-stack {
   position: relative;
   z-index: 1;
+  /* Glow pseudo-elements bleed sideways; clip (not hidden) keeps sticky nav working. */
+  overflow-x: clip;
 }
 
 /* Hover-shift list items — the landing's phil-list pattern. */

@@ -25,7 +25,7 @@ export default function BrainClient({ plugins }: { plugins: PluginDetail[] }) {
   return (
     <div>
       {/* Plugin tabs */}
-      <div className="grid grid-cols-5 gap-px bg-line border border-line mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line mb-10">
         {plugins.map((p) => {
           const total =
             p.skills.length +

@@ -19,7 +19,7 @@ export default async function AuthoringPage() {
         <span className="mono-label">04 · Authoring</span>
       </div>
 
-      <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
+      <h1 className="serif-display text-[2.6rem] md:text-[4rem] leading-[0.95] mb-6">
         Extend the brain
       </h1>
       <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">
@@ -30,7 +30,7 @@ export default async function AuthoringPage() {
         repo on the next session.
       </p>
 
-      <div className="grid grid-cols-3 gap-px bg-line border border-line mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-line border border-line mb-12">
         <Explainer
           glyph={<GlyphMcp size={20} className="text-accent" />}
           title="Add MCP server"
