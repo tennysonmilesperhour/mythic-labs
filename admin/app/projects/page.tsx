@@ -27,8 +27,8 @@ export default async function ProjectsPage() {
           <div className="mono-label mb-2">Not configured</div>
           <p className="text-fg-dim text-sm leading-relaxed">{initialError}</p>
           <p className="text-fg-ghost text-xs mt-3 font-mono">
-            Projects are stored as files in GitHub. Set GITHUB_TOKEN with Contents
-            read and write on the data repo (default: the brain repo, branch roadmap-data).
+            Projects are stored as files in a private GitHub repo. Set PM_DATA_REPO
+            (owner/repo, must be private) and a GITHUB_TOKEN with Contents read and write on it.
           </p>
         </div>
       ) : null}

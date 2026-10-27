@@ -4,7 +4,7 @@ Instructions for coding agents (Codex, Claude Code, Cursor, and others) working 
 
 ## The dashboard has no database
 
-`admin/` is a Next.js app on Vercel. All of its data is committed as files to git, on the `roadmap-data` branch of this repo (override with `PM_DATA_REPO` / `PM_DATA_BRANCH`):
+`admin/` is a Next.js app on Vercel. All of its data is committed as files to the `roadmap-data` branch of a **private** repo named by `PM_DATA_REPO`. Never this repo: it's public, and the data includes private repo names and descriptions. The store refuses public repos; keep that check.
 
 - `projects/<id>.json` holds one project's plan, log and settings, and is the source of truth. `projects/<id>.md` is generated from it on every write.
 - `repos.json` holds the Repos page's tracked exceptions.
@@ -14,7 +14,7 @@ Rules for changing it:
 - **Go through `lib/store.ts` `mutate()`.** It reads the branch head, applies your function to a draft, commits every changed file at once, and retries on a non-fast-forward. Do validation inside the function and throw to abort; it can run more than once.
 - **Keep checks that guard a write inside the same `mutate()` call.** For example, `claimTask` checks "not claimed by someone else" inside the call, which makes claims race-safe. Reading first and writing in a second call brings the race back.
 - `lib/projects.ts` and `lib/db.ts` are the only modules that should call the store. Routes and UI use their exported functions.
-- Don't hand-edit the `roadmap-data` branch while the dashboard is live. The store rejects stale writes, but a hand edit can still race it.
+- Don't hand-edit the data branch while the dashboard is live. The store rejects stale writes, but a hand edit can still race it.
 - No Supabase. It was removed on purpose; don't reintroduce it.
 
 ## Shared logic is client-safe
@@ -43,7 +43,7 @@ Rules for changing it:
 cd admin
 npx tsc --noEmit -p . && npx next build
 node scripts/fake-github.mjs &   # fake GitHub Git Data API on :4010
-GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_AGENT_TOKEN=smoke-token npx next start &
+GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_DATA_REPO=test/data PM_AGENT_TOKEN=smoke-token npx next start &
 node scripts/smoke.mjs           # agent loop, claim race, parallel writes
 ```
 

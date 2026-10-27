@@ -21,25 +21,30 @@ A small Next.js app for the Mythic Labs central brain (this repo's plugin market
 
 ### 1 · Data (no database)
 
-Everything the dashboard stores (projects, plans, logs, tracked repos) lives as files in git:
+Everything the dashboard stores (projects, plans, logs, tracked repos) lives as files in a **private** GitHub repo:
 
 ```
-roadmap-data branch of the brain repo   (created on first write)
+PM_DATA_REPO, branch roadmap-data   (branch created on first write)
 ├── README.md
 ├── projects/<id>.json   one project: plan, log, settings (source of truth)
 ├── projects/<id>.md     the same project as Markdown, for people and agents
 └── repos.json           the Repos page's tracked exceptions
 ```
 
-Every edit is one commit, so `git log roadmap-data` is the audit trail. The branch carries its own `vercel.json` with deployments off (and `admin/vercel.json` on main excludes it too), so data commits never trigger Vercel builds. To keep the data elsewhere, set `PM_DATA_REPO=owner/repo` and/or `PM_DATA_BRANCH`. The token needs Contents read & write there.
+Every edit is one commit, so `git log roadmap-data` is the audit trail.
+
+- Set `PM_DATA_REPO=owner/repo` (required) and optionally `PM_DATA_BRANCH`.
+- The token needs Contents read & write on that repo.
+- **The repo must be private.** The data includes the names and descriptions of private repos you import, so the store checks visibility and refuses to write to a public repo.
+- Use a repo that isn't connected to Vercel, so data commits don't trigger builds.
 
 How writes stay safe (`lib/store.ts`): each change reads the branch head, applies the edit, and commits all touched files at once with a non-forced ref update. If someone else committed first, GitHub rejects it (422) and the store re-reads and re-applies, up to 5 tries. Agent claims run their checks inside that loop, so two agents can't both claim a task.
 
 ### 2 · GitHub PAT
 
 Create a fine-grained Personal Access Token with:
-- **Repository access**: `mythic-labs`, plus any repo you want **Check** to read or track in **Projects** (its changelog importer reads PRs and commits)
-- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring and the roadmap data commit there); `Contents: read` and `Pull requests: read` everywhere else
+- **Repository access**: `mythic-labs`, the private data repo, plus any repo you want **Check** to read or track in **Projects** (its changelog importer reads PRs and commits)
+- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring commits there) and on the data repo; `Contents: read` and `Pull requests: read` everywhere else
 
 Save the token; it goes into Vercel env as `GITHUB_TOKEN`.
 
@@ -61,6 +66,7 @@ Add env vars (see `admin/.env.local.example`):
 GITHUB_TOKEN=ghp_...
 BRAIN_OWNER=tennysonmilesperhour
 BRAIN_REPO=mythic-labs
+PM_DATA_REPO=<owner>/<private-repo>   # where projects are stored
 PM_AGENT_TOKEN=<long random string>   # turns on the agent API
 ```
 
@@ -107,7 +113,7 @@ Visit http://localhost:3000.
 
 ```bash
 node scripts/fake-github.mjs &        # port 4010
-GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_AGENT_TOKEN=smoke-token \
+GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_DATA_REPO=test/data PM_AGENT_TOKEN=smoke-token \
   sh -c 'npm run build && npm start' &
 node scripts/smoke.mjs                # expects: all checks passed
 ```

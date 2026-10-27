@@ -15,6 +15,11 @@ http.createServer((req, res) => {
     if (p === '/__stats') return send(res, 200, { calls, refs, log, commits: Object.keys(commits).length });
     if (!req.headers.authorization) return send(res, 401, { message: 'Requires authentication' });
     let m;
+    // Repo metadata: private unless FAKE_PUBLIC_REPOS lists it (e.g. "me/site,me/brain").
+    if (req.method === 'GET' && (m = p.match(/^\/repos\/([^/]+\/[^/]+)$/))) {
+      const isPublic = (process.env.FAKE_PUBLIC_REPOS || '').split(',').includes(m[1]);
+      return send(res, 200, { full_name: m[1], private: !isPublic });
+    }
     if (req.method === 'GET' && (m = p.match(/^\/repos\/[^/]+\/[^/]+\/git\/ref\/heads\/(.+)$/))) {
       const sha = refs[m[1]]; return sha ? send(res, 200, { ref: `refs/heads/${m[1]}`, object: { sha, type: 'commit' } }) : send(res, 404, { message: 'Not Found' });
     }

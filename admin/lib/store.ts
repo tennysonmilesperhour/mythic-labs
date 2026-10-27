@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { gh, BRAIN_OWNER, BRAIN_REPO } from "./github";
+import { gh } from "./github";
 import { renderProjectMarkdown, type ProjectDetail } from "./projectTypes";
 
 /**
@@ -11,10 +11,11 @@ import { renderProjectMarkdown, type ProjectDetail } from "./projectTypes";
  *   projects/<id>.md     the same project rendered for humans and agents
  *   repos.json           the Repos page's tracked exceptions
  *
- * By default that's the `roadmap-data` branch of the brain repo, created on
- * first write. Every change is one commit; the history is the audit log.
+ * They live on a branch of a PRIVATE repo, created on first write. Every
+ * change is one commit; the history is the audit log. Writes to a public repo
+ * are refused: the data includes private repo names and descriptions.
  *
- *   PM_DATA_REPO    owner/repo        (default: BRAIN_OWNER/BRAIN_REPO)
+ *   PM_DATA_REPO    owner/repo        (required; must be private)
  *   PM_DATA_BRANCH  branch            (default: roadmap-data)
  *   PM_DATA_DIR     local directory   (dev only: use files on disk, no GitHub)
  */
@@ -64,9 +65,29 @@ const blobSha = (text: string) => {
   return createHash("sha1").update(`blob ${buf.length}\0`).update(buf).digest("hex");
 };
 
+export class StoreNotConfigured extends Error {}
+
 function githubBackend(): Backend {
-  const [owner, repo] = (process.env.PM_DATA_REPO || `${BRAIN_OWNER}/${BRAIN_REPO}`).split("/");
+  const target = process.env.PM_DATA_REPO || "";
+  const [owner, repo] = target.split("/");
   const branch = process.env.PM_DATA_BRANCH || "roadmap-data";
+  const configured = () => {
+    if (!owner || !repo) {
+      throw new StoreNotConfigured("Set PM_DATA_REPO to a private repo (owner/repo) for dashboard data.");
+    }
+  };
+  // Checked once per warm function, before the first write.
+  let verifiedPrivate = false;
+  const assertPrivate = async () => {
+    if (verifiedPrivate) return;
+    const meta = await gh().repos.get({ owner, repo });
+    if (!meta.data.private) {
+      throw new StoreNotConfigured(
+        `Refusing to write dashboard data to ${owner}/${repo}: it is public, and the data includes private repo names and descriptions. Point PM_DATA_REPO at a private repo.`
+      );
+    }
+    verifiedPrivate = true;
+  };
   // Blob cache survives across requests in a warm function: only changed files are refetched.
   const blobs = new Map<string, string>();
   const treeOf = new Map<string, string>(); // commit sha → tree sha
@@ -76,6 +97,7 @@ function githubBackend(): Backend {
     describe: () => `github:${owner}/${repo}@${branch}`,
 
     async read() {
+      configured();
       let head: string;
       try {
         const ref = await gh().git.getRef({ owner, repo, ref: `heads/${branch}` });
@@ -108,6 +130,8 @@ function githubBackend(): Backend {
     },
 
     async write(head, changes, message) {
+      configured();
+      await assertPrivate();
       const tree = await gh().git.createTree({
         owner,
         repo,
@@ -266,17 +290,7 @@ export async function mutate<T>(
       changes.push({ path: "repos.json", content: JSON.stringify(draft.repos, null, 2) + "\n" });
     }
     if (!changes.length) return result;
-    if (!base.head) {
-      // New data branch: explain it, and stop Vercel building it. Vercel reads
-      // vercel.json from the pushed commit (at the root, or admin/ when that's
-      // the project's Root Directory), and this branch shares no files with main.
-      const noDeploy = JSON.stringify({ git: { deploymentEnabled: false } }, null, 2) + "\n";
-      changes.push(
-        { path: "README.md", content: BRANCH_README },
-        { path: "vercel.json", content: noDeploy },
-        { path: "admin/vercel.json", content: noDeploy }
-      );
-    }
+    if (!base.head) changes.push({ path: "README.md", content: BRANCH_README });
 
     try {
       await store().write(base.head, changes, typeof message === "string" ? message : message(result, draft));
