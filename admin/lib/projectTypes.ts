@@ -1,6 +1,6 @@
 // Client-safe types, constants and logic for the project manager: readiness,
 // the attention engine, and the Markdown roadmap that agents read.
-// The Supabase queries live in projects.ts (server-only).
+// Reads and writes live in projects.ts (server-only), stored via store.ts.
 
 export const STATUSES = ["active", "building", "planned", "paused"] as const;
 export type ProjectStatus = (typeof STATUSES)[number];
@@ -73,7 +73,6 @@ export type ProjectLink = { label: string; url: string };
 
 export type Project = {
   id: string;
-  user_id: string;
   name: string;
   owner: string | null;
   repo: string | null;

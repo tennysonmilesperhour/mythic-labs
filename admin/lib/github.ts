@@ -8,7 +8,8 @@ export function gh(): Octokit {
   if (!token) {
     throw new Error("GITHUB_TOKEN env var missing.");
   }
-  cached = new Octokit({ auth: token });
+  // GITHUB_API_URL: GitHub Enterprise, or a local fake in tests.
+  cached = new Octokit({ auth: token, baseUrl: process.env.GITHUB_API_URL || undefined });
   return cached;
 }
 

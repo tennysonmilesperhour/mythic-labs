@@ -1,3 +1,8 @@
 {
-  "installCommand": "npx --yes npm@12.2.1 ci --ignore-scripts"
+  "installCommand": "npx --yes npm@12.2.1 ci --ignore-scripts",
+  "git": {
+    "deploymentEnabled": {
+      "roadmap-data": false
+    }
+  }
 }

@@ -95,8 +95,8 @@ export default async function ReposPage() {
           <div className="mono-label mb-2">Not configured</div>
           <p className="text-fg-dim text-sm leading-relaxed">{initialError}</p>
           <p className="text-fg-ghost text-xs mt-3 font-mono">
-            Set env vars in Vercel: GITHUB_TOKEN, NEXT_PUBLIC_SUPABASE_URL,
-            SUPABASE_SERVICE_ROLE_KEY.
+            Set GITHUB_TOKEN in Vercel. Tracked repos are stored in repos.json on
+            the roadmap-data branch.
           </p>
         </div>
       ) : null}

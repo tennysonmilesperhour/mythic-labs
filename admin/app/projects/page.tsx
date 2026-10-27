@@ -27,8 +27,8 @@ export default async function ProjectsPage() {
           <div className="mono-label mb-2">Not configured</div>
           <p className="text-fg-dim text-sm leading-relaxed">{initialError}</p>
           <p className="text-fg-ghost text-xs mt-3 font-mono">
-            Run admin/supabase/migrations/0002_project_manager.sql and 0003_agent_roadmap.sql in Supabase,
-            and set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+            Projects are stored as files in GitHub. Set GITHUB_TOKEN with Contents
+            read and write on the data repo (default: the brain repo, branch roadmap-data).
           </p>
         </div>
       ) : null}

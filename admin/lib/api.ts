@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { Conflict, NotFound } from "./projects";
+import { Conflict, Invalid, NotFound } from "./projects";
 
 export class Unauthorized extends Error {}
 export class BadRequest extends Error {}
@@ -16,7 +16,7 @@ export async function handle(fn: () => Promise<unknown>) {
       err instanceof NotFound ? 404 :
       err instanceof Conflict ? 409 :
       err instanceof Unauthorized ? 401 :
-      err instanceof BadRequest ? 400 : 500;
+      err instanceof BadRequest || err instanceof Invalid ? 400 : 500;
     return NextResponse.json({ error: (err as Error).message }, { status });
   }
 }

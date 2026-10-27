@@ -1,4 +1,4 @@
-import { serviceClient, ADMIN_USER_ID } from "./supabase";
+import { mutate, newId, readSnapshot, type Snapshot } from "./store";
 import {
   SOON_DAYS,
   STATUSES,
@@ -22,11 +22,7 @@ import {
   type TaskRef,
 } from "./projectTypes";
 
-// See supabase/migrations/0002_project_manager.sql.
-const T_PROJECTS = "mythic_projects";
-const T_MILESTONES = "mythic_milestones";
-const T_TASKS = "mythic_tasks";
-const T_ENTRIES = "mythic_project_entries";
+// Data lives in git via store.ts: one JSON file per project.
 
 const PROJECT_FIELDS = [
   "name", "owner", "repo", "status", "priority", "summary", "description",
@@ -58,71 +54,88 @@ function pick(
 
 export class NotFound extends Error {}
 export class Conflict extends Error {}
+export class Invalid extends Error {}
 
-async function assertOwnsProject(projectId: string): Promise<Project> {
-  const { data, error } = await serviceClient()
-    .from(T_PROJECTS)
-    .select("*")
-    .eq("id", projectId)
-    .eq("user_id", ADMIN_USER_ID)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) throw new NotFound("project not found");
-  return data as Project;
+const now = () => new Date().toISOString();
+const today = () => now().slice(0, 10);
+
+// ─────────── draft helpers (run inside mutate, so they may run twice) ───────────
+
+function projectIn(s: Snapshot, id: string): ProjectDetail {
+  const d = s.projects.get(id);
+  if (!d) throw new NotFound("project not found");
+  return d;
 }
 
-async function projectIdOf(table: string, id: string): Promise<string> {
-  const { data, error } = await serviceClient()
-    .from(table)
-    .select("project_id")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) throw new NotFound("not found");
-  await assertOwnsProject(data.project_id as string);
-  return data.project_id as string;
+function findIn<K extends "tasks" | "milestones" | "entries">(
+  s: Snapshot,
+  kind: K,
+  id: string
+): { d: ProjectDetail; item: ProjectDetail[K][number] } {
+  for (const d of Array.from(s.projects.values())) {
+    const item = (d[kind] as Array<{ id: string }>).find((x) => x.id === id);
+    if (item) return { d, item: item as ProjectDetail[K][number] };
+  }
+  throw new NotFound(`${kind.slice(0, -1)} not found`);
 }
 
-async function touch(projectId: string) {
-  await serviceClient()
-    .from(T_PROJECTS)
-    .update({ updated_at: new Date().toISOString() })
-    .eq("id", projectId);
+function touch(d: ProjectDetail) {
+  d.project.updated_at = now();
 }
 
-// ─────────── projects ───────────
+function addEntry(d: ProjectDetail, input: Record<string, unknown>): Entry {
+  const clean = pick(input, ENTRY_FIELDS);
+  if (!String(clean.title || "").trim()) throw new Invalid("title required");
+  const entry: Entry = {
+    id: newId(),
+    project_id: d.project.id,
+    kind: "note",
+    title: "",
+    body: "",
+    entry_date: today(),
+    author: null,
+    version: null,
+    change_type: null,
+    source_url: null,
+    decision_status: null,
+    context: "",
+    alternatives: "",
+    consequences: "",
+    created_at: now(),
+    ...(clean as Partial<Entry>),
+  };
+  d.entries.push(entry);
+  return entry;
+}
 
-/** Every project with its plan and log. Single-admin, so one pass is fine. */
+/** "Lanternfish: " for commit messages. */
+const pfx = (s: Snapshot, projectId: string) => `${s.projects.get(projectId)?.project.name ?? "?"}: `;
+const clip = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}…` : s);
+const by = (agent?: string | null) => (agent ? ` (@${agent})` : "");
+
+// ─────────── reads ───────────
+
+function ordered(d: ProjectDetail): ProjectDetail {
+  const bySort = <T extends { sort_order: number; created_at: string }>(xs: T[]) =>
+    [...xs].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+  return {
+    project: d.project,
+    milestones: bySort(d.milestones),
+    tasks: bySort(d.tasks),
+    entries: [...d.entries].sort(
+      (a, b) => b.entry_date.localeCompare(a.entry_date) || b.created_at.localeCompare(a.created_at)
+    ),
+  };
+}
+
+/** Every project with its plan and log. */
 export async function loadAll(): Promise<ProjectDetail[]> {
-  const db = serviceClient();
-  const { data: projects, error } = await db
-    .from(T_PROJECTS)
-    .select("*")
-    .eq("user_id", ADMIN_USER_ID);
-  if (error) throw error;
-  const ids = (projects || []).map((p) => p.id as string);
-  if (!ids.length) return [];
+  const s = await readSnapshot();
+  return Array.from(s.projects.values()).map(ordered);
+}
 
-  const [tasksRes, msRes, entRes] = await Promise.all([
-    db.from(T_TASKS).select("*").in("project_id", ids),
-    db.from(T_MILESTONES).select("*").in("project_id", ids),
-    db.from(T_ENTRIES).select("*").in("project_id", ids)
-      .order("entry_date", { ascending: false })
-      .order("created_at", { ascending: false }),
-  ]);
-  if (tasksRes.error) throw tasksRes.error;
-  if (msRes.error) throw msRes.error;
-  if (entRes.error) throw entRes.error;
-  const tasks = tasksRes.data as Task[];
-  const milestones = msRes.data as Milestone[];
-  const entries = entRes.data as Entry[];
-
-  return (projects as Project[]).map((project) => ({
-    project,
-    tasks: tasks.filter((t) => t.project_id === project.id),
-    milestones: milestones.filter((m) => m.project_id === project.id),
-    entries: entries.filter((e) => e.project_id === project.id),
-  }));
+export async function getProjectDetail(id: string): Promise<ProjectDetail> {
+  return ordered(projectIn(await readSnapshot(), id));
 }
 
 export function summarize(d: ProjectDetail) {
@@ -177,264 +190,315 @@ export async function getHub(): Promise<Hub> {
   };
 }
 
-export async function getProjectDetail(id: string): Promise<ProjectDetail> {
-  const project = await assertOwnsProject(id);
-  const db = serviceClient();
-  const [ms, ts, es] = await Promise.all([
-    db.from(T_MILESTONES).select("*").eq("project_id", id).order("sort_order").order("created_at"),
-    db.from(T_TASKS).select("*").eq("project_id", id).order("sort_order").order("created_at"),
-    db.from(T_ENTRIES).select("*").eq("project_id", id)
-      .order("entry_date", { ascending: false })
-      .order("created_at", { ascending: false }),
-  ]);
-  if (ms.error) throw ms.error;
-  if (ts.error) throw ts.error;
-  if (es.error) throw es.error;
-  return {
-    project,
-    milestones: ms.data as Milestone[],
-    tasks: ts.data as Task[],
-    entries: es.data as Entry[],
-  };
-}
+// ─────────── projects ───────────
 
 export async function createProjects(
   rows: Array<Record<string, unknown>>
 ): Promise<{ created: Project[]; failed: Array<{ name: string; reason: string }> }> {
-  const created: Project[] = [];
-  const failed: Array<{ name: string; reason: string }> = [];
-  for (const row of rows) {
-    const clean = pick(row, PROJECT_FIELDS);
-    const name = String(clean.name || (clean.repo ?? "")).trim();
-    if (!name) {
-      failed.push({ name: "(blank)", reason: "name required" });
-      continue;
+  return mutate(
+    (r) => `Add ${r.created.length === 1 ? `project ${r.created[0].name}` : `${r.created.length} projects`}`,
+    (s) => {
+      const created: Project[] = [];
+      const failed: Array<{ name: string; reason: string }> = [];
+      const key = (o?: unknown, r?: unknown) => (o && r ? `${o}/${r}`.toLowerCase() : null);
+      const taken = new Set(
+        Array.from(s.projects.values()).map((d) => key(d.project.owner, d.project.repo)).filter(Boolean)
+      );
+      for (const row of rows) {
+        const clean = pick(row, PROJECT_FIELDS);
+        const pname = String(clean.name || (clean.repo ?? "")).trim();
+        if (!pname) {
+          failed.push({ name: "(blank)", reason: "name required" });
+          continue;
+        }
+        if (clean.status && !STATUSES.includes(clean.status as ProjectStatus)) {
+          failed.push({ name: pname, reason: `status must be one of ${STATUSES.join(", ")}` });
+          continue;
+        }
+        const k = key(clean.owner, clean.repo);
+        if (k && taken.has(k)) {
+          failed.push({ name: pname, reason: "already tracked" });
+          continue;
+        }
+        if (k) taken.add(k);
+        const t = now();
+        const project: Project = {
+          id: newId(),
+          name: pname,
+          owner: null,
+          repo: null,
+          status: "planned",
+          priority: "medium",
+          summary: "",
+          description: "",
+          next_action: "",
+          agent_instructions: "",
+          tags: [],
+          agents: [],
+          tools: [],
+          links: [],
+          start_date: null,
+          target_date: null,
+          sort_order: 0,
+          ...(clean as Partial<Project>),
+          status_changed_at: t,
+          created_at: t,
+          updated_at: t,
+        };
+        project.name = pname;
+        s.projects.set(project.id, { project, milestones: [], tasks: [], entries: [] });
+        created.push(project);
+      }
+      return { created, failed };
     }
-    const { data, error } = await serviceClient()
-      .from(T_PROJECTS)
-      .insert({ ...clean, name, user_id: ADMIN_USER_ID })
-      .select()
-      .single();
-    if (error) {
-      failed.push({
-        name,
-        reason: error.code === "23505" ? "already tracked" : error.message,
-      });
-    } else {
-      created.push(data as Project);
-    }
-  }
-  return { created, failed };
+  );
 }
 
 export async function updateProject(
   id: string,
   patch: Record<string, unknown>
 ): Promise<{ project: Project; entry: Entry | null }> {
-  const before = await assertOwnsProject(id);
   const clean = pick(patch, PROJECT_FIELDS);
   if (clean.status && !STATUSES.includes(clean.status as ProjectStatus)) {
-    throw new Error(`status must be one of ${STATUSES.join(", ")}`);
+    throw new Invalid(`status must be one of ${STATUSES.join(", ")}`);
   }
-  const statusChanged = !!clean.status && clean.status !== before.status;
-  const now = new Date().toISOString();
-  const { data, error } = await serviceClient()
-    .from(T_PROJECTS)
-    .update({
-      ...clean,
-      updated_at: now,
-      ...(statusChanged ? { status_changed_at: now } : {}),
-    })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw error;
-
-  let entry: Entry | null = null;
-  if (statusChanged) {
-    const from = STATUS_META[before.status].label;
-    const to = STATUS_META[clean.status as ProjectStatus].label;
-    entry = await insertEntry(id, {
-      kind: "status",
-      title: `${from} → ${to}`,
-      body: typeof patch.status_note === "string" ? patch.status_note : "",
-    });
-  }
-  return { project: data as Project, entry };
+  return mutate(
+    (r) => `${r.project.name}: ${r.entry ? `status ${r.entry.title}` : `edit ${Object.keys(clean).join(", ")}`}`,
+    (s) => {
+      const d = projectIn(s, id);
+      const before = d.project.status;
+      const statusChanged = !!clean.status && clean.status !== before;
+      Object.assign(d.project, clean, { updated_at: now() });
+      let entry: Entry | null = null;
+      if (statusChanged) {
+        d.project.status_changed_at = now();
+        entry = addEntry(d, {
+          kind: "status",
+          title: `${STATUS_META[before].label} → ${STATUS_META[clean.status as ProjectStatus].label}`,
+          body: typeof patch.status_note === "string" ? patch.status_note : "",
+        });
+      }
+      return { project: d.project, entry };
+    }
+  );
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const { error } = await serviceClient()
-    .from(T_PROJECTS)
-    .delete()
-    .eq("id", id)
-    .eq("user_id", ADMIN_USER_ID);
-  if (error) throw error;
+  await mutate(
+    (n: string) => `Delete project ${n}`,
+    (s) => {
+      const n = projectIn(s, id).project.name;
+      s.projects.delete(id);
+      return n;
+    }
+  );
 }
 
 // ─────────── milestones ───────────
 
-export async function createMilestone(
-  projectId: string,
-  input: Record<string, unknown>
-): Promise<Milestone> {
-  await assertOwnsProject(projectId);
+export async function createMilestone(projectId: string, input: Record<string, unknown>): Promise<Milestone> {
   const clean = pick(input, MILESTONE_FIELDS);
-  if (!String(clean.title || "").trim()) throw new Error("title required");
-  const { data, error } = await serviceClient()
-    .from(T_MILESTONES)
-    .insert({ ...clean, project_id: projectId })
-    .select()
-    .single();
-  if (error) throw error;
-  await touch(projectId);
-  return data as Milestone;
+  if (!String(clean.title || "").trim()) throw new Invalid("title required");
+  return mutate(
+    (m, s) => `${pfx(s, m.project_id)}milestone ${clip(m.title)} added`,
+    (s) => {
+      const d = projectIn(s, projectId);
+      const m: Milestone = {
+        id: newId(),
+        project_id: projectId,
+        title: "",
+        description: "",
+        start_date: null,
+        target_date: null,
+        done: false,
+        done_at: null,
+        sort_order: d.milestones.length,
+        created_at: now(),
+        ...(clean as Partial<Milestone>),
+      };
+      d.milestones.push(m);
+      touch(d);
+      return m;
+    }
+  );
 }
 
-export async function updateMilestone(
-  id: string,
-  patch: Record<string, unknown>
-): Promise<Milestone> {
-  const projectId = await projectIdOf(T_MILESTONES, id);
+export async function updateMilestone(id: string, patch: Record<string, unknown>): Promise<Milestone> {
   const clean = pick(patch, MILESTONE_FIELDS);
-  if ("done" in clean) clean.done_at = clean.done ? new Date().toISOString() : null;
-  const { data, error } = await serviceClient()
-    .from(T_MILESTONES)
-    .update(clean)
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw error;
-  await touch(projectId);
-  return data as Milestone;
+  return mutate(
+    (m, s) => `${pfx(s, m.project_id)}milestone ${clip(m.title)} ${"done" in clean ? (clean.done ? "reached" : "reopened") : "edited"}`,
+    (s) => {
+      const { d, item } = findIn(s, "milestones", id);
+      const m = item as Milestone;
+      Object.assign(m, clean);
+      if ("done" in clean) m.done_at = clean.done ? now() : null;
+      touch(d);
+      return m;
+    }
+  );
 }
 
 export async function deleteMilestone(id: string): Promise<void> {
-  const projectId = await projectIdOf(T_MILESTONES, id);
-  const { error } = await serviceClient().from(T_MILESTONES).delete().eq("id", id);
-  if (error) throw error;
-  await touch(projectId);
+  await mutate(
+    (t: string) => `Delete milestone ${clip(t)}`,
+    (s) => {
+      const { d, item } = findIn(s, "milestones", id);
+      d.milestones = d.milestones.filter((m) => m.id !== id);
+      for (const t of d.tasks) if (t.milestone_id === id) t.milestone_id = null;
+      touch(d);
+      return (item as Milestone).title;
+    }
+  );
 }
 
 // ─────────── tasks ───────────
 
-export async function createTask(
-  projectId: string,
-  input: Record<string, unknown>
-): Promise<Task> {
-  await assertOwnsProject(projectId);
-  const clean = pick(input, TASK_FIELDS);
-  if (!String(clean.title || "").trim()) throw new Error("title required");
-  if (clean.status === "done") clean.done_at = new Date().toISOString();
-  if (clean.parent_id && !clean.milestone_id) {
-    // Subtasks live in their parent's milestone.
-    const { data: parent } = await serviceClient()
-      .from(T_TASKS)
-      .select("project_id, milestone_id")
-      .eq("id", clean.parent_id as string)
-      .maybeSingle();
-    if (!parent || parent.project_id !== projectId) throw new NotFound("parent task not found in this project");
-    clean.milestone_id = parent.milestone_id;
+function newTask(d: ProjectDetail, clean: Record<string, unknown>): Task {
+  if (!String(clean.title || "").trim()) throw new Invalid("title required");
+  if (clean.parent_id) {
+    // Subtasks live in their parent's project and milestone.
+    const parent = d.tasks.find((t) => t.id === clean.parent_id);
+    if (!parent) throw new NotFound("parent task not found in this project");
+    if (!clean.milestone_id) clean.milestone_id = parent.milestone_id;
   }
-  const { data, error } = await serviceClient()
-    .from(T_TASKS)
-    .insert({ ...clean, project_id: projectId })
-    .select()
-    .single();
-  if (error) throw error;
-  await touch(projectId);
-  return data as Task;
+  const t = now();
+  const task: Task = {
+    id: newId(),
+    project_id: d.project.id,
+    milestone_id: null,
+    parent_id: null,
+    title: "",
+    notes: "",
+    acceptance: "",
+    depends_on: [],
+    status: "todo",
+    priority: "medium",
+    agent: null,
+    due_date: null,
+    claimed_at: null,
+    done_at: null,
+    sort_order: d.tasks.length,
+    created_at: t,
+    updated_at: t,
+    ...(clean as Partial<Task>),
+  };
+  if (task.status === "done") task.done_at = t;
+  if (task.status === "doing") task.claimed_at = t;
+  d.tasks.push(task);
+  touch(d);
+  return task;
 }
 
-export async function updateTask(
-  id: string,
-  patch: Record<string, unknown>
-): Promise<Task> {
-  const projectId = await projectIdOf(T_TASKS, id);
-  const clean = pick(patch, TASK_FIELDS);
-  if ("status" in clean) {
-    clean.done_at = clean.status === "done" ? new Date().toISOString() : null;
-    if (clean.status === "doing") clean.claimed_at = new Date().toISOString();
-  }
+function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unknown>) {
   if (Array.isArray(clean.depends_on)) {
-    clean.depends_on = (clean.depends_on as string[]).filter((d) => d !== id);
+    const ids = new Set(d.tasks.map((t) => t.id));
+    clean.depends_on = (clean.depends_on as string[]).filter((x) => x !== task.id && ids.has(x));
   }
-  const { data, error } = await serviceClient()
-    .from(T_TASKS)
-    .update({ ...clean, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw error;
-  await touch(projectId);
-  return data as Task;
+  if ("status" in clean && clean.status !== task.status) {
+    task.done_at = clean.status === "done" ? now() : null;
+    if (clean.status === "doing") task.claimed_at = now();
+  }
+  Object.assign(task, clean, { updated_at: now() });
+  touch(d);
+}
+
+export async function createTask(projectId: string, input: Record<string, unknown>): Promise<Task> {
+  return mutate(
+    (t, s) => `${pfx(s, t.project_id)}add ${clip(t.title)}`,
+    (s) => newTask(projectIn(s, projectId), pick(input, TASK_FIELDS))
+  );
+}
+
+export async function updateTask(id: string, patch: Record<string, unknown>): Promise<Task> {
+  const clean = pick(patch, TASK_FIELDS);
+  return mutate(
+    (t, s) => `${pfx(s, t.project_id)}${clip(t.title)} → ${"status" in clean ? t.status : `edit ${Object.keys(clean).join(", ")}`}`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", id);
+      applyTaskPatch(d, item as Task, { ...clean });
+      return item as Task;
+    }
+  );
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const projectId = await projectIdOf(T_TASKS, id);
-  const { error } = await serviceClient().from(T_TASKS).delete().eq("id", id);
-  if (error) throw error;
-  await touch(projectId);
+  await mutate(
+    (t: string) => `Delete task ${clip(t)}`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", id);
+      const drop = new Set([id, ...openDescendants(item as Task, d.tasks).map((t) => t.id)]);
+      // openDescendants skips finished subtasks; sweep every descendant.
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const t of d.tasks) {
+          if (t.parent_id && drop.has(t.parent_id) && !drop.has(t.id)) {
+            drop.add(t.id);
+            grew = true;
+          }
+        }
+      }
+      d.tasks = d.tasks.filter((t) => !drop.has(t.id));
+      for (const t of d.tasks) t.depends_on = t.depends_on.filter((x) => !drop.has(x));
+      touch(d);
+      return (item as Task).title;
+    }
+  );
 }
 
 // ─────────── entries ───────────
-
-async function insertEntry(
-  projectId: string,
-  input: Record<string, unknown>
-): Promise<Entry> {
-  const clean = pick(input, ENTRY_FIELDS);
-  if (!String(clean.title || "").trim()) throw new Error("title required");
-  const { data, error } = await serviceClient()
-    .from(T_ENTRIES)
-    .insert({ ...clean, project_id: projectId })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Entry;
-}
 
 export async function createEntries(
   projectId: string,
   inputs: Array<Record<string, unknown>>
 ): Promise<{ created: Entry[]; skipped: number }> {
-  await assertOwnsProject(projectId);
-  const created: Entry[] = [];
-  let skipped = 0;
-  for (const input of inputs) {
-    try {
-      created.push(await insertEntry(projectId, input));
-    } catch (err: unknown) {
-      // Same source_url imported twice: skip quietly.
-      if ((err as { code?: string }).code === "23505") skipped++;
-      else throw err;
+  return mutate(
+    (r, s) => {
+      const e = r.created[0];
+      if (r.created.length !== 1) return `${pfx(s, projectId)}log ${r.created.length} entries`;
+      return `${pfx(s, projectId)}${e.kind} · ${clip(e.title)}${by(e.author)}`;
+    },
+    (s) => {
+      const d = projectIn(s, projectId);
+      const created: Entry[] = [];
+      let skipped = 0;
+      for (const input of inputs) {
+        // Same source_url imported twice: skip quietly.
+        if (input.source_url && d.entries.some((e) => e.source_url === input.source_url)) {
+          skipped++;
+          continue;
+        }
+        created.push(addEntry(d, input));
+      }
+      if (created.length) touch(d);
+      return { created, skipped };
     }
-  }
-  await touch(projectId);
-  return { created, skipped };
+  );
 }
 
-export async function updateEntry(
-  id: string,
-  patch: Record<string, unknown>
-): Promise<Entry> {
-  const projectId = await projectIdOf(T_ENTRIES, id);
-  const { data, error } = await serviceClient()
-    .from(T_ENTRIES)
-    .update(pick(patch, ENTRY_FIELDS))
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw error;
-  await touch(projectId);
-  return data as Entry;
+export async function updateEntry(id: string, patch: Record<string, unknown>): Promise<Entry> {
+  const clean = pick(patch, ENTRY_FIELDS);
+  return mutate(
+    (e, s) => `${pfx(s, e.project_id)}${clip(e.title)} → ${clean.decision_status ?? "edited"}`,
+    (s) => {
+      const { d, item } = findIn(s, "entries", id);
+      Object.assign(item, clean);
+      touch(d);
+      return item as Entry;
+    }
+  );
 }
 
 export async function deleteEntry(id: string): Promise<void> {
-  const projectId = await projectIdOf(T_ENTRIES, id);
-  const { error } = await serviceClient().from(T_ENTRIES).delete().eq("id", id);
-  if (error) throw error;
-  await touch(projectId);
+  await mutate(
+    (t: string) => `Delete entry ${clip(t)}`,
+    (s) => {
+      const { d, item } = findIn(s, "entries", id);
+      d.entries = d.entries.filter((e) => e.id !== id);
+      touch(d);
+      return (item as Entry).title;
+    }
+  );
 }
 
 // ─────────── agent workflow ───────────
@@ -448,39 +512,36 @@ export async function nextTask(
   agent: string,
   projectId?: string
 ): Promise<{ task: Task; detail: ProjectDetail } | null> {
-  const all = sortProjects(
-    (await loadAll()).map((d) => ({ ...d.project, d }))
-  ).map((x) => x.d);
+  const all = sortProjects((await loadAll()).map((d) => ({ ...d.project, d }))).map((x) => x.d);
   for (const d of all) {
     if (projectId && d.project.id !== projectId) continue;
     if (!WORKABLE.includes(d.project.status)) continue;
     // Unassigned work only from projects that list this agent (or list none).
     const open = !d.project.agents.length || d.project.agents.includes(agent);
-    const task = rankReady(d.tasks, d.milestones).find(
-      (t) => t.agent === agent || (!t.agent && open)
-    );
+    const task = rankReady(d.tasks, d.milestones).find((t) => t.agent === agent || (!t.agent && open));
     if (task) return { task, detail: d };
   }
   return null;
 }
 
-async function logProgress(projectId: string, title: string, body: string, author: string | null) {
-  await insertEntry(projectId, { kind: "progress", title, body, author });
-}
-
+/** Atomic: the check and the claim land in one commit, so two agents can't both win. */
 export async function claimTask(id: string, agent: string): Promise<Task> {
-  const projectId = await projectIdOf(T_TASKS, id);
-  const detail = await getProjectDetail(projectId);
-  const task = detail.tasks.find((t) => t.id === id)!;
-  if (task.status === "doing" && task.agent && task.agent !== agent) {
-    throw new Conflict(`already claimed by @${task.agent}`);
-  }
-  if (task.status !== "doing" && !isReady(task, detail.tasks)) {
-    throw new Conflict(`not ready (status ${task.status}, or waiting on dependencies or subtasks)`);
-  }
-  const updated = await updateTask(id, { status: "doing", agent });
-  await logProgress(projectId, `Started: ${task.title}`, "", agent);
-  return updated;
+  return mutate(
+    (t, s) => `${pfx(s, t.project_id)}${clip(t.title)} claimed by @${agent}`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", id);
+      const task = item as Task;
+      if (task.status === "doing" && task.agent && task.agent !== agent) {
+        throw new Conflict(`already claimed by @${task.agent}`);
+      }
+      if (task.status !== "doing" && !isReady(task, d.tasks)) {
+        throw new Conflict(`not ready (status ${task.status}, or waiting on dependencies or subtasks)`);
+      }
+      applyTaskPatch(d, task, { status: "doing", agent });
+      addEntry(d, { kind: "progress", title: `Started: ${task.title}`, author: agent });
+      return task;
+    }
+  );
 }
 
 /** Status change and/or progress note from an agent; the note is logged. */
@@ -489,21 +550,25 @@ export async function reportTask(
   agent: string,
   input: { status?: string; note?: string }
 ): Promise<Task> {
-  const projectId = await projectIdOf(T_TASKS, id);
-  if (input.status === "done") {
-    const { tasks } = await getProjectDetail(projectId);
-    const open = openDescendants(tasks.find((t) => t.id === id)!, tasks);
-    if (open.length) {
-      throw new Conflict(`finish or remove its open subtasks first: ${open.map((t) => t.title).join("; ")}`);
-    }
-  }
-  const patch: Record<string, unknown> = {};
-  if (input.status) patch.status = input.status;
-  const task = await updateTask(id, patch); // an empty patch still bumps updated_at
   const verb =
     input.status === "done" ? "Finished" :
     input.status === "blocked" ? "Blocked" :
     input.status === "todo" ? "Released" : "Progress";
-  await logProgress(projectId, `${verb}: ${task.title}`, input.note ?? "", agent);
-  return task;
+  return mutate(
+    (t, s) => `${pfx(s, t.project_id)}${verb.toLowerCase()} ${clip(t.title)} (@${agent})`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", id);
+      const task = item as Task;
+      if (input.status === "done") {
+        const open = openDescendants(task, d.tasks);
+        if (open.length) {
+          throw new Conflict(`finish or remove its open subtasks first: ${open.map((t) => t.title).join("; ")}`);
+        }
+      }
+      applyTaskPatch(d, task, input.status ? { status: input.status } : {});
+      addEntry(d, { kind: "progress", title: `${verb}: ${task.title}`, body: input.note ?? "", author: agent });
+      return task;
+    }
+  );
 }
+
