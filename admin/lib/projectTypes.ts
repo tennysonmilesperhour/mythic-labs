@@ -357,6 +357,9 @@ export function computeAttention(d: ProjectDetail, lastActivity: string | null):
       add("high", `overdue:${t.id}`, `Overdue: ${t.title}`, `due ${fmtDate(t.due_date)}`, t.id);
     } else if (t.status === "doing" && daysSince(t.updated_at) >= STALLED_CLAIM_DAYS) {
       add("medium", `stalled:${t.id}`, `Stalled: ${t.title}`, `${t.agent ? `@${t.agent}, ` : ""}no update in ${daysSince(t.updated_at)}d`, t.id);
+    } else if (t.priority === "critical" && t.status !== "done" && p.status !== "paused") {
+      // Critical work is urgent by definition, even before it's late or blocked.
+      add("high", `critical:${t.id}`, `Critical: ${t.title}`, t.status === "doing" ? `in progress${t.agent ? `, @${t.agent}` : ""}` : t.agent ? `@${t.agent}` : "unassigned", t.id);
     }
   }
   for (const m of milestones) {
