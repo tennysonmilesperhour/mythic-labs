@@ -113,7 +113,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <Field label="Plugin">
           <select
             value={plugin}
@@ -243,7 +243,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <Field label="Plugin">
           <select
             value={plugin}

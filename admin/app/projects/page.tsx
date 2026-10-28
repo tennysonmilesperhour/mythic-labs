@@ -1,46 +1,44 @@
-import { listProjectSummaries } from "@/lib/projects";
+import { getHub } from "@/lib/projects";
+import type { Hub } from "@/lib/projectTypes";
 import ProjectsClient from "./ProjectsClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectsPage() {
-  let data: Awaited<ReturnType<typeof listProjectSummaries>> = { projects: [], timeline: [] };
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
+  const { view } = await searchParams;
+  let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [] };
   let initialError: string | null = null;
   try {
-    data = await listProjectSummaries();
+    hub = await getHub();
   } catch (err: unknown) {
     initialError = (err as Error).message;
   }
 
   return (
     <div>
-      <div className="hairline-accent mb-10">
+      <div className="hairline-accent mb-6">
         <span className="mono-label">01 · Projects</span>
       </div>
-      <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
+      <h1 className="serif-display text-[2.2rem] md:text-[3rem] leading-[1] mb-6">
         Everything you&apos;re building
       </h1>
-      <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">
-        Every repo and idea in one place. Flip a project between active,
-        building, planned and paused; open it for its plan, changelog,
-        decisions, agents and tools.
-      </p>
 
       {initialError ? (
         <div className="border border-line bg-bg-warm/80 p-6 mb-8 glow-anchor">
           <div className="mono-label mb-2">Not configured</div>
           <p className="text-fg-dim text-sm leading-relaxed">{initialError}</p>
           <p className="text-fg-ghost text-xs mt-3 font-mono">
-            Run admin/supabase/migrations/0002_project_manager.sql in Supabase,
-            and set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+            Projects are stored as files in a private GitHub repo. Set PM_DATA_REPO
+            (owner/repo, must be private) and a GITHUB_TOKEN with Contents read and write on it.
           </p>
         </div>
       ) : null}
 
-      <ProjectsClient
-        initialProjects={data.projects}
-        timeline={data.timeline}
-      />
+      <ProjectsClient hub={hub} initialView={view === "list" || view === "timeline" ? view : "board"} />
     </div>
   );
 }

@@ -16,7 +16,7 @@
     {
       "name": "dev-workflows",
       "source": "./dev-workflows",
-      "description": "PR review, security audit, deploy helpers, and CI autofix patterns. Bundles MCP access to GitHub, Supabase, and Vercel where applicable."
+      "description": "PR review, security audit, deploy helpers, CI autofix patterns, and the roadmap loop autonomous build agents use to take, build and report tasks from the dashboard. Bundles MCP access to GitHub, Supabase, and Vercel where applicable."
     },
     {
       "name": "content-ops",

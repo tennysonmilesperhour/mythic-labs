@@ -308,6 +308,7 @@ export function DecisionsTab({ store }: { store: Store }) {
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
   const list = store.entries.filter((e) => e.kind === "decision");
+  const ordered = [...list.filter((e) => e.decision_status === "proposed"), ...list.filter((e) => e.decision_status !== "proposed")];
 
   const submit = async () => {
     try {
@@ -368,10 +369,10 @@ export function DecisionsTab({ store }: { store: Store }) {
       {list.length === 0 && !showForm ? <p className="text-fg-ghost text-sm">No decisions recorded yet.</p> : null}
 
       <div className="flex flex-col gap-4">
-        {list.map((e, i) => (
+        {ordered.map((e) => (
           <article key={e.id} className={`group border border-line bg-bg/85 p-5 ${e.decision_status === "superseded" || e.decision_status === "rejected" ? "opacity-60" : ""}`}>
             <div className="flex items-baseline gap-3 mb-3">
-              <span className="font-mono text-[0.58rem] text-fg-ghost">ADR-{String(list.length - i).padStart(3, "0")}</span>
+              <span className="font-mono text-[0.58rem] text-fg-ghost">ADR-{String(list.length - list.indexOf(e)).padStart(3, "0")}</span>
               <h3 className="serif-display text-[1.4rem] leading-tight flex-1">
                 <InlineText value={e.title} onSave={(title) => title && patch(e.id, { title })} />
               </h3>
@@ -386,11 +387,25 @@ export function DecisionsTab({ store }: { store: Store }) {
                   ))}
                 </select>
               </Chip>
-              <span className="font-mono text-[0.58rem] text-fg-ghost">{fmtDate(e.entry_date)}</span>
+              <span className="font-mono text-[0.58rem] text-fg-ghost">
+                {e.author ? `@${e.author} · ` : ""}
+                {fmtDate(e.entry_date)}
+              </span>
               <button onClick={() => remove(e.id)} className="text-fg-ghost hover:text-fg opacity-0 group-hover:opacity-100">
                 <GlyphClose size={10} />
               </button>
             </div>
+            {e.decision_status === "proposed" ? (
+              <div className="flex items-center gap-2 mb-4 border border-accent bg-[rgba(139,115,85,0.05)] px-3 py-2">
+                <span className="mono-label flex-1">Waiting on your call</span>
+                <button className={btnPrimary} onClick={() => patch(e.id, { decision_status: "accepted" })}>
+                  Accept
+                </button>
+                <button className={btnGhost} onClick={() => patch(e.id, { decision_status: "rejected" })}>
+                  Reject
+                </button>
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
               {fields.map(([k, label]) => (
                 <div key={k}>
@@ -470,7 +485,10 @@ export function ActivityTab({ store }: { store: Store }) {
       ...entries.map((e) => ({
         at: e.created_at,
         kind: e.kind,
-        text: e.kind === "status" ? `Status ${e.title}${e.body ? `: ${e.body}` : ""}` : e.title,
+        text:
+          (e.author ? `@${e.author} · ` : "") +
+          (e.kind === "status" ? `Status ${e.title}` : e.title) +
+          (e.body && (e.kind === "status" || e.kind === "progress") ? `: ${e.body}` : ""),
       })),
       ...tasks.filter((t) => t.done_at).map((t) => ({ at: t.done_at!, kind: "done", text: `${t.agent ? `@${t.agent} · ` : ""}${t.title}` })),
       ...milestones.filter((m) => m.done_at).map((m) => ({ at: m.done_at!, kind: "milestone", text: `Milestone reached: ${m.title}` })),
@@ -483,7 +501,9 @@ export function ActivityTab({ store }: { store: Store }) {
       {feed.map((r, i) => (
         <li key={i} className="pl-6 py-2 relative flex items-baseline gap-4">
           <span className={`absolute -left-[4px] top-[0.85rem] h-[7px] w-[7px] rounded-full ${r.kind === "status" || r.kind === "milestone" ? "bg-accent" : "bg-fg-ghost"}`} />
-          <span className="font-mono text-[0.58rem] text-fg-ghost w-28 shrink-0">{fmtDate(r.at)}</span>
+          <span className="font-mono text-[0.58rem] text-fg-ghost w-28 shrink-0" title={new Date(r.at).toLocaleString()}>
+            {fmtDate(r.at)}
+          </span>
           <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent w-20 shrink-0">{r.kind}</span>
           <span className="text-[0.88rem] text-fg">{r.text}</span>
         </li>

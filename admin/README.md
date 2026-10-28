@@ -2,7 +2,7 @@
 
 A small Next.js app for the Mythic Labs central brain (this repo's plugin marketplace): manage everything you're building, browse the catalogue, get the install commands, and check the few repos that override your default. It never writes to consuming repos.
 
-**Single-admin, no-login by design.** Multi-user is a future add (Supabase auth).
+**Single-admin, no-login by design.** No database: data is committed to a git branch (see Data below).
 
 ---
 
@@ -10,7 +10,7 @@ A small Next.js app for the Mythic Labs central brain (this repo's plugin market
 
 | Section | What it lets you do |
 |---|---|
-| **Projects** | Project manager for every repo or idea. Toggle each between Active, Building, Planned and Paused (buttons or drag on the board). Board, list and timeline views. Each project has a plan (milestones → tasks → subtasks with checkboxes, status, priority, due dates and an assigned agent), a changelog (log by hand or import merged PRs/commits from GitHub), a decision log (ADR style), notes, an activity feed, assigned agents, connected tools, tags, links, and a Handoff tab that writes an agent brief or a `PROJECT.md`. **Import from GitHub** adds all your repos in one pass. |
+| **Projects** | The at-a-glance hub: a one-line status sentence, **Needs attention** (blocked, overdue, stalled agent work, decisions waiting on you, quiet projects, missing next actions), what's in progress, and what's due in 14 days. Below that, the project manager for every repo or idea. Toggle each between Active, Building, Planned and Paused (buttons or drag on the board). Board, list and timeline views. Each project has a plan (milestones → tasks → subtasks with checkboxes, status, priority, due dates and an assigned agent), a changelog (log by hand or import merged PRs/commits from GitHub), a decision log (ADR style), notes, an activity feed, assigned agents, connected tools, tags, links, and a Handoff tab that writes an agent brief or a `PROJECT.md`. **Import from GitHub** adds all your repos in one pass. |
 | **Repos** | Install paths for your machine (user scope) and your organization (claude.ai sync). Below them, track repos that need a different plugin set: toggle chips, **Copy JSON** to commit yourself, and **Check** to compare against what's on GitHub (read-only). |
 | **Brain** | Reads `.claude-plugin/marketplace.json` and every plugin manifest in this repo. Browse every skill, agent, command, hook the brain ships. |
 | **Authoring** | Three forms: register an MCP server in a plugin, draft a new slash command, or verify a consuming repo's wiring. All commits go straight to the brain repo. |
@@ -19,26 +19,32 @@ A small Next.js app for the Mythic Labs central brain (this repo's plugin market
 
 ## Deploy (one-time setup)
 
-### 1 · Supabase
+### 1 · Data (no database)
 
-In your Supabase project SQL editor, run:
+Everything the dashboard stores (projects, plans, logs, tracked repos) lives as files in a **private** GitHub repo:
 
 ```
-admin/supabase/migrations/0001_initial_schema.sql
-admin/supabase/migrations/0002_project_manager.sql
+PM_DATA_REPO, branch roadmap-data   (branch created on first write)
+├── README.md
+├── projects/<id>.json   one project: plan, log, settings (source of truth)
+├── projects/<id>.md     the same project as Markdown, for people and agents
+└── repos.json           the Repos page's tracked exceptions
 ```
 
-0001 creates `mythic_users`, `mythic_repos`, `mythic_repo_plugins` and seeds a hardcoded admin user. 0002 adds the project manager: `mythic_projects`, `mythic_milestones`, `mythic_tasks`, `mythic_project_entries`.
+Every edit is one commit, so `git log roadmap-data` is the audit trail.
 
-Note the project URL and these two keys:
-- **Publishable key** (anon, safe to expose) → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- **Service role key** (server-only) → `SUPABASE_SERVICE_ROLE_KEY`
+- Set `PM_DATA_REPO=owner/repo` (required) and optionally `PM_DATA_BRANCH`.
+- The token needs Contents read & write on that repo.
+- **The repo must be private.** The data includes the names and descriptions of private repos you import, so the store checks visibility and refuses to write to a public repo.
+- Use a repo that isn't connected to Vercel, so data commits don't trigger builds.
+
+How writes stay safe (`lib/store.ts`): each change reads the branch head, applies the edit, and commits all touched files at once with a non-forced ref update. If someone else committed first, GitHub rejects it (422) and the store re-reads and re-applies, up to 5 tries. Agent claims run their checks inside that loop, so two agents can't both claim a task.
 
 ### 2 · GitHub PAT
 
 Create a fine-grained Personal Access Token with:
-- **Repository access**: `mythic-labs`, plus any repo you want **Check** to read or track in **Projects** (its changelog importer reads PRs and commits)
-- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring commits there); `Contents: read` and `Pull requests: read` everywhere else
+- **Repository access**: `mythic-labs`, the private data repo, plus any repo you want **Check** to read or track in **Projects** (its changelog importer reads PRs and commits)
+- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring commits there) and on the data repo; `Contents: read` and `Pull requests: read` everywhere else
 
 Save the token; it goes into Vercel env as `GITHUB_TOKEN`.
 
@@ -60,11 +66,32 @@ Add env vars (see `admin/.env.local.example`):
 GITHUB_TOKEN=ghp_...
 BRAIN_OWNER=tennysonmilesperhour
 BRAIN_REPO=mythic-labs
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-ADMIN_USER_ID=00000000-0000-0000-0000-000000000001
+PM_DATA_REPO=<owner>/<private-repo>   # where projects are stored
+PM_AGENT_TOKEN=<long random string>   # turns on the agent API
 ```
+
+---
+
+## Agent API (autonomous build agents)
+
+The dashboard doubles as the roadmap agents work from. Set `PM_AGENT_TOKEN` (e.g. `openssl rand -hex 32`) to turn it on; every call needs `Authorization: Bearer <token>` and the agent's name (`X-Agent` header or `?agent=`).
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/agent/roadmap` | All projects as Markdown (or `?format=json`): status, ready work, attention flags |
+| `GET /api/agent/projects/:id` | One project as Markdown with task ids |
+| `GET /api/agent/next[?project=]` | Next ready task for this agent, with build instructions, acceptance criteria and active decisions |
+| `POST /api/agent/tasks/:id/claim` | Mark doing and assign. 409 if another agent holds it or it isn't ready |
+| `PATCH /api/agent/tasks/:id` | `{status, note}`; blocked needs a note; done is refused while subtasks are open |
+| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up |
+| `POST /api/agent/projects/:id/entries` | Changelog, progress, note, or decision (always lands as *proposed*) |
+| `PATCH /api/agent/projects/:id` | `{next_action}` only |
+
+**Ready** means: todo, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering.
+
+The `roadmap` skill in `dev-workflows` teaches any agent this loop. Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
+
+The dashboard's own pages and `/api/*` routes are still no-auth (single-admin mode), so keep Vercel Deployment Protection on.
 
 ---
 
@@ -73,12 +100,23 @@ ADMIN_USER_ID=00000000-0000-0000-0000-000000000001
 ```bash
 cd admin
 cp .env.local.example .env.local
-# fill in real values
+# fill in real values, or set PM_DATA_DIR=./.data to keep data on disk with no GitHub writes
 npm install
 npm run dev
 ```
 
 Visit http://localhost:3000.
+
+### Testing the store and agent API without a token
+
+`scripts/fake-github.mjs` fakes GitHub's Git Data API (strict about non-fast-forward updates, like the real one). `scripts/smoke.mjs` runs the agent loop, a five-way claim race and a burst of parallel writes against it.
+
+```bash
+node scripts/fake-github.mjs &        # port 4010
+GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_DATA_REPO=test/data PM_AGENT_TOKEN=smoke-token \
+  sh -c 'npm run build && npm start' &
+node scripts/smoke.mjs                # expects: all checks passed
+```
 
 ---
 
@@ -93,10 +131,11 @@ admin/
 │   ├── brain/                    ← / brain
 │   ├── authoring/                ← / authoring · AuthoringClient
 │   └── api/
+│       ├── agent/*               ← token-protected API for autonomous agents
 │       ├── projects/*            ← projects + nested milestones/tasks/entries, GitHub activity
 │       ├── tasks|milestones|entries/[id] ← edit/delete one item
 │       ├── github/repos          ← repos the token can read (project import)
-│       ├── repos/*               ← tracked-exception CRUD (Supabase only)
+│       ├── repos/*               ← tracked-exception CRUD
 │       ├── marketplace/          ← reads brain marketplace.json
 │       ├── plugins/[slug]/       ← reads plugin manifest + skills/agents
 │       ├── verify/[owner]/[repo] ← inspects consuming repo wiring
@@ -105,28 +144,23 @@ admin/
 │           └── command/          ← commits commands/<name>.md
 ├── components/                   ← Sidebar, LivingCanvas, Glyphs, CopyBlock
 ├── lib/
-│   ├── supabase.ts               ← service-role client factory
-│   ├── db.ts                     ← typed repo + plugin queries
-│   ├── projects.ts               ← project manager queries (server)
-│   ├── projectTypes.ts           ← project types, stats, Markdown export (client-safe)
+│   ├── store.ts                  ← git-backed data store (GitHub branch, or disk in dev)
+│   ├── db.ts                     ← tracked repos + plugin toggles (repos.json)
+│   ├── projects.ts               ← project manager reads and writes (server)
+│   ├── projectTypes.ts           ← types, readiness, attention engine, Markdown roadmap (client-safe)
+│   ├── api.ts                    ← route helpers, agent auth
 │   ├── github.ts                 ← Octokit reads; writes only to the brain repo
 │   ├── brain.ts                  ← marketplace + plugin inventory
 │   └── settings.ts               ← renders per-repo settings.json (client-safe)
-└── supabase/migrations/          ← SQL schema
+└── scripts/                      ← fake GitHub + smoke test
 ```
 
-**Why this stack:** Next.js gives one repo for UI + API; Vercel deploy is a single command (and you have MCP access); Supabase is already authorized through MCP and gives you a clean path to multi-user later.
+**Why this stack:** Next.js gives one repo for UI + API; Vercel deploy is a single command; git as the store means no database to run or pay for, a full history of every change, and a roadmap any agent can read straight from GitHub.
+
+**Limits of the git store:** a save takes about a second (four GitHub calls), every edit is a commit, and each read lists the whole tree. Comfortable for dozens of projects with hundreds of tasks each. Heavier use would want a real database behind the same `lib/projects.ts` API.
 
 ---
 
 ## Path to multi-user
 
-When ready:
-
-1. Enable Supabase Auth (GitHub provider — already integrated with PATs)
-2. Drop the seeded `users` row and FK `repos.user_id` → `auth.users(id)`
-3. Replace `ADMIN_USER_ID` lookups with `auth.uid()` from the session
-4. Switch the API routes from service-role client to authenticated user client
-5. Update RLS policies to `auth.uid() = user_id`
-
-Nothing about the UI or the marketplace structure has to change.
+Add auth in front (e.g. Auth.js with the GitHub provider, or Vercel's own protection), then record the signed-in user as the author of each change. The commit history already says what changed and when.

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listRepos } from "@/lib/db";
-import { listProjectSummaries } from "@/lib/projects";
+import { getHub } from "@/lib/projects";
+import { AttentionList } from "@/components/Glance";
 import { fetchMarketplace } from "@/lib/brain";
 import { GlyphArrow } from "@/components/Glyphs";
 
@@ -10,9 +11,9 @@ export default async function Overview() {
   const [repos, marketplace, pm] = await Promise.all([
     listRepos().catch(() => []),
     fetchMarketplace().catch(() => null),
-    listProjectSummaries().catch(() => ({ projects: [] })),
+    getHub().catch(() => null),
   ]);
-  const activeProjects = pm.projects.filter(
+  const activeProjects = (pm?.projects ?? []).filter(
     (p) => p.status === "active" || p.status === "building"
   ).length;
 
@@ -25,7 +26,7 @@ export default async function Overview() {
         <span className="mono-label">00 · Overview</span>
       </div>
 
-      <h1 className="serif-display text-[4.5rem] leading-[0.95] mb-7 max-w-3xl">
+      <h1 className="serif-display text-[3rem] md:text-[4.5rem] leading-[0.95] mb-7 max-w-3xl">
         One brain.
         <br />
         Every repo.
@@ -39,24 +40,42 @@ export default async function Overview() {
       </p>
 
       {/* Stats — tabular numerals, generous gap */}
-      <div className="grid grid-cols-4 gap-px bg-line border border-line mb-24">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line mb-24">
         <Stat label="Projects in motion" value={activeProjects} />
         <Stat label="Plugins available" value={pluginCount} />
         <Stat label="Tracked exceptions" value={repos.length} />
         <Stat label="Brain version" value={marketplace?.version ?? "—"} mono />
       </div>
 
+      {pm && pm.projects.length ? (
+        <section className="mb-24">
+          <div className="flex items-baseline justify-between mb-4">
+            <div className="hairline-accent-sm">
+              <span className="mono-label">Needs attention</span>
+            </div>
+            <Link href="/projects" className="font-mono text-[0.6rem] tracking-[0.2em] uppercase text-accent">
+              All projects →
+            </Link>
+          </div>
+          <AttentionList
+            items={pm.attention}
+            limit={5}
+            empty="Nothing flagged across your projects."
+          />
+        </section>
+      ) : null}
+
       {/* Problem / solution */}
       <section className="mb-24">
         <div className="hairline-accent-sm mb-6">
           <span className="mono-label">The problem</span>
         </div>
-        <h2 className="serif-display text-[2.4rem] leading-[1.1] mb-12 max-w-3xl">
+        <h2 className="serif-display text-[1.8rem] md:text-[2.4rem] leading-[1.1] mb-12 max-w-3xl">
           Every repo wants the same Claude Code setup. Maintaining it by hand
           is a tax that grows with every new project.
         </h2>
 
-        <div className="grid grid-cols-2 gap-px bg-line border border-line">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-line border border-line">
           <Column
             tag="Without this system"
             color="dim"
@@ -87,7 +106,7 @@ export default async function Overview() {
         <div className="hairline-accent-sm mb-6">
           <span className="mono-label">How it operates</span>
         </div>
-        <div className="grid grid-cols-3 gap-px bg-line border border-line">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-line border border-line">
           <Step
             num="01"
             title="Enable once"
@@ -111,7 +130,7 @@ export default async function Overview() {
         <div className="hairline-accent-sm mb-6">
           <span className="mono-label">Where to go next</span>
         </div>
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Card
             num="01"
             title="Projects"

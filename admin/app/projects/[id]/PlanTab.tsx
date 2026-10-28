@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TASK_STATUSES,
   fmtDate,
   isOverdue,
+  isReady,
+  relTime,
+  waitingOn,
   type Milestone,
   type Task,
   type TaskStatus,
@@ -19,7 +22,22 @@ export default function PlanTab({ store }: { store: Store }) {
   const { project, milestones, tasks, setMilestones, setTasks, fail } = store;
   const [hideDone, setHideDone] = useState(false);
   const [agentFilter, setAgentFilter] = useState("");
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<Set<string>>(() => {
+    // Deep link (?task=…): expand the task's ancestors so it's visible.
+    const s = new Set<string>();
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    let cur = store.focusTask ? byId.get(store.focusTask) : undefined;
+    if (cur) s.add(cur.id);
+    while (cur?.parent_id) {
+      s.add(cur.parent_id);
+      cur = byId.get(cur.parent_id);
+    }
+    return s;
+  });
+  useEffect(() => {
+    if (!store.focusTask) return;
+    document.getElementById(`task-${store.focusTask}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [store.focusTask]);
   const [msTitle, setMsTitle] = useState("");
   const [msDate, setMsDate] = useState("");
 
@@ -160,6 +178,8 @@ export default function PlanTab({ store }: { store: Store }) {
     subtreeCount,
     agentOptions: store.agentOptions,
     milestones,
+    allTasks: tasks,
+    focusTask: store.focusTask,
   };
 
   const roots = children.get(null) || [];
@@ -279,6 +299,8 @@ type RowProps = {
   subtreeCount: (id: string) => { done: number; total: number };
   agentOptions: string[];
   milestones: Milestone[];
+  allTasks: Task[];
+  focusTask: string | null;
 };
 
 function TaskList({ tasks, depth, ...rp }: { tasks: Task[]; depth: number } & RowProps) {
@@ -294,10 +316,10 @@ function TaskList({ tasks, depth, ...rp }: { tasks: Task[]; depth: number } & Ro
 }
 
 const STATUS_STYLE: Record<TaskStatus, string> = {
-  todo: "text-fg-ghost border-line",
-  doing: "text-accent border-accent",
+  todo: "text-fg-ghost border-line bg-transparent",
+  doing: "text-accent border-accent bg-transparent",
   blocked: "text-bg bg-fg border-fg",
-  done: "text-fg-ghost border-line",
+  done: "text-fg-ghost border-line bg-transparent",
 };
 
 function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowProps) {
@@ -306,10 +328,17 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
   const sub = rp.subtreeCount(t.id);
   const done = t.status === "done";
   const late = isOverdue(t.due_date, done);
+  const ready = isReady(t, rp.allTasks);
+  const waiting = t.status === "todo" ? waitingOn(t, rp.allTasks) : [];
+  const focused = rp.focusTask === t.id;
 
   return (
-    <li className="py-1">
-      <div className="group flex items-center gap-2 py-1 px-1 hover:bg-[rgba(139,115,85,0.05)]">
+    <li className="py-1" id={`task-${t.id}`}>
+      <div
+        className={`group flex flex-wrap md:flex-nowrap items-center gap-x-2 gap-y-1 py-1 px-1 hover:bg-[rgba(139,115,85,0.05)] ${
+          focused ? "bg-[rgba(139,115,85,0.1)] outline outline-1 outline-accent" : ""
+        }`}
+      >
         <button
           onClick={() => rp.toggleOpen(t.id)}
           className={`w-4 text-fg-ghost hover:text-fg font-mono text-[0.7rem] shrink-0 ${
@@ -328,7 +357,7 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         <span className="font-mono text-[0.55rem] text-accent w-4 shrink-0" title={`${t.priority} priority`}>
           {t.priority === "medium" ? "" : PRIORITY_MARK[t.priority]}
         </span>
-        <span className={`flex-1 min-w-0 text-[0.92rem] ${done ? "line-through text-fg-ghost" : "text-fg"}`}>
+        <span className={`flex-1 min-w-[10rem] text-[0.92rem] ${done ? "line-through text-fg-ghost" : "text-fg"}`}>
           <InlineText value={t.title} onSave={(title) => title && rp.patchTask(t.id, { title })} />
         </span>
         {sub.total ? (
@@ -336,11 +365,27 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
             {sub.done}/{sub.total}
           </span>
         ) : null}
-        {t.notes && !isOpen ? <span className="text-fg-ghost text-[0.6rem]" title={t.notes}>¶</span> : null}
+        {ready ? (
+          <span className="font-mono text-[0.52rem] uppercase tracking-[0.15em] text-accent border border-accent px-1 shrink-0" title="Unblocked: an agent can start this now">
+            ready
+          </span>
+        ) : null}
+        {waiting.length ? (
+          <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0 max-w-[10rem] truncate" title={waiting.map((w) => w.title).join(", ")}>
+            after {waiting[0].title}
+            {waiting.length > 1 ? ` +${waiting.length - 1}` : ""}
+          </span>
+        ) : null}
+        {t.status === "doing" && t.claimed_at ? (
+          <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0">since {relTime(t.claimed_at)}</span>
+        ) : null}
+        {(t.notes || t.acceptance) && !isOpen ? (
+          <span className="text-fg-ghost text-[0.6rem]" title={[t.acceptance && `Done when: ${t.acceptance}`, t.notes].filter(Boolean).join("\n")}>¶</span>
+        ) : null}
         <select
           value={t.status}
           onChange={(e) => rp.patchTask(t.id, { status: e.target.value as TaskStatus })}
-          className={`font-mono text-[0.55rem] uppercase tracking-[0.12em] border px-1 py-0.5 outline-none bg-transparent shrink-0 ${STATUS_STYLE[t.status]}`}
+          className={`font-mono text-[0.55rem] uppercase tracking-[0.12em] border px-1 py-0.5 outline-none shrink-0 ${STATUS_STYLE[t.status]}`}
         >
           {TASK_STATUSES.map((s) => (
             <option key={s} value={s} className="text-fg bg-bg">
@@ -377,14 +422,27 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
 
       {isOpen ? (
         <div className="ml-6 border-l border-line pl-3 pb-2">
-          <div className="text-[0.82rem] text-fg-dim py-1">
-            <InlineText
-              multiline
-              value={t.notes}
-              placeholder="Notes, acceptance criteria, links…"
-              onSave={(notes) => rp.patchTask(t.id, { notes })}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 py-1">
+            <div className="text-[0.82rem] text-fg-dim">
+              <span className="mono-label-dim block mb-0.5">Done when</span>
+              <InlineText
+                multiline
+                value={t.acceptance}
+                placeholder="Acceptance criteria an agent can check…"
+                onSave={(acceptance) => rp.patchTask(t.id, { acceptance })}
+              />
+            </div>
+            <div className="text-[0.82rem] text-fg-dim">
+              <span className="mono-label-dim block mb-0.5">Notes</span>
+              <InlineText
+                multiline
+                value={t.notes}
+                placeholder="Context, links, approach…"
+                onSave={(notes) => rp.patchTask(t.id, { notes })}
+              />
+            </div>
           </div>
+          <DependsOn task={t} {...rp} />
           <div className="flex flex-wrap items-center gap-3 font-mono text-[0.58rem] text-fg-ghost py-1">
             <label className="flex items-center gap-1">
               priority
@@ -445,6 +503,55 @@ function AddTask({ placeholder, onAdd }: { placeholder: string; onAdd: (title: s
         placeholder={placeholder}
         className="flex-1 bg-transparent outline-none text-[0.85rem] text-fg placeholder:text-fg-ghost border-b border-transparent focus:border-line py-0.5"
       />
+    </div>
+  );
+}
+
+/** Pick the tasks this one waits on. */
+function DependsOn({ task, allTasks, patchTask }: { task: Task } & RowProps) {
+  const byId = new Map(allTasks.map((x) => [x.id, x]));
+  // Exclude itself and its own descendants (it can't wait on its own parts).
+  const below = new Set<string>([task.id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const x of allTasks) {
+      if (x.parent_id && below.has(x.parent_id) && !below.has(x.id)) {
+        below.add(x.id);
+        grew = true;
+      }
+    }
+  }
+  const options = allTasks.filter((x) => !below.has(x.id) && !task.depends_on.includes(x.id));
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 py-1 font-mono text-[0.58rem] text-fg-ghost">
+      <span>waits on</span>
+      {task.depends_on.map((id) => {
+        const dep = byId.get(id);
+        if (!dep) return null;
+        return (
+          <Chip
+            key={id}
+            tone={dep.status === "done" ? "dim" : "accent"}
+            onRemove={() => patchTask(task.id, { depends_on: task.depends_on.filter((x) => x !== id) })}
+          >
+            {dep.status === "done" ? "✓ " : ""}
+            {dep.title}
+          </Chip>
+        );
+      })}
+      <select
+        value=""
+        onChange={(e) => e.target.value && patchTask(task.id, { depends_on: [...task.depends_on, e.target.value] })}
+        className="bg-transparent text-fg-dim outline-none max-w-[14rem]"
+      >
+        <option value="">{task.depends_on.length ? "+ another" : "nothing · add"}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.title}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

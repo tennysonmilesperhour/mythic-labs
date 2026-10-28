@@ -1,21 +1,9 @@
-import { serviceClient, ADMIN_USER_ID } from "./supabase";
+import { mutate, newId, readSnapshot, type TrackedRepo } from "./store";
 
-// Tables live in public with a "mythic_" prefix so this app can co-tenant
-// inside an existing Supabase project. See supabase/migrations/0001_initial_schema.sql.
-const T_REPOS = "mythic_repos";
-const T_REPO_PLUGINS = "mythic_repo_plugins";
+// The Repos page's tracked exceptions, stored in repos.json alongside the
+// project files (see store.ts).
 
-export type Repo = {
-  id: string;
-  user_id: string;
-  owner: string;
-  repo: string;
-  default_branch: string;
-  is_fork: boolean | null;
-  last_applied_at: string | null;
-  last_applied_sha: string | null;
-  created_at: string;
-};
+export type Repo = TrackedRepo;
 
 export type RepoPlugin = {
   repo_id: string;
@@ -24,14 +12,8 @@ export type RepoPlugin = {
 };
 
 export async function listRepos(): Promise<Repo[]> {
-  const db = serviceClient();
-  const { data, error } = await db
-    .from(T_REPOS)
-    .select("*")
-    .eq("user_id", ADMIN_USER_ID)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data || []) as Repo[];
+  const { repos } = await readSnapshot();
+  return [...repos.repos].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 export async function addRepo(
@@ -39,56 +21,52 @@ export async function addRepo(
   repo: string,
   meta?: { is_fork?: boolean; default_branch?: string }
 ): Promise<Repo> {
-  const db = serviceClient();
-  const row: Record<string, unknown> = {
-    user_id: ADMIN_USER_ID,
-    owner: owner.trim(),
-    repo: repo.trim(),
-  };
-  if (meta?.is_fork !== undefined) row.is_fork = meta.is_fork;
-  if (meta?.default_branch) row.default_branch = meta.default_branch;
-  const { data, error } = await db
-    .from(T_REPOS)
-    .insert(row)
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Repo;
+  const o = owner.trim();
+  const r = repo.trim();
+  return mutate(`Track repo ${o}/${r}`, (s) => {
+    const key = `${o}/${r}`.toLowerCase();
+    if (s.repos.repos.some((x) => `${x.owner}/${x.repo}`.toLowerCase() === key)) {
+      throw new Error("already tracked");
+    }
+    const row: Repo = {
+      id: newId(),
+      owner: o,
+      repo: r,
+      default_branch: meta?.default_branch || "main",
+      is_fork: meta?.is_fork ?? null,
+      last_applied_at: null,
+      last_applied_sha: null,
+      created_at: new Date().toISOString(),
+    };
+    s.repos.repos.push(row);
+    return row;
+  });
 }
 
 export async function backfillRepoMeta(
   repoId: string,
   meta: { is_fork: boolean; default_branch: string }
 ): Promise<void> {
-  const db = serviceClient();
-  const { error } = await db
-    .from(T_REPOS)
-    .update({
-      is_fork: meta.is_fork,
-      default_branch: meta.default_branch,
-    })
-    .eq("id", repoId);
-  if (error) throw error;
+  await mutate("Backfill repo metadata", (s) => {
+    const row = s.repos.repos.find((x) => x.id === repoId);
+    if (row) Object.assign(row, meta);
+  });
 }
 
 export async function deleteRepo(id: string): Promise<void> {
-  const db = serviceClient();
-  const { error } = await db
-    .from(T_REPOS)
-    .delete()
-    .eq("id", id)
-    .eq("user_id", ADMIN_USER_ID);
-  if (error) throw error;
+  await mutate("Untrack repo", (s) => {
+    s.repos.repos = s.repos.repos.filter((x) => x.id !== id);
+    delete s.repos.plugins[id];
+  });
 }
 
 export async function listRepoPlugins(repoId: string): Promise<RepoPlugin[]> {
-  const db = serviceClient();
-  const { data, error } = await db
-    .from(T_REPO_PLUGINS)
-    .select("*")
-    .eq("repo_id", repoId);
-  if (error) throw error;
-  return (data || []) as RepoPlugin[];
+  const { repos } = await readSnapshot();
+  return Object.entries(repos.plugins[repoId] || {}).map(([plugin_slug, enabled]) => ({
+    repo_id: repoId,
+    plugin_slug,
+    enabled,
+  }));
 }
 
 export async function setRepoPlugin(
@@ -96,12 +74,8 @@ export async function setRepoPlugin(
   slug: string,
   enabled: boolean
 ): Promise<void> {
-  const db = serviceClient();
-  const { error } = await db
-    .from(T_REPO_PLUGINS)
-    .upsert(
-      { repo_id: repoId, plugin_slug: slug, enabled },
-      { onConflict: "repo_id,plugin_slug" }
-    );
-  if (error) throw error;
+  await mutate(`${enabled ? "Enable" : "Disable"} ${slug} for a tracked repo`, (s) => {
+    if (!s.repos.repos.some((x) => x.id === repoId)) throw new Error("repo not tracked");
+    s.repos.plugins[repoId] = { ...(s.repos.plugins[repoId] || {}), [slug]: enabled };
+  });
 }

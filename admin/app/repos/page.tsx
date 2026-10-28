@@ -42,7 +42,7 @@ export default async function ReposPage() {
         <span className="mono-label">02 · Repos</span>
       </div>
 
-      <h1 className="serif-display text-[4rem] leading-[0.95] mb-6">
+      <h1 className="serif-display text-[2.6rem] md:text-[4rem] leading-[0.95] mb-6">
         Enable once, everywhere
       </h1>
       <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">
@@ -95,8 +95,8 @@ export default async function ReposPage() {
           <div className="mono-label mb-2">Not configured</div>
           <p className="text-fg-dim text-sm leading-relaxed">{initialError}</p>
           <p className="text-fg-ghost text-xs mt-3 font-mono">
-            Set env vars in Vercel: GITHUB_TOKEN, NEXT_PUBLIC_SUPABASE_URL,
-            SUPABASE_SERVICE_ROLE_KEY.
+            Set GITHUB_TOKEN and PM_DATA_REPO (a private repo) in Vercel. Tracked
+            repos are stored in repos.json there.
           </p>
         </div>
       ) : null}

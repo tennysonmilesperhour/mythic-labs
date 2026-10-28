@@ -1,12 +1,19 @@
 import { notFound } from "next/navigation";
-import { NotFound, getProjectDetail, listProjectSummaries } from "@/lib/projects";
+import { NotFound, getProjectDetail, loadAll } from "@/lib/projects";
 import { fetchMarketplace } from "@/lib/brain";
 import ProjectDetailClient from "./ProjectDetailClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ task?: string }>;
+}) {
   const { id } = await params;
+  const { task } = await searchParams;
   let detail: Awaited<ReturnType<typeof getProjectDetail>>;
   try {
     detail = await getProjectDetail(id);
@@ -21,8 +28,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     fetchMarketplace()
       .then((m) => m.plugins.map((p) => p.name))
       .catch(() => [] as string[]),
-    listProjectSummaries()
-      .then((r) => r.projects)
+    loadAll()
+      .then((all) => all.map((d) => d.project))
       .catch(() => []),
   ]);
   const used = (key: "agents" | "tools" | "tags") =>
@@ -31,6 +38,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   return (
     <ProjectDetailClient
       initial={detail}
+      focusTask={task ?? null}
       suggestions={{
         agents: used("agents"),
         tools: [...plugins, ...used("tools")],

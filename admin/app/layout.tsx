@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import Sidebar, { MobileNav } from "@/components/Sidebar";
 import LivingCanvas from "@/components/LivingCanvas";
 
 export const metadata: Metadata = {
@@ -26,8 +26,9 @@ export default function RootLayout({
         <LivingCanvas />
         <div className="page-stack flex min-h-screen">
           <Sidebar />
-          <main className="flex-1 ml-64">
-            <div className="max-w-6xl mx-auto px-12 py-20">{children}</div>
+          <main className="flex-1 min-w-0 md:ml-64">
+            <MobileNav />
+            <div className="max-w-6xl mx-auto px-4 py-8 md:px-12 md:py-20">{children}</div>
           </main>
         </div>
       </body>

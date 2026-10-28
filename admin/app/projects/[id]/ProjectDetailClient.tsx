@@ -8,7 +8,10 @@ import {
   PRIORITIES,
   STATUS_META,
   TOOL_PRESETS,
+  computeAttention,
   computeStats,
+  rankReady,
+  taskPath,
   fmtDate,
   relTime,
   renderProjectMarkdown,
@@ -31,11 +34,12 @@ import {
   inputCls,
 } from "@/components/ProjectBits";
 import CopyBlock from "@/components/CopyBlock";
+import { AttentionList } from "@/components/Glance";
 import { GlyphArrow, GlyphClose } from "@/components/Glyphs";
 import PlanTab from "./PlanTab";
 import { ActivityTab, ChangelogTab, DecisionsTab, NotesTab } from "./LogTabs";
 
-const TABS = ["plan", "changelog", "decisions", "notes", "activity", "setup", "handoff"] as const;
+const TABS = ["plan", "changelog", "decisions", "notes", "activity", "setup", "agents"] as const;
 type Tab = (typeof TABS)[number];
 
 export type Store = {
@@ -44,6 +48,7 @@ export type Store = {
   tasks: Task[];
   entries: Entry[];
   agentOptions: string[];
+  focusTask: string | null;
   patchProject: (patch: Partial<Project> & { status_note?: string }) => Promise<void>;
   setMilestones: React.Dispatch<React.SetStateAction<Milestone[]>>;
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
@@ -54,9 +59,11 @@ export type Store = {
 export default function ProjectDetailClient({
   initial,
   suggestions,
+  focusTask,
 }: {
   initial: ProjectDetail;
   suggestions: { agents: string[]; tools: string[]; tags: string[] };
+  focusTask: string | null;
 }) {
   const [project, setProject] = useState(initial.project);
   const [milestones, setMilestones] = useState(initial.milestones);
@@ -93,6 +100,7 @@ export default function ProjectDetailClient({
     tasks,
     entries,
     agentOptions,
+    focusTask,
     patchProject,
     setMilestones,
     setTasks,
@@ -100,13 +108,15 @@ export default function ProjectDetailClient({
     fail: setError,
   };
 
-  const stats = computeStats(tasks, milestones);
+  const stats = computeStats(tasks, milestones, [...entries.map((e) => e.created_at), project.updated_at]);
+  const attention = computeAttention({ project, milestones, tasks, entries }, stats.lastActivity);
   const counts: Partial<Record<Tab, number>> = {
     plan: stats.total - stats.done,
     changelog: entries.filter((e) => e.kind === "changelog").length,
     decisions: entries.filter((e) => e.kind === "decision").length,
     notes: entries.filter((e) => e.kind === "note").length,
   };
+  const pending = entries.filter((e) => e.kind === "decision" && e.decision_status === "proposed").length;
 
   return (
     <div>
@@ -119,7 +129,7 @@ export default function ProjectDetailClient({
 
       <div className="flex flex-wrap items-start justify-between gap-6 mb-4">
         <div className="min-w-0 flex-1">
-          <h1 className="serif-display text-[3.4rem] leading-[1] mb-3">
+          <h1 className="serif-display text-[2.4rem] md:text-[3.4rem] leading-[1] mb-3">
             <InlineText value={project.name} onSave={(v) => v && patchProject({ name: v })} />
           </h1>
           <div className="flex flex-wrap items-center gap-3 font-mono text-[0.65rem] text-fg-dim">
@@ -169,11 +179,20 @@ export default function ProjectDetailClient({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-px bg-line border border-line mb-10">
+      <div className="mb-8">
+        <div className="flex items-baseline gap-3 mb-3">
+          <span className="mono-label">Needs attention</span>
+          <span className="font-mono text-[0.6rem] text-fg-ghost tnum">{attention.length}</span>
+        </div>
+        <AttentionList items={attention} limit={5} hideProject empty="All clear: there's a next action, ready work, and nothing late." />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-px bg-line border border-line mb-10">
         <Cell label="Progress">
           <Progress done={stats.done} total={stats.total} />
         </Cell>
-        <Cell label="In progress" value={stats.doing} />
+        <Cell label="Ready" value={stats.ready} />
+        <Cell label="Doing" value={stats.doing} />
         <Cell label="Blocked" value={stats.blocked} warn={stats.blocked > 0} />
         <Cell label="Overdue" value={stats.overdue} warn={stats.overdue > 0} />
         <Cell label="Priority">
@@ -215,6 +234,7 @@ export default function ProjectDetailClient({
           >
             {t}
             {counts[t] ? <span className="tnum opacity-60">{counts[t]}</span> : null}
+            {t === "decisions" && pending ? <span className="text-accent">· {pending} to decide</span> : null}
           </button>
         ))}
       </div>
@@ -225,7 +245,7 @@ export default function ProjectDetailClient({
       {tab === "notes" ? <NotesTab store={store} /> : null}
       {tab === "activity" ? <ActivityTab store={store} /> : null}
       {tab === "setup" ? <SetupTab store={store} suggestions={suggestions} /> : null}
-      {tab === "handoff" ? <HandoffTab store={store} /> : null}
+      {tab === "agents" ? <AgentsTab store={store} /> : null}
     </div>
   );
 }
@@ -380,6 +400,26 @@ function SetupTab({
           />
         </div>
       </Section>
+      <div className="lg:col-span-2">
+        <Section
+          title="Build instructions for agents"
+          hint="Everything an autonomous agent needs to work without asking: setup, branch and PR rules, how to test, definition of done, what never to touch. Included in every agent brief and API response."
+        >
+          <div className="text-[0.85rem] leading-[1.7] text-fg-dim border border-line bg-bg/70 p-3 min-h-[8rem] font-mono">
+            <InlineText
+              multiline
+              value={project.agent_instructions}
+              placeholder={INSTRUCTIONS_TEMPLATE}
+              onSave={(agent_instructions) => patchProject({ agent_instructions })}
+            />
+          </div>
+          {!project.agent_instructions ? (
+            <button className={`${btnGhost} mt-2`} onClick={() => patchProject({ agent_instructions: INSTRUCTIONS_TEMPLATE })}>
+              Start from template
+            </button>
+          ) : null}
+        </Section>
+      </div>
       <div className="lg:col-span-2 border-t border-line pt-6 flex items-center justify-between">
         <span className="font-mono text-[0.6rem] text-fg-ghost">
           Created {fmtDate(project.created_at)} · updated {relTime(project.updated_at)}
@@ -412,66 +452,109 @@ export function Section({
   );
 }
 
-/** Markdown export plus a ready-to-paste brief for whichever agent picks up the work. */
-function HandoffTab({ store }: { store: Store }) {
+const INSTRUCTIONS_TEMPLATE = `Setup: npm ci, then npm run dev
+Branch: claude/<short-task-name> off main; open a draft PR per task
+Checks before pushing: npm run lint && npm test && npm run build
+Definition of done: acceptance criteria met, checks green, PR open, changelog entry logged
+Never: touch production data, rotate secrets, or merge without review
+Ask (mark the task blocked with a note) when: requirements are ambiguous or a decision is architectural`;
+
+/** Brief, roadmap export and the agent API for this project. */
+function AgentsTab({ store }: { store: Store }) {
   const { project, tasks, milestones, entries } = store;
-  const [agent, setAgent] = useState<string>(project.agents[0] ?? "");
-  const markdown = renderProjectMarkdown({ project, milestones, tasks, entries });
+  const [agent, setAgent] = useState<string>(project.agents.find((a) => a !== "me") ?? "");
+  const detail = { project, milestones, tasks, entries };
+  const markdown = renderProjectMarkdown(detail);
+  const origin = typeof window === "undefined" ? "https://<dashboard>" : window.location.origin;
 
   const brief = useMemo(() => {
-    const mine = tasks.filter((t) => t.status !== "done" && (!agent || t.agent === agent));
-    const byId = new Map(tasks.map((t) => [t.id, t]));
-    const path = (t: Task): string => {
-      const parent = t.parent_id ? byId.get(t.parent_id) : null;
-      return parent ? `${path(parent)} › ${t.title}` : t.title;
-    };
-    const decisions = entries.filter((e) => e.kind === "decision" && e.decision_status !== "rejected" && e.decision_status !== "superseded");
+    const ready = rankReady(tasks, milestones).filter((t) => !agent || !t.agent || t.agent === agent);
+    const doing = tasks.filter((t) => t.status === "doing" && (!agent || t.agent === agent));
+    const decisions = entries.filter((e) => e.kind === "decision" && e.decision_status === "accepted");
+    const line = (t: Task) =>
+      [
+        `- [ ] ${taskPath(t, tasks)} · ${t.priority}${t.due_date ? ` · due ${t.due_date}` : ""} · id \`${t.id}\``,
+        t.acceptance ? `  - done when: ${t.acceptance.replace(/\n+/g, " ")}` : "",
+        t.notes ? `  - notes: ${t.notes.replace(/\n+/g, " ")}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
     return [
-      `You're picking up work on **${project.name}**${project.owner && project.repo ? ` (${project.owner}/${project.repo})` : ""}.`,
-      project.summary ? `\n${project.summary}` : "",
-      project.next_action ? `\nNext action: ${project.next_action}` : "",
-      `\n## Your open tasks${agent ? ` (@${agent})` : ""}`,
-      ...(mine.length
-        ? mine.map((t) => `- [ ] ${path(t)}${t.status !== "todo" ? ` (${t.status})` : ""}${t.due_date ? ` · due ${t.due_date}` : ""}${t.notes ? `\n  ${t.notes.replace(/\n/g, "\n  ")}` : ""}`)
-        : ["- (none assigned)"]),
-      decisions.length ? "\n## Decisions to respect" : "",
-      ...decisions.map((d) => `- ${d.title}${d.body ? `: ${d.body}` : ""}`),
-      project.tools.length ? `\nTools available: ${project.tools.join(", ")}` : "",
-      "\nWhen you finish a task, say which one so it can be checked off, and summarise any decision you made and why.",
+      `You're ${agent ? `@${agent}, ` : ""}working on **${project.name}**${project.owner && project.repo ? ` (${project.owner}/${project.repo})` : ""}.`,
+      project.summary,
+      project.next_action ? `Next action: ${project.next_action}` : "",
+      project.agent_instructions ? `## Build instructions\n${project.agent_instructions}` : "",
+      doing.length ? `## Already in progress\n${doing.map(line).join("\n")}` : "",
+      `## Ready, in order\n${ready.length ? ready.slice(0, 10).map(line).join("\n") : "- nothing ready: stop and report back"}`,
+      decisions.length ? `## Decisions to respect\n${decisions.map((d) => `- ${d.title}${d.body ? `: ${d.body}` : ""}`).join("\n")}` : "",
+      project.tools.length ? `Tools: ${project.tools.join(", ")}` : "",
+      "## Loop\nTake the first ready task. Meet its done-when criteria. Report progress, log a changelog entry, and record any decision as proposed. If stuck, mark it blocked with the reason. Then take the next one.",
     ]
       .filter(Boolean)
-      .join("\n");
-  }, [agent, project, tasks, entries]);
+      .join("\n\n");
+  }, [agent, project, tasks, milestones, entries]);
+
+  const name = agent || "claude-code";
+  const api = [
+    `export MYTHIC_PM_URL=${origin}`,
+    `export MYTHIC_PM_TOKEN=<PM_AGENT_TOKEN>`,
+    `H="Authorization: Bearer $MYTHIC_PM_TOKEN"`,
+    ``,
+    `# next ready task in this project`,
+    `curl -s -H "$H" "$MYTHIC_PM_URL/api/agent/next?agent=${name}&project=${project.id}"`,
+    `# claim it`,
+    `curl -s -X POST -H "$H" "$MYTHIC_PM_URL/api/agent/tasks/<task-id>/claim?agent=${name}"`,
+    `# report (status: doing | blocked | done; blocked needs a note)`,
+    `curl -s -X PATCH -H "$H" -H 'content-type: application/json' \\`,
+    `  -d '{"status":"done","note":"PR #12 open, checks green"}' \\`,
+    `  "$MYTHIC_PM_URL/api/agent/tasks/<task-id>?agent=${name}"`,
+    `# log a changelog entry or propose a decision`,
+    `curl -s -X POST -H "$H" -H 'content-type: application/json' \\`,
+    `  -d '{"kind":"changelog","change_type":"added","title":"OAuth login"}' \\`,
+    `  "$MYTHIC_PM_URL/api/agent/projects/${project.id}/entries?agent=${name}"`,
+    `# the whole roadmap, as Markdown`,
+    `curl -s -H "$H" "$MYTHIC_PM_URL/api/agent/roadmap"`,
+  ].join("\n");
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <Section title="Agent brief" hint="Paste into a Claude session to hand off the open work.">
+      <Section title="Agent brief" hint="Paste into any agent session. Ready tasks come first, in the order they should be done.">
         <select value={agent} onChange={(e) => setAgent(e.target.value)} className={`${inputCls} mb-3`}>
-          <option value="">All open tasks</option>
+          <option value="">Any agent</option>
           {store.agentOptions.map((a) => (
             <option key={a} value={a}>
               @{a}
             </option>
           ))}
         </select>
-        <CopyBlock text={brief} />
-      </Section>
-      <Section title="PROJECT.md" hint="The whole project as Markdown. Commit it to the repo or paste it as context.">
         <div className="max-h-[36rem] overflow-y-auto">
-          <CopyBlock text={markdown} />
+          <CopyBlock text={brief} />
         </div>
-        <button
-          className={`${btnPrimary} mt-3`}
-          onClick={() => {
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
-            a.download = "PROJECT.md";
-            a.click();
-          }}
-        >
-          Download
-        </button>
       </Section>
+      <div className="flex flex-col gap-8">
+        <Section
+          title="Agent API"
+          hint="For autonomous agents. Set PM_AGENT_TOKEN on the dashboard; agents with the roadmap skill (dev-workflows) run this loop themselves."
+        >
+          <CopyBlock text={api} />
+        </Section>
+        <Section title="PROJECT.md" hint="The whole project as Markdown. Commit it to the repo or attach it as context.">
+          <div className="max-h-[24rem] overflow-y-auto">
+            <CopyBlock text={markdown} />
+          </div>
+          <button
+            className={`${btnPrimary} mt-3`}
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+              a.download = "PROJECT.md";
+              a.click();
+            }}
+          >
+            Download
+          </button>
+        </Section>
+      </div>
     </div>
   );
 }
