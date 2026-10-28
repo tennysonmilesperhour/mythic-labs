@@ -1,6 +1,6 @@
 # Mythic Labs · Central Brain
 
-This repository is a **Claude Code plugin marketplace** as well as a brand site. It hosts reusable skills, subagents, hooks, and MCP integrations that any other repo can pull from on demand.
+This repository is a **Claude Code plugin marketplace** as well as a brand site. It hosts reusable skills, subagents, hooks, and MCP integrations that any other repo can pull from on demand. Skills use the open SKILL.md format, so Codex, Cursor and other agents use them too; `AGENTS.md` briefs those agents.
 
 The goal is a single source of truth for tools/methods: **enabled once** at user or organization scope, with **per-repo overrides** only for exceptions, and **near-zero token cost** for anything not enabled.
 

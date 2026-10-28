@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "mythic-brain",
-  "description": "Tennyson's centralized skills, agents, hooks, and MCP configurations. Enable once at user or organization scope; per-repo .claude/settings.json only for exceptions.",
+  "description": "Tennyson's centralized skills, agents, hooks, and MCP configurations. Skills use the open SKILL.md format, so Claude Code, Codex, Cursor and other agents share them. In Claude Code: enable once at user or organization scope; per-repo .claude/settings.json only for exceptions.",
   "version": "0.2.0",
   "owner": {
     "name": "Tennyson",

@@ -108,7 +108,7 @@ function PluginDetailView({
       kind: "hook",
       name: "hooks.json",
       description:
-        "Harness-level event handlers — run as shell commands, never enter Claude's context. Zero token cost.",
+        "Harness-level event handlers — run as shell commands, never enter the agent's context. Zero token cost.",
       path: `${plugin.slug}/hooks/hooks.json`,
     });
   }

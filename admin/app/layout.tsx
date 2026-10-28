@@ -6,7 +6,7 @@ import LivingCanvas from "@/components/LivingCanvas";
 export const metadata: Metadata = {
   title: "Mythic Labs · Brain Admin",
   description:
-    "Central brain admin — manage skills, plugins, and consuming repos.",
+    "Mythic Labs: the roadmap for everything you're building, and the shared brain of skills and tools your coding agents use.",
 };
 
 export default function RootLayout({

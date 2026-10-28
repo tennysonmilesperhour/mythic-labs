@@ -33,10 +33,11 @@ export default async function Overview() {
       </h1>
 
       <p className="text-fg-dim text-[1.05rem] leading-[1.85] max-w-2xl mb-16 font-light dropcap">
-        This dashboard is the catalogue for your Claude Code skills, agents,
-        commands, hooks, and MCP servers. The method lives once in mythic-labs,
-        and every repo inherits it from your machine or your organization — so
-        you stop copy-pasting configs and start shipping.
+        This dashboard runs two things: the roadmap for everything you&apos;re
+        building, and the brain of skills, agents, commands, hooks and MCP
+        servers your coding agents share. Claude Code, Codex, Cursor and any
+        other agent that reads the open SKILL.md format work from the same
+        source, and every repo inherits it.
       </p>
 
       {/* Stats — tabular numerals, generous gap */}
@@ -71,8 +72,9 @@ export default async function Overview() {
           <span className="mono-label">The problem</span>
         </div>
         <h2 className="serif-display text-[1.8rem] md:text-[2.4rem] leading-[1.1] mb-12 max-w-3xl">
-          Every repo wants the same Claude Code setup. Maintaining it by hand
-          is a tax that grows with every new project.
+          Every repo and every agent wants the same setup and the same picture
+          of what&apos;s next. Keeping that in sync by hand is a tax that grows
+          with every project.
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-line border border-line">
@@ -81,20 +83,20 @@ export default async function Overview() {
             color="dim"
             rows={[
               "Copy SKILL.md files into each repo by hand",
-              "Edit .claude/settings.json in 14 places to flip one plugin",
-              "Update an MCP server once → commit it to every repo separately",
-              "No idea which repos have which capabilities — grep to find out",
-              "Want to roll back a skill? Hope you remembered where it went",
+              "Edit settings in 14 places to flip one plugin",
+              "Update an MCP server once, then commit it to every repo separately",
+              "Each agent tool keeps its own copy of the same instructions, and they drift",
+              "No shared plan, so every agent session starts by asking what to work on",
             ]}
           />
           <Column
             tag="With this system"
             color="accent"
             rows={[
-              "Skills, agents, commands live once in mythic-labs",
-              "Enable once per machine or organization — every repo inherits it",
-              "Update a skill once → every session picks it up on its next refresh",
-              "Skills follow the open SKILL.md standard, so they work beyond Claude",
+              "Skills, agents and commands live once in mythic-labs",
+              "Enable once per machine or organization, and every repo inherits it",
+              "Skills use the open SKILL.md format, so Claude Code, Codex, Cursor and Copilot read the same files",
+              "One roadmap every agent reads: the next ready task, what done means, which decisions stand",
               "Repos that need something different get a config you copy, checked against GitHub",
             ]}
           />
@@ -110,17 +112,17 @@ export default async function Overview() {
           <Step
             num="01"
             title="Enable once"
-            body="Install the brain at user scope on your machine, or sync it for your whole organization from claude.ai."
+            body="Install the brain for your machine or your organization, or point any SKILL.md-aware agent at this repo's skills."
           />
           <Step
             num="02"
             title="Improve centrally"
-            body="Edit a skill in mythic-labs, run its evals, push. Sessions pick up the new version when the marketplace refreshes."
+            body="Edit a skill in mythic-labs, run its evals, push. Every agent picks up the new version on its next refresh."
           />
           <Step
             num="03"
-            title="Claude reads"
-            body="Next session in that repo, Claude Code loads the enabled plugins. Skills become reachable, commands are registered."
+            title="Agents pick up the work"
+            body="Next session in any repo, your agent loads the enabled skills, reads the roadmap, takes the next ready task and reports back to Projects."
           />
         </div>
       </section>
