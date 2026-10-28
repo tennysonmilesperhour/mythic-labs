@@ -111,6 +111,8 @@ export type Milestone = {
 export type Task = {
   id: string;
   project_id: string;
+  /** Stable identifier for imported tasks; optional for existing/manual tasks. */
+  source_key?: string | null;
   milestone_id: string | null;
   parent_id: string | null;
   title: string;

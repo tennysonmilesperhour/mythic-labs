@@ -31,11 +31,36 @@ const reusedKey = await call('/projects', 'POST', { ...idempotentPayload, name: 
 check('same key with different payload is rejected', reusedKey.status === 409);
 const { body: made } = await call('/projects', 'POST', { name: `Smoke ${stamp}`, status: 'active', agents: [] });
 const pid = made.created[0].id;
+const { body: importProject } = await call('/projects', 'POST', { name: `Import smoke ${stamp}`, status: 'active', agents: [] });
+const importPid = importProject.created[0].id;
+const importKey = `inventory:${stamp}:batch-1`;
+const importedPayload = { items: [
+  { source_key: `inventory:${stamp}:one`, title: 'Imported one', status: 'todo' },
+  { source_key: `inventory:${stamp}:two`, title: 'Imported two', status: 'blocked', notes: 'Needs owner review' },
+] };
+const imported = await call(`/projects/${importPid}/tasks`, 'POST', importedPayload, { ...json, 'Idempotency-Key': importKey });
+const importedReplay = await call(`/projects/${importPid}/tasks`, 'POST', importedPayload, { ...json, 'Idempotency-Key': importKey });
+check('task batch writes atomically and idempotent replay returns original IDs',
+  imported.body.created?.length === 2 && importedReplay.body.created?.map(t => t.id).join(',') === imported.body.created.map(t => t.id).join(','));
+const importedConflict = await call(`/projects/${importPid}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:changed`, title: 'Changed' }] }, { ...json, 'Idempotency-Key': importKey });
+check('task batch rejects reused idempotency key with different payload', importedConflict.status === 409);
+const importedDedup = await call(`/projects/${importPid}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:one`, title: 'Would overwrite' }] });
+check('stable task source key prevents duplicate on a new import operation', importedDedup.body.created?.length === 0 && importedDedup.body.skipped === 1);
+const crossProjectKey = await call(`/projects/${pid}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:one`, title: 'Wrong mapping' }] });
+check('task source key cannot be silently mapped into a second project', crossProjectKey.status === 409);
+const taskCountBeforeInvalidImport = (await call(`/projects/${importPid}`)).body.tasks.length;
+const invalidBatch = await call(`/projects/${importPid}/tasks`, 'POST', { items: [
+  { source_key: `inventory:${stamp}:three`, title: 'Must roll back' },
+  { title: 'Missing source key' },
+] });
+check('invalid task batch writes nothing', invalidBatch.status === 400 && (await call(`/projects/${importPid}`)).body.tasks.length === taskCountBeforeInvalidImport);
+await call(`/projects/${importPid}`, 'DELETE');
 const { body: paused } = await call('/projects', 'POST', { name: `Paused ${stamp}`, status: 'paused', agents: [] });
 const { body: pausedTask } = await call(`/projects/${paused.created[0].id}/tasks`, 'POST', { title: 'Must not be claimed' });
 const pausedClaim = await call(`/agent/tasks/${pausedTask.task.id}/claim`, 'POST', undefined, agent('a1'));
 check('paused project task cannot be claimed', pausedClaim.status === 409);
-const { body: dep } = await call(`/projects/${pid}/tasks`, 'POST', { title: 'First', acceptance: 'exists' });
+const { body: dep } = await call(`/projects/${pid}/tasks`, 'POST', { title: 'First', acceptance: 'exists', source_key: `should-ignore:${stamp}` });
+check('manual task creation cannot claim an import source key', !dep.task.source_key);
 const { body: after } = await call(`/projects/${pid}/tasks`, 'POST', { title: 'Second', depends_on: [dep.task.id] });
 
 const statsBeforeAgentTask = await (await fetch('http://localhost:4010/__stats')).json();

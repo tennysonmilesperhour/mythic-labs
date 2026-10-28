@@ -244,6 +244,7 @@ export function storeLocation(): string {
 function parse(head: string | null, files: Map<string, string>): Snapshot {
   const projects = new Map<string, ProjectDetail>();
   const seenIds = new Set<string>();
+  const seenTaskSourceKeys = new Set<string>();
   let hasLegacyProject = false;
   let hasVersionedProject = false;
   files.forEach((text, p) => {
@@ -267,6 +268,13 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
         }
         if (seenIds.has(row.id)) throw new Error(`Duplicate record id ${row.id} in project data snapshot.`);
         seenIds.add(row.id);
+        if (kind === "task" && "source_key" in row && row.source_key !== null && row.source_key !== undefined) {
+          if (typeof row.source_key !== "string" || !row.source_key.trim() || row.source_key !== row.source_key.trim()) {
+            throw new Error(`Project data file ${p} contains an invalid task source_key.`);
+          }
+          if (seenTaskSourceKeys.has(row.source_key)) throw new Error(`Duplicate task source_key ${row.source_key} in project data snapshot.`);
+          seenTaskSourceKeys.add(row.source_key);
+        }
       }
     }
     projects.set(d.project.id, d);
