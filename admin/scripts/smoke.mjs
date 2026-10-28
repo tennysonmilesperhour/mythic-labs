@@ -2,6 +2,12 @@
 // Start the fake (node scripts/fake-github.mjs), then the app with
 //   GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_AGENT_API_ENABLED=true PM_AGENT_TOKEN=smoke-token npm run build && npm start
 // and run: node scripts/smoke.mjs [http://localhost:3000]
+import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
+
+const identitySource = await readFile(new URL('../lib/importIdentity.ts', import.meta.url), 'utf8');
+const identityJs = ts.transpileModule(identitySource, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
+const { sameResolvedOwner, nameMatchCompatible, validImportProjectKey } = await import(`data:text/javascript;base64,${Buffer.from(identityJs).toString('base64')}`);
 const B = (process.argv[2] || 'http://localhost:3000') + '/api';
 const json = { 'content-type': 'application/json' };
 const agent = (a) => ({ ...json, authorization: 'Bearer smoke-token', 'x-agent': a });
@@ -14,6 +20,11 @@ const check = (label, ok, extra = '') => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${extra ? ` (${extra})` : ''}`);
   if (!ok) failed++;
 };
+
+check('new category does not suppress its task or entry rows', !sameResolvedOwner(undefined, undefined) && !sameResolvedOwner(undefined, { id: 'new-project' }));
+check('existing task and entry dedupe only within the resolved project', sameResolvedOwner({ id: 'same' }, { id: 'same' }) && !sameResolvedOwner({ id: 'one' }, { id: 'two' }));
+check('explicit repo mismatch blocks same-name category fallback', !nameMatchCompatible('owner', 'repo-b', 'owner', 'repo-a') && nameMatchCompatible(undefined, undefined, null, null));
+check('malformed project keys are rejected before mapping', !validImportProjectKey(undefined, 'Name') && !validImportProjectKey(' key ', 'Name') && validImportProjectKey('key', 'Name'));
 
 const stamp = Date.now().toString(36);
 const sourceKeyOne = await call('/projects', 'POST', { name: `Life one ${stamp}`, source_key: ' life:inventory-1 ' });
@@ -54,6 +65,15 @@ const invalidBatch = await call(`/projects/${importPid}/tasks`, 'POST', { items:
   { title: 'Missing source key' },
 ] });
 check('invalid task batch writes nothing', invalidBatch.status === 400 && (await call(`/projects/${importPid}`)).body.tasks.length === taskCountBeforeInvalidImport);
+const freshCategory = await call('/projects', 'POST', { name: `Fresh import category ${stamp}`, source_key: `category:fresh-${stamp}`, status: 'planned' });
+const freshCategoryId = freshCategory.body.created?.[0]?.id;
+const freshTaskImport = await call(`/projects/${freshCategoryId}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:fresh`, title: 'Fresh category task', status: 'todo' }] }, { ...json, 'Idempotency-Key': `fresh-task-${stamp}` });
+const freshEntryImport = await call(`/projects/${freshCategoryId}/entries`, 'POST', { items: [{ kind: 'note', title: 'Fresh category report', body: 'Report preview import check', source_url: `mythic-import://entry/fresh-${stamp}` }] }, { ...json, 'Idempotency-Key': `fresh-entry-${stamp}` });
+const freshCategoryReadback = await call(`/projects/${freshCategoryId}`);
+check('new category accepts its task and report entry and reads both back',
+  freshTaskImport.body.created?.length === 1 && freshEntryImport.body.created?.length === 1 &&
+  freshCategoryReadback.body.tasks?.some((t) => t.source_key === `inventory:${stamp}:fresh`) &&
+  freshCategoryReadback.body.entries?.some((e) => e.source_url === `mythic-import://entry/fresh-${stamp}`));
 await call(`/projects/${importPid}`, 'DELETE');
 const { body: paused } = await call('/projects', 'POST', { name: `Paused ${stamp}`, status: 'paused', agents: [] });
 const { body: pausedTask } = await call(`/projects/${paused.created[0].id}/tasks`, 'POST', { title: 'Must not be claimed' });

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { api } from "@/components/ProjectBits";
+import { nameMatchCompatible, sameResolvedOwner, validImportProjectKey } from "@/lib/importIdentity";
 
 type ProjectStatus = "active" | "building" | "planned" | "paused";
 type TaskStatus = "todo" | "blocked";
@@ -101,8 +102,7 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
   const projectKeys = new Set<string>();
   const manifestRepoKeys = new Set<string>();
   for (const [i, p] of projects.entries()) {
-    if (!nonEmpty(p.source_key) || !nonEmpty(p.name)) { errors.push(`projects[${i}] requires source_key and name.`); continue; }
-    if (p.source_key !== p.source_key.trim()) { errors.push(`projects[${i}] source_key must be trimmed.`); continue; }
+    if (!validImportProjectKey(p.source_key, p.name)) { errors.push(`projects[${i}] requires a trimmed source_key and a non-empty name.`); continue; }
     if (projectKeys.has(p.source_key)) { errors.push(`Duplicate project source_key: ${p.source_key}.`); continue; }
     projectKeys.add(p.source_key);
     if (p.owner && !p.repo || !p.owner && p.repo) errors.push(`projects[${i}] must supply both owner and repo or neither.`);
@@ -119,6 +119,8 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
   const matches = new Map<string, ImportProjectState>();
   const projectsToCreate: ProjectInput[] = [];
   for (const p of projects) {
+    if (!validImportProjectKey(p.source_key, p.name)) continue;
+    if ((p.owner !== undefined && p.owner !== null && typeof p.owner !== "string") || (p.repo !== undefined && p.repo !== null && typeof p.repo !== "string")) continue;
     const bySource = current.find((x) => x.source_key?.trim() === p.source_key.trim());
     const byRepo = p.owner && p.repo ? current.find((x) => `${x.owner}/${x.repo}`.toLowerCase() === `${p.owner}/${p.repo}`.toLowerCase()) : undefined;
     const byNameRows = current.filter((x) => x.name.trim().toLowerCase() === p.name.trim().toLowerCase());
@@ -127,6 +129,10 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
     if (bySource && byRepo && bySource.id !== byRepo.id) errors.push(`Project ${p.source_key} resolves to two different existing records.`);
     if (bySource && byName && bySource.id !== byName.id || byRepo && byName && byRepo.id !== byName.id) errors.push(`Project ${p.source_key} name mapping conflicts with another existing record.`);
     if (bySource && p.owner && p.repo && (bySource.owner?.toLowerCase() !== p.owner.toLowerCase() || bySource.repo?.toLowerCase() !== p.repo.toLowerCase())) errors.push(`Project source_key ${p.source_key} conflicts with the existing owner/repo mapping.`);
+    if (byName && !nameMatchCompatible(p.owner, p.repo, byName.owner, byName.repo)) {
+      errors.push(`Project ${p.name} matches an existing name with a different owner/repo; supply the correct existing mapping.`);
+      continue;
+    }
     const found = bySource || byRepo || byName;
     if (found) matches.set(p.source_key, found);
     else projectsToCreate.push(p);
@@ -148,7 +154,7 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
     const taskOwner = current.find((project) => project.task_source_keys.includes(task.source_key));
     if (taskOwner && target && taskOwner.id !== target.id) { errors.push(`Task source_key ${task.source_key} is already recorded under a different project.`); continue; }
     if (taskOwner && !target) { errors.push(`Task source_key ${task.source_key} is already recorded; resolve its project mapping before import.`); continue; }
-    if (taskOwner?.id === target?.id) { taskSkipped++; continue; }
+    if (sameResolvedOwner(taskOwner, target)) { taskSkipped++; continue; }
     const rows = tasksToCreate.get(task.project_key) || [];
     rows.push(task); tasksToCreate.set(task.project_key, rows);
   }
@@ -169,7 +175,7 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
     const entryOwner = current.find((project) => project.entry_source_urls.includes(sourceUrl));
     if (entryOwner && target && entryOwner.id !== target.id) { errors.push(`Entry source_key ${entry.source_key} is already recorded under a different project.`); continue; }
     if (entryOwner && !target) { errors.push(`Entry source_key ${entry.source_key} is already recorded; resolve its project mapping before import.`); continue; }
-    if (entryOwner?.id === target?.id) { entrySkipped++; continue; }
+    if (sameResolvedOwner(entryOwner, target)) { entrySkipped++; continue; }
     const rows = entriesToCreate.get(entry.project_key) || [];
     rows.push(entry); entriesToCreate.set(entry.project_key, rows);
   }
