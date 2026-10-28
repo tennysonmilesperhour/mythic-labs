@@ -47,9 +47,22 @@ export async function api<R = Record<string, unknown>>(
     headers: Object.keys(headers).length ? headers : undefined,
     body: data !== undefined ? serialized : undefined,
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
-  if (storageKey) sessionStorage.removeItem(storageKey);
+  let json: Record<string, unknown>;
+  try {
+    const parsed: unknown = await res.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid response shape");
+    json = parsed as Record<string, unknown>;
+  } catch {
+    // The write may have committed even though the response body was cut off.
+    // Preserve the key so a retry replays the original operation receipt.
+    throw new Error(storageKey
+      ? "The server response was incomplete. Retry this request to reconcile its saved result."
+      : "The server returned an invalid response.");
+  }
+  if (!res.ok || json.error) throw new Error(String(json.error || `HTTP ${res.status}`));
+  if (storageKey) {
+    try { sessionStorage.removeItem(storageKey); } catch { /* Storage is optional after a confirmed response. */ }
+  }
   return json as R;
 }
 

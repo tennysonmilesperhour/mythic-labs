@@ -9,13 +9,15 @@ The dashboard holds every project's plan: milestones, tasks with acceptance crit
 
 ## Setup
 
-Needs two environment variables. If either is missing, stop and tell the user what to set. Never invent tasks.
+Needs `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN`. The server also requires an explicit `PM_AGENT_API_ENABLED=true` setting before it accepts agent requests; it defaults to disabled. If the URL/token is missing or the API is disabled, stop and tell the user which setting is missing. Never enable the server flag yourself or invent tasks.
 
 | Variable | Value |
 |---|---|
 | `MYTHIC_PM_URL` | The dashboard origin, e.g. `https://mythic-labs.vercel.app` |
 | `MYTHIC_PM_TOKEN` | The dashboard's `PM_AGENT_TOKEN` |
 | `MYTHIC_PM_BYPASS` | Optional. Vercel protection bypass secret, if the deployment is protected |
+
+`PM_AGENT_API_ENABLED=true` is a server-side dashboard setting, separate from the token. An owner must deliberately enable it after reviewing the shared-token access model. Agent labels are caller-supplied names, not per-agent identity; do not enable this API for private everything-dashboard data without specific approval.
 
 Use your agent name (e.g. `claude-code`) as `AGENT` in every call. Shell helper:
 

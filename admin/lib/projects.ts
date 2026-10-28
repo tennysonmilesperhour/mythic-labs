@@ -38,7 +38,7 @@ const TASK_FIELDS = [
   "due_date", "milestone_id", "parent_id", "sort_order",
 ] as const;
 const ENTRY_FIELDS = [
-  "kind", "title", "body", "entry_date", "author", "version", "change_type", "source_url",
+  "kind", "title", "body", "entry_date", "author", "version", "change_type", "source_url", "evidence_url",
   "decision_status", "context", "alternatives", "consequences",
 ] as const;
 
@@ -99,6 +99,7 @@ function addEntry(d: ProjectDetail, input: Record<string, unknown>): Entry {
     version: null,
     change_type: null,
     source_url: null,
+    evidence_url: null,
     decision_status: null,
     context: "",
     alternatives: "",
@@ -630,7 +631,10 @@ export async function nextTask(
   for (const d of all) {
     if (projectId && d.project.id !== projectId) continue;
     if (!WORKABLE.includes(d.project.status)) continue;
-    // Unassigned work only from projects that list this agent (or list none).
+    // A nonempty project agent list constrains every task, including those
+    // explicitly assigned to an agent. Keep selection aligned with claimTask.
+    if (d.project.agents.length && !d.project.agents.includes(agent)) continue;
+    // Unassigned work is available when the project lists this agent (or none).
     const open = !d.project.agents.length || d.project.agents.includes(agent);
     const task = rankReady(d.tasks, d.milestones).find((t) => t.agent === agent || (!t.agent && open));
     if (task) return { task, detail: d };
