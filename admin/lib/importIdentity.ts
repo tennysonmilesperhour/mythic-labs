@@ -34,3 +34,13 @@ export function safeImportSourceUrl(value: unknown): value is string | undefined
 export function importEntryIdentity(sourceKey: string): string {
   return `mythic-import://entry/${encodeURIComponent(sourceKey.trim())}`;
 }
+
+export function validImportDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+export function projectNameIsAmbiguous(hasDirectMatch: boolean, nameMatchCount: number): boolean {
+  return !hasDirectMatch && nameMatchCount > 1;
+}

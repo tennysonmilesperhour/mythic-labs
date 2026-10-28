@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 const identitySource = await readFile(new URL('../lib/importIdentity.ts', import.meta.url), 'utf8');
 const identityJs = ts.transpileModule(identitySource, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { sameResolvedOwner, nameMatchCompatible, validImportProjectKey, safeImportSourceUrl, importEntryIdentity } = await import(`data:text/javascript;base64,${Buffer.from(identityJs).toString('base64')}`);
+const { sameResolvedOwner, nameMatchCompatible, validImportProjectKey, safeImportSourceUrl, importEntryIdentity, validImportDate, projectNameIsAmbiguous } = await import(`data:text/javascript;base64,${Buffer.from(identityJs).toString('base64')}`);
 const B = (process.argv[2] || 'http://localhost:3000') + '/api';
 const json = { 'content-type': 'application/json' };
 const agent = (a) => ({ ...json, authorization: 'Bearer smoke-token', 'x-agent': a });
@@ -27,6 +27,10 @@ check('explicit repo mismatch blocks same-name category fallback', !nameMatchCom
 check('malformed project keys are rejected before mapping', !validImportProjectKey(undefined, 'Name') && !validImportProjectKey(' key ', 'Name') && validImportProjectKey('key', 'Name'));
 check('import evidence links accept HTTPS and reject unsafe schemes or embedded credentials', safeImportSourceUrl('https://drive.google.com/drive/folders/example') && !safeImportSourceUrl('javascript:alert(1)') && !safeImportSourceUrl('https://user:pass@example.com/path'));
 check('stable entry source key is independent of shared evidence URLs', importEntryIdentity('entry-a') !== importEntryIdentity('entry-b') && importEntryIdentity('entry-a') === importEntryIdentity('entry-a'));
+check('import entry dates require valid YYYY-MM-DD strings', validImportDate('2026-10-27') && !validImportDate(20261027) && !validImportDate({}) && !validImportDate('2026-02-30'));
+check('unique source or repository match wins over duplicate display names', !projectNameIsAmbiguous(true, 3) && projectNameIsAmbiguous(false, 2));
+const logTabsSource = await readFile(new URL('../app/projects/[id]/LogTabs.tsx', import.meta.url), 'utf8');
+check('evidence links render on decision and note cards as well as changelog', (logTabsSource.match(/<EvidenceSource href=\{e\.evidence_url\} \/>/g) || []).length === 2);
 
 const stamp = Date.now().toString(36);
 const sourceKeyOne = await call('/projects', 'POST', { name: `Life one ${stamp}`, source_key: ' life:inventory-1 ' });
