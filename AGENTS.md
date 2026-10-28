@@ -9,7 +9,7 @@ Instructions for coding agents (Codex, Claude Code, Cursor, and others) working 
 - `projects/<id>.json` holds one project's plan, log and settings, and is the source of truth. `projects/<id>.md` is generated from it on every write.
 - `repos.json` holds the Repos page's tracked exceptions.
 - `operations.json` stores durable idempotency receipts, committed atomically with the request's changes.
-- The target repository must be verified private, and the branch plus initial reviewed data must already exist. Missing, inaccessible, or malformed state is an error, never an empty store.
+- The target repository must be verified private, and the branch plus initial reviewed data must already exist. Missing, inaccessible, or malformed state is an error, never an empty store. A validated legacy project-only snapshot can be read and receives missing versioned metadata atomically with its first mutation.
 - Preview deployments may use only a `preview/` data branch; production may not use one.
 
 Rules for changing it:

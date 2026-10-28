@@ -15,6 +15,15 @@ const operationsBlob = blobSha(operationsText); blobs[operationsBlob] = operatio
 const initialTree = h('fake-initial-tree'); trees[initialTree] = { [reposPath]: reposBlob, 'operations.json': operationsBlob };
 const initialCommit = h('fake-initial-commit'); commits[initialCommit] = { sha: initialCommit, message: 'fixture: provision private repo list', tree: { sha: initialTree }, parents: [] };
 refs.main = initialCommit;
+const legacyProject = {
+  preservedTopField: 'keep',
+  project: { id: 'legacy-fixture', name: 'Legacy fixture', owner: null, repo: null, status: 'active', priority: 'medium', summary: '', description: '', next_action: '', agent_instructions: '', tags: [], agents: [], tools: [], links: [], start_date: null, target_date: null, status_changed_at: '2026-01-01T00:00:00.000Z', sort_order: 0, created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', preservedProjectField: 'keep' },
+  milestones: [], tasks: [], entries: [],
+};
+const legacyText = JSON.stringify(legacyProject, null, 2) + '\n';
+const legacyProjectBlob = blobSha(legacyText); blobs[legacyProjectBlob] = legacyText;
+const legacyTree = h('fake-legacy-tree'); trees[legacyTree] = { 'projects/legacy-fixture.json': legacyProjectBlob };
+const legacyCommit = h('fake-legacy-commit'); commits[legacyCommit] = { sha: legacyCommit, message: 'fixture: legacy project files', tree: { sha: legacyTree }, parents: [] };
 let repoPrivate = true;
 const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
 http.createServer((req, res) => {
@@ -22,6 +31,8 @@ http.createServer((req, res) => {
     calls++;
     const u = new URL(req.url, 'http://x'); const p = decodeURIComponent(u.pathname); const j = body ? JSON.parse(body) : {};
     if (p === '/__stats') return send(res, 200, { calls, refs, log, commits: Object.keys(commits).length });
+    if (p === '/__test/files') { const c = commits[refs.main]; return send(res, 200, { paths: Object.keys(trees[c.tree.sha]) }); }
+    if (p === '/__test/legacy') { refs.main = legacyCommit; return send(res, 200, { ok: true }); }
     if (p === '/__test/public') { repoPrivate = false; return send(res, 200, { ok: true }); }
     if (p === '/__test/private') { repoPrivate = true; return send(res, 200, { ok: true }); }
     if (p === '/__test/drop-main') { delete refs.main; return send(res, 200, { ok: true }); }

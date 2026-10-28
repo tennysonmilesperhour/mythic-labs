@@ -59,6 +59,7 @@ export class Invalid extends Error {}
 
 const now = () => new Date().toISOString();
 const today = () => now().slice(0, 10);
+const normalizeSourceKey = (value: unknown) => typeof value === "string" ? value.trim() : "";
 
 // ─────────── draft helpers (run inside mutate, so they may run twice) ───────────
 
@@ -120,6 +121,7 @@ function ordered(d: ProjectDetail): ProjectDetail {
   const bySort = <T extends { sort_order: number; created_at: string }>(xs: T[]) =>
     [...xs].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
   return {
+    ...d,
     project: d.project,
     milestones: bySort(d.milestones),
     tasks: bySort(d.tasks),
@@ -202,7 +204,7 @@ export async function createProjects(
       const created: Project[] = [];
       const failed: Array<{ name: string; reason: string }> = [];
       const key = (o?: unknown, r?: unknown) => (o && r ? `${o}/${r}`.toLowerCase() : null);
-      const sourceKeys = new Set(Array.from(s.projects.values()).map((d) => d.project.source_key).filter(Boolean));
+      const sourceKeys = new Set(Array.from(s.projects.values()).map((d) => normalizeSourceKey(d.project.source_key)).filter(Boolean));
       const taken = new Set(
         Array.from(s.projects.values()).map((d) => key(d.project.owner, d.project.repo)).filter(Boolean)
       );
@@ -218,7 +220,7 @@ export async function createProjects(
           continue;
         }
         const k = key(clean.owner, clean.repo);
-        const sourceKey = typeof clean.source_key === "string" ? clean.source_key.trim() : "";
+        const sourceKey = normalizeSourceKey(clean.source_key);
         if (sourceKey && sourceKeys.has(sourceKey)) {
           failed.push({ name: pname, reason: "source_key already tracked" });
           continue;
@@ -229,6 +231,7 @@ export async function createProjects(
         }
         if (k) taken.add(k);
         if (sourceKey) sourceKeys.add(sourceKey);
+        if (sourceKey) clean.source_key = sourceKey;
         const t = now();
         const project: Project = {
           id: newId(),
@@ -274,6 +277,13 @@ export async function updateProject(
     (r) => `${r.project.name}: ${r.entry ? `status ${r.entry.title}` : `edit ${Object.keys(clean).join(", ")}`}`,
     (s) => {
       const d = projectIn(s, id);
+      if ("source_key" in clean) {
+        const sourceKey = normalizeSourceKey(clean.source_key);
+        if (sourceKey && Array.from(s.projects.values()).some((other) => other.project.id !== id && normalizeSourceKey(other.project.source_key) === sourceKey)) {
+          throw new Conflict("source_key already tracked");
+        }
+        clean.source_key = sourceKey || null;
+      }
       const before = d.project.status;
       const statusChanged = !!clean.status && clean.status !== before;
       Object.assign(d.project, clean, { updated_at: now() });
@@ -497,17 +507,8 @@ export async function createAgentTask(projectId: string, agent: string, input: R
       const d = projectIn(s, projectId);
       assertAgentProject(d, agent);
       const clean = pick(input, TASK_FIELDS);
-      if (!String(clean.title || "").trim()) throw new Invalid("title required");
-      const task: Task = {
-        id: newId(), project_id: projectId, milestone_id: null, parent_id: null,
-        title: "", notes: "", acceptance: "", depends_on: [], status: "todo", priority: "medium",
-        agent: null, due_date: null, claimed_at: null, done_at: null, sort_order: d.tasks.length,
-        created_at: now(), updated_at: now(), ...(clean as Partial<Task>),
-      };
-      task.title = String(clean.title).trim();
-      d.tasks.push(task);
+      const task = newTask(d, clean);
       addEntry(d, { kind: "progress", title: `Added task: ${task.title}`, author: agent });
-      touch(d);
       return task;
     }
   );

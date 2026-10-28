@@ -45,6 +45,8 @@ export type Snapshot = {
   projects: Map<string, ProjectDetail>;
   repos: ReposFile;
   operations: Record<string, OperationReceipt>;
+  /** A validated pre-versioned snapshot; metadata is written on its first mutation. */
+  legacyMetadataMigration: boolean;
 };
 
 type Change = { path: string; content: string | null };
@@ -240,16 +242,18 @@ export function storeLocation(): string {
 // ─────────── snapshot ───────────
 
 function parse(head: string | null, files: Map<string, string>): Snapshot {
-  if (!files.has("repos.json")) {
-    throw new Error("Project data file repos.json is missing; refusing to treat the store as empty.");
-  }
   const projects = new Map<string, ProjectDetail>();
   const seenIds = new Set<string>();
+  let hasLegacyProject = false;
+  let hasVersionedProject = false;
   files.forEach((text, p) => {
     if (!p.startsWith("projects/")) return;
     const d = JSON.parse(text) as ProjectDetail;
     const expectedId = path.basename(p, ".json");
-    if ((d as ProjectDetail & { schemaVersion?: number })?.schemaVersion !== 1 || !d.project || typeof d.project.id !== "string" ||
+    const schemaVersion = (d as ProjectDetail & { schemaVersion?: number })?.schemaVersion;
+    if (schemaVersion === undefined) hasLegacyProject = true;
+    else if (schemaVersion === 1) hasVersionedProject = true;
+    if ((schemaVersion !== undefined && schemaVersion !== 1) || !d.project || typeof d.project.id !== "string" ||
         typeof d.project.name !== "string" || !Array.isArray(d.project.agents) ||
         d.project.id !== expectedId || !Array.isArray(d.milestones) || !Array.isArray(d.tasks) || !Array.isArray(d.entries)) {
       throw new Error(`Project data file ${p} has an incompatible project record.`);
@@ -267,7 +271,13 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
     }
     projects.set(d.project.id, d);
   });
-  const parsedRepos = JSON.parse(files.get("repos.json")!) as Partial<ReposFile>;
+  const hasRepos = files.has("repos.json");
+  const hasOperations = files.has("operations.json");
+  const legacyMetadataMigration = !hasRepos && !hasOperations && projects.size > 0 && hasLegacyProject && !hasVersionedProject;
+  if ((!hasRepos || !hasOperations) && !legacyMetadataMigration) {
+    throw new Error("Project metadata is missing or incomplete; refusing to treat the store as empty.");
+  }
+  const parsedRepos = hasRepos ? JSON.parse(files.get("repos.json")!) as Partial<ReposFile> : { schemaVersion: 1, repos: [], plugins: {} };
   if (!parsedRepos || parsedRepos.schemaVersion !== 1 || !Array.isArray(parsedRepos.repos) || !parsedRepos.plugins || typeof parsedRepos.plugins !== "object" || Array.isArray(parsedRepos.plugins)) {
     throw new Error("Project data file repos.json has an incompatible repository collection.");
   }
@@ -279,8 +289,7 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
     if (seenIds.has(row.id)) throw new Error(`Duplicate record id ${row.id} in project data snapshot.`);
     seenIds.add(row.id);
   }
-  if (!files.has("operations.json")) throw new Error("Project data file operations.json is missing; refusing to treat the store as empty.");
-  const parsedOperations = JSON.parse(files.get("operations.json")!) as { schemaVersion?: number; items?: unknown };
+  const parsedOperations = hasOperations ? JSON.parse(files.get("operations.json")!) as { schemaVersion?: number; items?: unknown } : { schemaVersion: 1, items: {} };
   if (!parsedOperations || parsedOperations.schemaVersion !== 1 || !parsedOperations.items || typeof parsedOperations.items !== "object" || Array.isArray(parsedOperations.items)) {
     throw new Error("Project data file operations.json has an incompatible operation receipt collection.");
   }
@@ -289,7 +298,7 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
       throw new Error("Project data file operations.json contains an invalid operation receipt.");
     }
   }
-  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt> };
+  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, legacyMetadataMigration };
 }
 
 export async function readSnapshot(): Promise<Snapshot> {
@@ -353,7 +362,13 @@ export async function mutate<T>(
     if (JSON.stringify(draft.repos) !== JSON.stringify(base.repos)) {
       changes.push({ path: "repos.json", content: JSON.stringify(draft.repos, null, 2) + "\n" });
     }
+    if (base.legacyMetadataMigration && !changes.some((change) => change.path === "repos.json")) {
+      changes.push({ path: "repos.json", content: JSON.stringify(draft.repos, null, 2) + "\n" });
+    }
     if (JSON.stringify(draft.operations) !== JSON.stringify(base.operations)) {
+      changes.push({ path: "operations.json", content: JSON.stringify({ schemaVersion: 1, items: draft.operations }, null, 2) + "\n" });
+    }
+    if (base.legacyMetadataMigration && !changes.some((change) => change.path === "operations.json")) {
       changes.push({ path: "operations.json", content: JSON.stringify({ schemaVersion: 1, items: draft.operations }, null, 2) + "\n" });
     }
     if (!changes.length) return result;
