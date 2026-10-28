@@ -38,7 +38,7 @@ const TASK_FIELDS = [
   "due_date", "milestone_id", "parent_id", "sort_order",
 ] as const;
 const ENTRY_FIELDS = [
-  "kind", "title", "body", "entry_date", "author", "version", "change_type", "source_url",
+  "kind", "title", "body", "entry_date", "author", "version", "change_type", "source_url", "evidence_url",
   "decision_status", "context", "alternatives", "consequences",
 ] as const;
 
@@ -99,6 +99,7 @@ function addEntry(d: ProjectDetail, input: Record<string, unknown>): Entry {
     version: null,
     change_type: null,
     source_url: null,
+    evidence_url: null,
     decision_status: null,
     context: "",
     alternatives: "",

@@ -30,3 +30,7 @@ export function safeImportSourceUrl(value: unknown): value is string | undefined
     return false;
   }
 }
+
+export function importEntryIdentity(sourceKey: string): string {
+  return `mythic-import://entry/${encodeURIComponent(sourceKey.trim())}`;
+}

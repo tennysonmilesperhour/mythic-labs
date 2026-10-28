@@ -141,6 +141,7 @@ export type Entry = {
   version: string | null;
   change_type: ChangeType | null;
   source_url: string | null;
+  evidence_url: string | null;
   decision_status: DecisionStatus | null;
   context: string;
   alternatives: string;

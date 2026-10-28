@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { api } from "@/components/ProjectBits";
-import { nameMatchCompatible, safeImportSourceUrl, sameResolvedOwner, validImportProjectKey } from "@/lib/importIdentity";
+import { importEntryIdentity, nameMatchCompatible, safeImportSourceUrl, sameResolvedOwner, validImportProjectKey } from "@/lib/importIdentity";
 
 type ProjectStatus = "active" | "building" | "planned" | "paused";
 type TaskStatus = "todo" | "blocked";
@@ -31,7 +31,7 @@ type ProjectInput = {
 type EntryInput = {
   source_key: string;
   project_key: string;
-  source_url?: string;
+  evidence_url?: string;
   title: string;
   body: string;
   entry_date: string;
@@ -80,10 +80,6 @@ function object(value: unknown): value is Record<string, unknown> {
 function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && !!value.trim();
 }
-function entrySourceUrl(entry: EntryInput) {
-  return entry.source_url || `mythic-import://entry/${encodeURIComponent(entry.source_key.trim())}`;
-}
-
 function makePlan(text: string, current: ImportProjectState[]): Plan {
   const errors: string[] = [];
   let raw: unknown;
@@ -166,14 +162,14 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
   for (const [i, entry] of entries.entries()) {
     if (!nonEmpty(entry.source_key) || !nonEmpty(entry.project_key) || !nonEmpty(entry.title) || !nonEmpty(entry.body) || !/^\d{4}-\d{2}-\d{2}$/.test(entry.entry_date)) { errors.push(`entries[${i}] requires source_key, project_key, title, body, and YYYY-MM-DD entry_date.`); continue; }
     if (entry.source_key !== entry.source_key.trim() || entry.project_key !== entry.project_key.trim()) { errors.push(`entries[${i}] source_key and project_key must be trimmed.`); continue; }
-    if (!safeImportSourceUrl(entry.source_url)) errors.push(`entries[${i}] source_url must be a valid HTTPS URL without embedded credentials.`);
+    if (!safeImportSourceUrl(entry.evidence_url)) errors.push(`entries[${i}] evidence_url must be a valid HTTPS URL without embedded credentials.`);
     if (!projectKeys.has(entry.project_key) && !current.some((x) => x.source_key === entry.project_key || `${x.owner}/${x.repo}`.toLowerCase() === entry.project_key.toLowerCase())) errors.push(`entries[${i}] references an unmapped project_key.`);
     if (entry.kind !== "note" && entry.kind !== "decision") errors.push(`entries[${i}] kind must be note or decision.`);
     if (entry.decision_status && !["proposed", "accepted", "superseded", "rejected"].includes(entry.decision_status)) errors.push(`entries[${i}] has an unsupported decision_status.`);
     if (seenEntryKeys.has(entry.source_key)) errors.push(`Duplicate entry source_key: ${entry.source_key}.`);
     seenEntryKeys.add(entry.source_key);
     const target = matches.get(entry.project_key) || current.find((x) => x.source_key === entry.project_key || `${x.owner}/${x.repo}`.toLowerCase() === entry.project_key.toLowerCase());
-    const sourceUrl = entrySourceUrl(entry);
+    const sourceUrl = importEntryIdentity(entry.source_key);
     const entryOwner = current.find((project) => project.entry_source_urls.includes(sourceUrl));
     if (entryOwner && target && entryOwner.id !== target.id) { errors.push(`Entry source_key ${entry.source_key} is already recorded under a different project.`); continue; }
     if (entryOwner && !target) { errors.push(`Entry source_key ${entry.source_key} is already recorded; resolve its project mapping before import.`); continue; }
@@ -212,7 +208,7 @@ export default function ImportClient({ projects }: { projects: ImportProjectStat
       for (const [projectKey, rows] of plan.entriesToCreate) {
         const project = resolved.get(projectKey) || projects.find((p) => p.source_key === projectKey || `${p.owner}/${p.repo}`.toLowerCase() === projectKey.toLowerCase());
         if (!project) throw new Error(`Project mapping disappeared for ${projectKey}. Reload and preview again.`);
-        await api(`/api/projects/${project.id}/entries`, "POST", { items: rows.map((entry) => ({ kind: entry.kind, title: entry.title, body: entry.body, entry_date: entry.entry_date, source_url: entrySourceUrl(entry), decision_status: entry.decision_status ?? (entry.kind === "decision" ? "proposed" : null) })) });
+        await api(`/api/projects/${project.id}/entries`, "POST", { items: rows.map((entry) => ({ kind: entry.kind, title: entry.title, body: entry.body, entry_date: entry.entry_date, source_url: importEntryIdentity(entry.source_key), evidence_url: entry.evidence_url ?? null, decision_status: entry.decision_status ?? (entry.kind === "decision" ? "proposed" : null) })) });
       }
       setMessage(`Import completed. Created ${plan.projectsToCreate.length} project categories, attempted ${Array.from(plan.tasksToCreate.values()).reduce((n, x) => n + x.length, 0)} new tasks, and added ${Array.from(plan.entriesToCreate.values()).reduce((n, x) => n + x.length, 0)} log entries. Existing keyed records skipped: ${plan.taskSkipped} tasks, ${plan.entrySkipped} entries. Reload this page before another import to read back current state.`);
       setRaw("");

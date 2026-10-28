@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 const identitySource = await readFile(new URL('../lib/importIdentity.ts', import.meta.url), 'utf8');
 const identityJs = ts.transpileModule(identitySource, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { sameResolvedOwner, nameMatchCompatible, validImportProjectKey, safeImportSourceUrl } = await import(`data:text/javascript;base64,${Buffer.from(identityJs).toString('base64')}`);
+const { sameResolvedOwner, nameMatchCompatible, validImportProjectKey, safeImportSourceUrl, importEntryIdentity } = await import(`data:text/javascript;base64,${Buffer.from(identityJs).toString('base64')}`);
 const B = (process.argv[2] || 'http://localhost:3000') + '/api';
 const json = { 'content-type': 'application/json' };
 const agent = (a) => ({ ...json, authorization: 'Bearer smoke-token', 'x-agent': a });
@@ -25,7 +25,8 @@ check('new category does not suppress its task or entry rows', !sameResolvedOwne
 check('existing task and entry dedupe only within the resolved project', sameResolvedOwner({ id: 'same' }, { id: 'same' }) && !sameResolvedOwner({ id: 'one' }, { id: 'two' }));
 check('explicit repo mismatch blocks same-name category fallback', !nameMatchCompatible('owner', 'repo-b', 'owner', 'repo-a') && nameMatchCompatible(undefined, undefined, null, null));
 check('malformed project keys are rejected before mapping', !validImportProjectKey(undefined, 'Name') && !validImportProjectKey(' key ', 'Name') && validImportProjectKey('key', 'Name'));
-check('import source links accept HTTPS and reject unsafe schemes or embedded credentials', safeImportSourceUrl('https://drive.google.com/drive/folders/example') && !safeImportSourceUrl('javascript:alert(1)') && !safeImportSourceUrl('https://user:pass@example.com/path'));
+check('import evidence links accept HTTPS and reject unsafe schemes or embedded credentials', safeImportSourceUrl('https://drive.google.com/drive/folders/example') && !safeImportSourceUrl('javascript:alert(1)') && !safeImportSourceUrl('https://user:pass@example.com/path'));
+check('stable entry source key is independent of shared evidence URLs', importEntryIdentity('entry-a') !== importEntryIdentity('entry-b') && importEntryIdentity('entry-a') === importEntryIdentity('entry-a'));
 
 const stamp = Date.now().toString(36);
 const sourceKeyOne = await call('/projects', 'POST', { name: `Life one ${stamp}`, source_key: ' life:inventory-1 ' });
@@ -70,12 +71,22 @@ const freshCategory = await call('/projects', 'POST', { name: `Fresh import cate
 const freshCategoryId = freshCategory.body.created?.[0]?.id;
 const freshTaskImport = await call(`/projects/${freshCategoryId}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:fresh`, title: 'Fresh category task', status: 'todo' }] }, { ...json, 'Idempotency-Key': `fresh-task-${stamp}` });
 const freshSourceUrl = `https://drive.google.com/drive/folders/${stamp}`;
-const freshEntryImport = await call(`/projects/${freshCategoryId}/entries`, 'POST', { items: [{ kind: 'note', title: 'Fresh category report', body: 'Report preview import check', source_url: freshSourceUrl }] }, { ...json, 'Idempotency-Key': `fresh-entry-${stamp}` });
+const entryA = importEntryIdentity(`entry-a:${stamp}`);
+const entryB = importEntryIdentity(`entry-b:${stamp}`);
+const freshEntryImport = await call(`/projects/${freshCategoryId}/entries`, 'POST', { items: [
+  { kind: 'note', title: 'Fresh category report A', body: 'Report preview import check', source_url: entryA, evidence_url: freshSourceUrl },
+  { kind: 'note', title: 'Fresh category report B', body: 'Second record with same evidence folder', source_url: entryB, evidence_url: freshSourceUrl },
+] }, { ...json, 'Idempotency-Key': `fresh-entry-${stamp}` });
+const changedEvidenceRetry = await call(`/projects/${freshCategoryId}/entries`, 'POST', { items: [
+  { kind: 'note', title: 'Fresh category report A revised', body: 'Same import identity with updated evidence', source_url: entryA, evidence_url: `${freshSourceUrl}/revised` },
+] }, { ...json, 'Idempotency-Key': `fresh-entry-retry-${stamp}` });
 const freshCategoryReadback = await call(`/projects/${freshCategoryId}`);
 check('new category accepts its task and report entry and reads both back',
-  freshTaskImport.body.created?.length === 1 && freshEntryImport.body.created?.length === 1 &&
+  freshTaskImport.body.created?.length === 1 && freshEntryImport.body.created?.length === 2 &&
   freshCategoryReadback.body.tasks?.some((t) => t.source_key === `inventory:${stamp}:fresh`) &&
-  freshCategoryReadback.body.entries?.some((e) => e.source_url === freshSourceUrl));
+  freshCategoryReadback.body.entries?.filter((e) => e.evidence_url === freshSourceUrl).length === 2 &&
+  freshCategoryReadback.body.entries?.some((e) => e.source_url === entryA));
+check('replaying a stable entry key with changed evidence does not duplicate it', changedEvidenceRetry.body.created?.length === 0 && changedEvidenceRetry.body.skipped === 1 && (await call(`/projects/${freshCategoryId}`)).body.entries.filter((e) => e.source_url === entryA).length === 1);
 await call(`/projects/${importPid}`, 'DELETE');
 const { body: paused } = await call('/projects', 'POST', { name: `Paused ${stamp}`, status: 'paused', agents: [] });
 const { body: pausedTask } = await call(`/projects/${paused.created[0].id}/tasks`, 'POST', { title: 'Must not be claimed' });

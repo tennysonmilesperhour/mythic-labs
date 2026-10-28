@@ -174,9 +174,14 @@ export function ChangelogTab({ store }: { store: Store }) {
                       </div>
                     </div>
                     <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0">{fmtDate(e.entry_date)}</span>
-                    {e.source_url ? (
+                    {e.source_url && !e.source_url.startsWith("mythic-import://") ? (
                       <a href={e.source_url} target="_blank" rel="noreferrer" className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent">
                         ↗
+                      </a>
+                    ) : null}
+                    {e.evidence_url ? (
+                      <a href={e.evidence_url} target="_blank" rel="noreferrer" className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent" aria-label="Open evidence source" title="Evidence source">
+                        SOURCE ↗
                       </a>
                     ) : null}
                     <button onClick={() => remove(e.id)} className="text-fg-ghost hover:text-fg opacity-0 group-hover:opacity-100">
