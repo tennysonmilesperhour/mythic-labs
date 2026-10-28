@@ -24,6 +24,11 @@ const laneNotes: Record<Lane, string> = {
   Completed: "Completed history is shown for context and is excluded from active work.",
 };
 
+/** Anchor for a lane, so other pages can link straight to it (e.g. /queue#blocked). */
+function laneId(lane: Lane): string {
+  return lane.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "");
+}
+
 const lanes: Lane[] = ["Needs investigation", "In progress / verify", "Blocked", "Planned", "Paused", "Completed"];
 
 function TaskCard({ project, task }: { project: ProjectDetail; task: Task }) {
@@ -83,7 +88,7 @@ export default async function QueuePage() {
           {lanes.map((lane) => {
             const items = rows.filter(({ project, task }) => laneFor(project, task) === lane);
             return (
-              <section key={lane} className="mb-10">
+              <section key={lane} id={laneId(lane)} className="mb-10 scroll-mt-20">
                 <div className="flex items-baseline justify-between border-b border-line pb-3 mb-4">
                   <h2 className="serif-display text-2xl">{lane}</h2>
                   <span className="mono-label-dim">{items.length} items</span>
