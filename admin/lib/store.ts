@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { gh } from "./github";
@@ -11,12 +12,12 @@ import { renderProjectMarkdown, type ProjectDetail } from "./projectTypes";
  *   projects/<id>.md     the same project rendered for humans and agents
  *   repos.json           the Repos page's tracked exceptions
  *
- * They live on a branch of a PRIVATE repo, created on first write. Every
- * change is one commit; the history is the audit log. Writes to a public repo
- * are refused: the data includes private repo names and descriptions.
+ * The destination is a separately configured, already-private repository.
+ * Every change is one commit; the history is the audit log.
  *
- *   PM_DATA_REPO    owner/repo        (required; must be private)
- *   PM_DATA_BRANCH  branch            (default: roadmap-data)
+ *   PM_DATA_OWNER   owner             (required)
+ *   PM_DATA_REPO    repository        (required)
+ *   PM_DATA_BRANCH  existing branch   (required)
  *   PM_DATA_DIR     local directory   (dev only: use files on disk, no GitHub)
  */
 
@@ -32,19 +33,36 @@ export type TrackedRepo = {
 };
 
 export type ReposFile = {
+  schemaVersion: 1;
   repos: TrackedRepo[];
   plugins: Record<string, Record<string, boolean>>;
 };
+
+export type OperationReceipt = { payloadHash: string; result: unknown };
 
 export type Snapshot = {
   head: string | null;
   projects: Map<string, ProjectDetail>;
   repos: ReposFile;
+  operations: Record<string, OperationReceipt>;
+  /** A validated pre-versioned snapshot; metadata is written on its first mutation. */
+  legacyMetadataMigration: boolean;
 };
 
 type Change = { path: string; content: string | null };
 
 class StaleHead extends Error {}
+export class StoreNotConfigured extends Error { readonly status = 503; }
+class StoreConflict extends Error { readonly status = 409; }
+
+type RequestOperation = { id: string; payloadHash: string };
+const requestOperation = new AsyncLocalStorage<RequestOperation>();
+
+export function withRequestOperation<T>(id: string | undefined, payloadHash: string, fn: () => Promise<T> | T): Promise<T> {
+  if (!id) return Promise.resolve(fn());
+  if (!/^[\w.:-]{1,160}$/.test(id)) throw new Error("Invalid Idempotency-Key.");
+  return Promise.resolve(requestOperation.run({ id, payloadHash }, fn));
+}
 
 export const newId = () => randomUUID();
 
@@ -57,7 +75,7 @@ interface Backend {
   describe(): string;
 }
 
-const wanted = (p: string) => p === "repos.json" || /^projects\/[\w-]+\.json$/.test(p);
+const wanted = (p: string) => p === "repos.json" || p === "operations.json" || /^projects\/[\w-]+\.json$/.test(p);
 
 /** Git's blob id for a text, so the cache can match tree entries without refetching. */
 const blobSha = (text: string) => {
@@ -65,45 +83,53 @@ const blobSha = (text: string) => {
   return createHash("sha1").update(`blob ${buf.length}\0`).update(buf).digest("hex");
 };
 
-export class StoreNotConfigured extends Error {}
-
 function githubBackend(): Backend {
-  const target = process.env.PM_DATA_REPO || "";
-  const [owner, repo] = target.split("/");
-  const branch = process.env.PM_DATA_BRANCH || "roadmap-data";
-  const configured = () => {
-    if (!owner || !repo) {
-      throw new StoreNotConfigured("Set PM_DATA_REPO to a private repo (owner/repo) for dashboard data.");
-    }
-  };
-  // Checked once per warm function, before the first write.
-  let verifiedPrivate = false;
-  const assertPrivate = async () => {
-    if (verifiedPrivate) return;
-    const meta = await gh().repos.get({ owner, repo });
-    if (!meta.data.private) {
-      throw new StoreNotConfigured(
-        `Refusing to write dashboard data to ${owner}/${repo}: it is public, and the data includes private repo names and descriptions. Point PM_DATA_REPO at a private repo.`
-      );
-    }
-    verifiedPrivate = true;
-  };
+  const owner = process.env.PM_DATA_OWNER?.trim();
+  const repo = process.env.PM_DATA_REPO?.trim();
+  const branch = process.env.PM_DATA_BRANCH?.trim();
+  if (!owner || !repo || !branch || owner.includes("/") || repo.includes("/")) {
+    throw new StoreNotConfigured("Project storage requires independent PM_DATA_OWNER, PM_DATA_REPO, and PM_DATA_BRANCH values.");
+  }
+  if (process.env.VERCEL_ENV === "preview" && !branch.startsWith("preview/")) {
+    throw new StoreNotConfigured("Preview deployments may use only a PM_DATA_BRANCH beginning with preview/.");
+  }
+  if (process.env.VERCEL_ENV === "production" && branch.startsWith("preview/")) {
+    throw new StoreNotConfigured("Production deployments may not use a preview PM_DATA_BRANCH.");
+  }
   // Blob cache survives across requests in a warm function: only changed files are refetched.
   const blobs = new Map<string, string>();
   const treeOf = new Map<string, string>(); // commit sha → tree sha
   let last: { head: string; files: Map<string, string> } | null = null;
 
+  const verifyPrivateRepository = async () => {
+    try {
+      const result = await gh().repos.get({ owner, repo });
+      if (!result.data.private) throw new StoreNotConfigured(`Refusing to use public project data repository ${owner}/${repo}.`);
+    } catch (err: unknown) {
+      const status = (err as { status?: number }).status;
+      if (status === 401 || status === 403) {
+        throw new StoreNotConfigured(`GitHub authentication is not authorized to access private project data repository ${owner}/${repo}; no empty store was assumed.`);
+      }
+      if (status === 404) {
+        throw new StoreNotConfigured(`Configured project data repository ${owner}/${repo} was not found or is not visible to the GitHub token; no empty store was assumed.`);
+      }
+      throw err;
+    }
+  };
+
   return {
     describe: () => `github:${owner}/${repo}@${branch}`,
 
     async read() {
-      configured();
+      await verifyPrivateRepository();
       let head: string;
       try {
         const ref = await gh().git.getRef({ owner, repo, ref: `heads/${branch}` });
         head = ref.data.object.sha;
       } catch (err: unknown) {
-        if ((err as { status?: number }).status === 404) return { head: null, files: new Map() };
+        if ((err as { status?: number }).status === 404) {
+          throw new Error(`Configured project data branch ${owner}/${repo}@${branch} is missing; refusing to treat it as empty.`);
+        }
         throw err;
       }
       if (last?.head === head) return last;
@@ -130,14 +156,12 @@ function githubBackend(): Backend {
     },
 
     async write(head, changes, message) {
-      configured();
-      await assertPrivate();
+      await verifyPrivateRepository();
+      if (!head) throw new Error("Refusing to initialize an empty project data branch; provision a reviewed snapshot first.");
       const tree = await gh().git.createTree({
         owner,
         repo,
-        ...(head
-          ? { base_tree: treeOf.get(head) ?? (await gh().git.getCommit({ owner, repo, commit_sha: head })).data.tree.sha }
-          : {}),
+        base_tree: treeOf.get(head) ?? (await gh().git.getCommit({ owner, repo, commit_sha: head })).data.tree.sha,
         tree: changes.map((c) =>
           c.content === null
             ? { path: c.path, mode: "100644" as const, type: "blob" as const, sha: null }
@@ -149,14 +173,10 @@ function githubBackend(): Backend {
         repo,
         message,
         tree: tree.data.sha,
-        parents: head ? [head] : [],
+        parents: [head],
       });
       try {
-        if (head) {
-          await gh().git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: commit.data.sha, force: false });
-        } else {
-          await gh().git.createRef({ owner, repo, ref: `refs/heads/${branch}`, sha: commit.data.sha });
-        }
+        await gh().git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: commit.data.sha, force: false });
       } catch (err: unknown) {
         // 422: not a fast-forward (someone else committed) or the branch now exists.
         if ((err as { status?: number }).status === 422) throw new StaleHead();
@@ -206,7 +226,12 @@ function diskBackend(dir: string): Backend {
 
 let backend: Backend | null = null;
 function store(): Backend {
-  if (!backend) backend = process.env.PM_DATA_DIR ? diskBackend(process.env.PM_DATA_DIR) : githubBackend();
+  if (!backend) {
+    if (process.env.PM_DATA_DIR && process.env.VERCEL_ENV) {
+      throw new Error("PM_DATA_DIR is supported only for local development; Vercel deployments require the private GitHub store.");
+    }
+    backend = process.env.PM_DATA_DIR ? diskBackend(process.env.PM_DATA_DIR) : githubBackend();
+  }
   return backend;
 }
 
@@ -216,17 +241,64 @@ export function storeLocation(): string {
 
 // ─────────── snapshot ───────────
 
-const EMPTY_REPOS: ReposFile = { repos: [], plugins: {} };
-
 function parse(head: string | null, files: Map<string, string>): Snapshot {
   const projects = new Map<string, ProjectDetail>();
+  const seenIds = new Set<string>();
+  let hasLegacyProject = false;
+  let hasVersionedProject = false;
   files.forEach((text, p) => {
     if (!p.startsWith("projects/")) return;
     const d = JSON.parse(text) as ProjectDetail;
+    const expectedId = path.basename(p, ".json");
+    const schemaVersion = (d as ProjectDetail & { schemaVersion?: number })?.schemaVersion;
+    if (schemaVersion === undefined) hasLegacyProject = true;
+    else if (schemaVersion === 1) hasVersionedProject = true;
+    if ((schemaVersion !== undefined && schemaVersion !== 1) || !d.project || typeof d.project.id !== "string" ||
+        typeof d.project.name !== "string" || !Array.isArray(d.project.agents) ||
+        d.project.id !== expectedId || !Array.isArray(d.milestones) || !Array.isArray(d.tasks) || !Array.isArray(d.entries)) {
+      throw new Error(`Project data file ${p} has an incompatible project record.`);
+    }
+    if (seenIds.has(d.project.id)) throw new Error(`Duplicate project id ${d.project.id} in project data snapshot.`);
+    seenIds.add(d.project.id);
+    for (const [kind, rows] of [["milestone", d.milestones], ["task", d.tasks], ["entry", d.entries]] as const) {
+      for (const row of rows) {
+        if (!row || typeof row.id !== "string" || row.project_id !== d.project.id) {
+          throw new Error(`Project data file ${p} contains an invalid ${kind} record.`);
+        }
+        if (seenIds.has(row.id)) throw new Error(`Duplicate record id ${row.id} in project data snapshot.`);
+        seenIds.add(row.id);
+      }
+    }
     projects.set(d.project.id, d);
   });
-  const repos = files.has("repos.json") ? (JSON.parse(files.get("repos.json")!) as ReposFile) : EMPTY_REPOS;
-  return { head, projects, repos };
+  const hasRepos = files.has("repos.json");
+  const hasOperations = files.has("operations.json");
+  const legacyMetadataMigration = !hasRepos && !hasOperations && projects.size > 0 && hasLegacyProject && !hasVersionedProject;
+  if ((!hasRepos || !hasOperations) && !legacyMetadataMigration) {
+    throw new Error("Project metadata is missing or incomplete; refusing to treat the store as empty.");
+  }
+  const parsedRepos = hasRepos ? JSON.parse(files.get("repos.json")!) as Partial<ReposFile> : { schemaVersion: 1, repos: [], plugins: {} };
+  if (!parsedRepos || parsedRepos.schemaVersion !== 1 || !Array.isArray(parsedRepos.repos) || !parsedRepos.plugins || typeof parsedRepos.plugins !== "object" || Array.isArray(parsedRepos.plugins)) {
+    throw new Error("Project data file repos.json has an incompatible repository collection.");
+  }
+  const repos = parsedRepos as ReposFile;
+  for (const row of repos.repos) {
+    if (!row || typeof row.id !== "string" || typeof row.owner !== "string" || typeof row.repo !== "string") {
+      throw new Error("Project data file repos.json contains an invalid tracked repository record.");
+    }
+    if (seenIds.has(row.id)) throw new Error(`Duplicate record id ${row.id} in project data snapshot.`);
+    seenIds.add(row.id);
+  }
+  const parsedOperations = hasOperations ? JSON.parse(files.get("operations.json")!) as { schemaVersion?: number; items?: unknown } : { schemaVersion: 1, items: {} };
+  if (!parsedOperations || parsedOperations.schemaVersion !== 1 || !parsedOperations.items || typeof parsedOperations.items !== "object" || Array.isArray(parsedOperations.items)) {
+    throw new Error("Project data file operations.json has an incompatible operation receipt collection.");
+  }
+  for (const receipt of Object.values(parsedOperations.items as Record<string, unknown>)) {
+    if (!receipt || typeof receipt !== "object" || Array.isArray(receipt) || typeof (receipt as OperationReceipt).payloadHash !== "string" || !("result" in receipt)) {
+      throw new Error("Project data file operations.json contains an invalid operation receipt.");
+    }
+  }
+  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, legacyMetadataMigration };
 }
 
 export async function readSnapshot(): Promise<Snapshot> {
@@ -240,25 +312,12 @@ function serialize(d: ProjectDetail): string {
     [...xs].sort((a, b) => a.created_at.localeCompare(b.created_at));
   return (
     JSON.stringify(
-      { project: d.project, milestones: byCreated(d.milestones), tasks: byCreated(d.tasks), entries: byCreated(d.entries) },
+      { ...d, schemaVersion: 1, project: d.project, milestones: byCreated(d.milestones), tasks: byCreated(d.tasks), entries: byCreated(d.entries) },
       null,
       2
     ) + "\n"
   );
 }
-
-const BRANCH_README = `# Roadmap data
-
-Written by the Mythic Labs dashboard (admin/ in the brain repo). Every change
-is a commit, so \`git log\` is the audit trail.
-
-- \`projects/<id>.json\`: one project's plan, log and settings (source of truth)
-- \`projects/<id>.md\`: the same project as Markdown, for people and agents
-- \`repos.json\`: the Repos page's tracked exceptions
-
-Edit through the dashboard or its agent API, not by hand: the dashboard
-rejects stale writes, but a hand edit can still race it.
-`;
 
 /**
  * Apply `fn` to a fresh draft and commit what changed, retrying on top of the
@@ -271,8 +330,22 @@ export async function mutate<T>(
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     const base = await readSnapshot();
+    const operation = requestOperation.getStore();
+    const prior = operation && base.operations[operation.id];
+    if (prior) {
+      if (prior.payloadHash !== operation!.payloadHash) {
+        throw new StoreConflict(`Idempotency-Key ${operation!.id} was already used with a different request payload.`);
+      }
+      return structuredClone(prior.result) as T;
+    }
     const draft: Snapshot = structuredClone(base);
     const result = fn(draft);
+    if (operation) {
+      draft.operations[operation.id] = {
+        payloadHash: operation.payloadHash,
+        result: result === undefined ? null : structuredClone(result),
+      };
+    }
 
     const changes: Change[] = [];
     draft.projects.forEach((d, id) => {
@@ -289,8 +362,19 @@ export async function mutate<T>(
     if (JSON.stringify(draft.repos) !== JSON.stringify(base.repos)) {
       changes.push({ path: "repos.json", content: JSON.stringify(draft.repos, null, 2) + "\n" });
     }
+    if (base.legacyMetadataMigration && !changes.some((change) => change.path === "repos.json")) {
+      changes.push({ path: "repos.json", content: JSON.stringify(draft.repos, null, 2) + "\n" });
+    }
+    if (JSON.stringify(draft.operations) !== JSON.stringify(base.operations)) {
+      changes.push({ path: "operations.json", content: JSON.stringify({ schemaVersion: 1, items: draft.operations }, null, 2) + "\n" });
+    }
+    if (base.legacyMetadataMigration && !changes.some((change) => change.path === "operations.json")) {
+      changes.push({ path: "operations.json", content: JSON.stringify({ schemaVersion: 1, items: draft.operations }, null, 2) + "\n" });
+    }
     if (!changes.length) return result;
-    if (!base.head) changes.push({ path: "README.md", content: BRANCH_README });
+    if (!base.head) {
+      throw new Error("Project data branch is missing; provision a reviewed snapshot before writing.");
+    }
 
     try {
       await store().write(base.head, changes, typeof message === "string" ? message : message(result, draft));

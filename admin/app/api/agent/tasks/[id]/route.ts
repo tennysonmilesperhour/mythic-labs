@@ -16,5 +16,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     if (status === "blocked" && !b.note) throw new BadRequest("say why it's blocked in note");
     return { task: await reportTask(id, agent, { status, note: typeof b.note === "string" ? b.note : undefined }) };
-  });
+  }, req);
 }

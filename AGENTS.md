@@ -4,17 +4,20 @@ Instructions for coding agents (Codex, Claude Code, Cursor, and others) working 
 
 ## The dashboard has no database
 
-`admin/` is a Next.js app on Vercel. All of its data is committed as files to the `roadmap-data` branch of a **private** repo named by `PM_DATA_REPO`. Never this repo: it's public, and the data includes private repo names and descriptions. The store refuses public repos; keep that check.
+`admin/` is a Next.js app on Vercel. All of its data is committed as files to git in a separately configured private repository. Keep `PM_DATA_OWNER`, `PM_DATA_REPO`, and `PM_DATA_BRANCH` independent of the public `BRAIN_OWNER` / `BRAIN_REPO` settings.
 
 - `projects/<id>.json` holds one project's plan, log and settings, and is the source of truth. `projects/<id>.md` is generated from it on every write.
 - `repos.json` holds the Repos page's tracked exceptions.
+- `operations.json` stores durable idempotency receipts, committed atomically with the request's changes.
+- The target repository must be verified private, and the branch plus initial reviewed data must already exist. Missing, inaccessible, or malformed state is an error, never an empty store. A validated legacy project-only snapshot can be read and receives missing versioned metadata atomically with its first mutation.
+- Preview deployments may use only a `preview/` data branch; production may not use one.
 
 Rules for changing it:
 
 - **Go through `lib/store.ts` `mutate()`.** It reads the branch head, applies your function to a draft, commits every changed file at once, and retries on a non-fast-forward. Do validation inside the function and throw to abort; it can run more than once.
 - **Keep checks that guard a write inside the same `mutate()` call.** For example, `claimTask` checks "not claimed by someone else" inside the call, which makes claims race-safe. Reading first and writing in a second call brings the race back.
 - `lib/projects.ts` and `lib/db.ts` are the only modules that should call the store. Routes and UI use their exported functions.
-- Don't hand-edit the data branch while the dashboard is live. The store rejects stale writes, but a hand edit can still race it.
+- Don't hand-edit the configured data branch while the dashboard is live. The store rejects stale writes, but a hand edit can still race it.
 - No Supabase. It was removed on purpose; don't reintroduce it.
 
 ## Shared logic is client-safe
@@ -27,7 +30,7 @@ Rules for changing it:
 
 ## Agent API
 
-`/api/agent/*` requires `Authorization: Bearer $PM_AGENT_TOKEN` and an agent name (`X-Agent` or `?agent=`). `admin/README.md` lists the endpoints. Invariants:
+`/api/agent/*` is disabled unless `PM_AGENT_API_ENABLED=true`; when enabled it requires `Authorization: Bearer $PM_AGENT_TOKEN` and an agent label (`X-Agent` or `?agent=`). The shared token is trusted-admin access; labels are not identity. `admin/README.md` lists the endpoints. Invariants:
 
 - Decisions an agent creates are always stored as `proposed`.
 - An agent can change only `next_action` on a project.
@@ -43,7 +46,7 @@ Rules for changing it:
 cd admin
 npx tsc --noEmit -p . && npx next build
 node scripts/fake-github.mjs &   # fake GitHub Git Data API on :4010
-GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_DATA_REPO=test/data PM_AGENT_TOKEN=smoke-token npx next start &
+GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_AGENT_TOKEN=smoke-token npx next start &
 node scripts/smoke.mjs           # agent loop, claim race, parallel writes
 ```
 

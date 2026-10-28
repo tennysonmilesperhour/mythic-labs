@@ -76,6 +76,7 @@ export type Project = {
   name: string;
   owner: string | null;
   repo: string | null;
+  source_key?: string | null;
   status: ProjectStatus;
   priority: Priority;
   summary: string;

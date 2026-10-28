@@ -6,13 +6,13 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function PATCH(req: Request, { params }: Ctx) {
   const { id } = await params;
   const b = await body(req);
-  return handle(async () => ({ entry: await updateEntry(id, b) }));
+  return handle(async () => ({ entry: await updateEntry(id, b) }), req);
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const { id } = await params;
   return handle(async () => {
     await deleteEntry(id);
     return { ok: true };
-  });
+  }, req);
 }

@@ -21,13 +21,35 @@ export async function api<R = Record<string, unknown>>(
   method: string,
   data?: unknown
 ): Promise<R> {
+  const write = !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+  const serialized = data === undefined ? "" : JSON.stringify(data);
+  let storageKey: string | undefined;
+  let key: string | undefined;
+  if (write && typeof window !== "undefined") {
+    try {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${method.toUpperCase()}\n${url}\n${serialized}`));
+      const fingerprint = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      storageKey = `mythic-idempotency:${fingerprint}`;
+      key = sessionStorage.getItem(storageKey) || undefined;
+      if (!key) {
+        key = crypto.randomUUID();
+        sessionStorage.setItem(storageKey, key);
+      }
+    } catch {
+      // Browser session storage is optional; the Git ref still protects concurrent writes.
+    }
+  }
+  const headers: Record<string, string> = {};
+  if (data !== undefined) headers["content-type"] = "application/json";
+  if (key) headers["Idempotency-Key"] = key;
   const res = await fetch(url, {
     method,
-    headers: data ? { "content-type": "application/json" } : undefined,
-    body: data ? JSON.stringify(data) : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
+    body: data !== undefined ? serialized : undefined,
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
+  if (storageKey) sessionStorage.removeItem(storageKey);
   return json as R;
 }
 

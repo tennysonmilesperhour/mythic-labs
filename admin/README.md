@@ -2,7 +2,7 @@
 
 A small Next.js app for the Mythic Labs central brain (this repo's plugin marketplace): manage everything you're building, browse the catalogue, get the install commands, and check the few repos that override your default. It never writes to consuming repos.
 
-**Single-admin, no-login by design.** No database: data is committed to a git branch (see Data below).
+**Single-admin, no-login by design.** No database: project data is committed to an explicitly configured private Git repository (see Data below). Keep Vercel Deployment Protection on.
 
 ---
 
@@ -21,30 +21,26 @@ A small Next.js app for the Mythic Labs central brain (this repo's plugin market
 
 ### 1 · Data (no database)
 
-Everything the dashboard stores (projects, plans, logs, tracked repos) lives as files in a **private** GitHub repo:
+Everything the dashboard stores (projects, plans, logs, tracked repos) lives as files in git in a separately configured private repository:
 
 ```
-PM_DATA_REPO, branch roadmap-data   (branch created on first write)
+private project data repository / existing branch
 ├── README.md
 ├── projects/<id>.json   one project: plan, log, settings (source of truth)
 ├── projects/<id>.md     the same project as Markdown, for people and agents
-└── repos.json           the Repos page's tracked exceptions
+├── repos.json           the Repos page's tracked exceptions
+└── operations.json      durable idempotency receipts
 ```
 
-Every edit is one commit, so `git log roadmap-data` is the audit trail.
+Every edit is one commit, so Git history is the audit trail. Set `PM_DATA_OWNER`, `PM_DATA_REPO`, and `PM_DATA_BRANCH` independently of `BRAIN_OWNER` / `BRAIN_REPO`. The app verifies the destination is private before reading or writing, and fails closed when config, branch, or incompatible data files are missing or inaccessible. A validated pre-versioned project-only snapshot remains readable; its missing metadata files are added atomically on the first mutation without changing existing records. It never initializes an empty branch automatically. Preview deployments may use only `preview/*` branches; production cannot use a preview branch. The server-side `GITHUB_TOKEN` needs existing Contents read/write access to the private data repository. This change does not create or broaden token access.
 
-- Set `PM_DATA_REPO=owner/repo` (required) and optionally `PM_DATA_BRANCH`.
-- The token needs Contents read & write on that repo.
-- **The repo must be private.** The data includes the names and descriptions of private repos you import, so the store checks visibility and refuses to write to a public repo.
-- Use a repo that isn't connected to Vercel, so data commits don't trigger builds.
-
-How writes stay safe (`lib/store.ts`): each change reads the branch head, applies the edit, and commits all touched files at once with a non-forced ref update. If someone else committed first, GitHub rejects it (422) and the store re-reads and re-applies, up to 5 tries. Agent claims run their checks inside that loop, so two agents can't both claim a task.
+How writes stay safe (`lib/store.ts`): each change reads the branch head, applies the edit, and commits all touched files at once with a non-forced ref update. If someone else committed first, GitHub rejects it (422) and the store re-reads and re-applies, up to 5 tries. Agent claims run their checks inside that loop, so two agents can't both claim a task. `operations.json` records request idempotency keys in the same commit as the mutation. GitHub changelog imports also deduplicate by `source_url`.
 
 ### 2 · GitHub PAT
 
-Create a fine-grained Personal Access Token with:
-- **Repository access**: `mythic-labs`, the private data repo, plus any repo you want **Check** to read or track in **Projects** (its changelog importer reads PRs and commits)
-- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring commits there) and on the data repo; `Contents: read` and `Pull requests: read` everywhere else
+Use an existing authorized token with:
+- **Repository access**: `mythic-labs`, the private project-data repository, plus repos the dashboard must inspect
+- **Permissions**: `Contents: read & write` on `mythic-labs` (Authoring) and the private project-data repository; `Contents: read` and `Pull requests: read` on repos used for changelog imports
 
 Save the token; it goes into Vercel env as `GITHUB_TOKEN`.
 
@@ -66,15 +62,15 @@ Add env vars (see `admin/.env.local.example`):
 GITHUB_TOKEN=ghp_...
 BRAIN_OWNER=tennysonmilesperhour
 BRAIN_REPO=mythic-labs
-PM_DATA_REPO=<owner>/<private-repo>   # where projects are stored
-PM_AGENT_TOKEN=<long random string>   # turns on the agent API
+PM_AGENT_API_ENABLED=false
+PM_AGENT_TOKEN=<shared trusted-admin token>
 ```
 
 ---
 
 ## Agent API (autonomous build agents)
 
-The dashboard doubles as the roadmap agents work from. Set `PM_AGENT_TOKEN` (e.g. `openssl rand -hex 32`) to turn it on; every call needs `Authorization: Bearer <token>` and the agent's name (`X-Agent` header or `?agent=`).
+The dashboard doubles as the roadmap agents work from. The API is disabled unless `PM_AGENT_API_ENABLED=true` and `PM_AGENT_TOKEN` is configured. Every call needs `Authorization: Bearer <token>` and an agent label (`X-Agent` header or `?agent=`). The shared token authenticates a trusted admin; the caller-supplied label is not per-agent identity or isolation. Do not enable or share this token for the private everything dashboard without separate approval.
 
 | Endpoint | What it does |
 |---|---|
@@ -113,7 +109,7 @@ Visit http://localhost:3000.
 
 ```bash
 node scripts/fake-github.mjs &        # port 4010
-GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_DATA_REPO=test/data PM_AGENT_TOKEN=smoke-token \
+GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_AGENT_TOKEN=smoke-token \
   sh -c 'npm run build && npm start' &
 node scripts/smoke.mjs                # expects: all checks passed
 ```

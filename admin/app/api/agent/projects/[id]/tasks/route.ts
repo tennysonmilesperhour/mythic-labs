@@ -1,5 +1,5 @@
 import { BadRequest, agentName, body, handle, requireAgent } from "@/lib/api";
-import { createEntries, createTask } from "@/lib/projects";
+import { createAgentTask } from "@/lib/projects";
 
 // POST { title, parent_id?, milestone_id?, notes?, acceptance?, depends_on?, priority?, assign_self? }
 // Agents add subtasks or follow-ups they discover. Logged as progress.
@@ -10,7 +10,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     requireAgent(req);
     const agent = agentName(req, b);
     if (typeof b.title !== "string" || !b.title.trim()) throw new BadRequest("title required");
-    const task = await createTask(id, {
+    const task = await createAgentTask(id, agent, {
       title: b.title,
       parent_id: b.parent_id ?? null,
       milestone_id: b.milestone_id ?? null,
@@ -20,7 +20,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       priority: b.priority ?? "medium",
       agent: b.assign_self ? agent : null,
     });
-    await createEntries(id, [{ kind: "progress", title: `Added task: ${task.title}`, author: agent }]);
     return { task };
-  });
+  }, req);
 }

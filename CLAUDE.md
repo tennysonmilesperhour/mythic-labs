@@ -181,6 +181,6 @@ Results land in `evals/results/` (gitignored). Validate structure separately wit
 - **Marketplace catalog** → `.claude-plugin/marketplace.json`
 - **Per-repo override template** → `templates/consuming-repo.settings.json`
 - **Dashboard** → `admin/` (deployed on Vercel)
-- **Project manager** (status, plans, changelogs, decisions across all repos) → `admin/app/projects/`; data is committed as files to a private repo (`PM_DATA_REPO`) by `admin/lib/store.ts` (no database)
+- **Project manager** (status, plans, changelogs, decisions across all repos) → `admin/app/projects/`; data is committed as files to an explicitly configured private repository by `admin/lib/store.ts` (no database)
 - **Agent roadmap API** → `admin/app/api/agent/`; the skill agents use to work from it → `dev-workflows/skills/roadmap/`
 - **Skill evals** → `<plugin>/evals/`
