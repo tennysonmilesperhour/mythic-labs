@@ -19,3 +19,14 @@ export function nameMatchCompatible(
 export function validImportProjectKey(sourceKey: unknown, name: unknown): sourceKey is string {
   return typeof sourceKey === "string" && !!sourceKey.trim() && sourceKey === sourceKey.trim() && typeof name === "string" && !!name.trim();
 }
+
+export function safeImportSourceUrl(value: unknown): value is string | undefined {
+  if (value === undefined) return true;
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}

@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 const identitySource = await readFile(new URL('../lib/importIdentity.ts', import.meta.url), 'utf8');
 const identityJs = ts.transpileModule(identitySource, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { sameResolvedOwner, nameMatchCompatible, validImportProjectKey } = await import(`data:text/javascript;base64,${Buffer.from(identityJs).toString('base64')}`);
+const { sameResolvedOwner, nameMatchCompatible, validImportProjectKey, safeImportSourceUrl } = await import(`data:text/javascript;base64,${Buffer.from(identityJs).toString('base64')}`);
 const B = (process.argv[2] || 'http://localhost:3000') + '/api';
 const json = { 'content-type': 'application/json' };
 const agent = (a) => ({ ...json, authorization: 'Bearer smoke-token', 'x-agent': a });
@@ -25,6 +25,7 @@ check('new category does not suppress its task or entry rows', !sameResolvedOwne
 check('existing task and entry dedupe only within the resolved project', sameResolvedOwner({ id: 'same' }, { id: 'same' }) && !sameResolvedOwner({ id: 'one' }, { id: 'two' }));
 check('explicit repo mismatch blocks same-name category fallback', !nameMatchCompatible('owner', 'repo-b', 'owner', 'repo-a') && nameMatchCompatible(undefined, undefined, null, null));
 check('malformed project keys are rejected before mapping', !validImportProjectKey(undefined, 'Name') && !validImportProjectKey(' key ', 'Name') && validImportProjectKey('key', 'Name'));
+check('import source links accept HTTPS and reject unsafe schemes or embedded credentials', safeImportSourceUrl('https://drive.google.com/drive/folders/example') && !safeImportSourceUrl('javascript:alert(1)') && !safeImportSourceUrl('https://user:pass@example.com/path'));
 
 const stamp = Date.now().toString(36);
 const sourceKeyOne = await call('/projects', 'POST', { name: `Life one ${stamp}`, source_key: ' life:inventory-1 ' });
@@ -68,12 +69,13 @@ check('invalid task batch writes nothing', invalidBatch.status === 400 && (await
 const freshCategory = await call('/projects', 'POST', { name: `Fresh import category ${stamp}`, source_key: `category:fresh-${stamp}`, status: 'planned' });
 const freshCategoryId = freshCategory.body.created?.[0]?.id;
 const freshTaskImport = await call(`/projects/${freshCategoryId}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:fresh`, title: 'Fresh category task', status: 'todo' }] }, { ...json, 'Idempotency-Key': `fresh-task-${stamp}` });
-const freshEntryImport = await call(`/projects/${freshCategoryId}/entries`, 'POST', { items: [{ kind: 'note', title: 'Fresh category report', body: 'Report preview import check', source_url: `mythic-import://entry/fresh-${stamp}` }] }, { ...json, 'Idempotency-Key': `fresh-entry-${stamp}` });
+const freshSourceUrl = `https://drive.google.com/drive/folders/${stamp}`;
+const freshEntryImport = await call(`/projects/${freshCategoryId}/entries`, 'POST', { items: [{ kind: 'note', title: 'Fresh category report', body: 'Report preview import check', source_url: freshSourceUrl }] }, { ...json, 'Idempotency-Key': `fresh-entry-${stamp}` });
 const freshCategoryReadback = await call(`/projects/${freshCategoryId}`);
 check('new category accepts its task and report entry and reads both back',
   freshTaskImport.body.created?.length === 1 && freshEntryImport.body.created?.length === 1 &&
   freshCategoryReadback.body.tasks?.some((t) => t.source_key === `inventory:${stamp}:fresh`) &&
-  freshCategoryReadback.body.entries?.some((e) => e.source_url === `mythic-import://entry/fresh-${stamp}`));
+  freshCategoryReadback.body.entries?.some((e) => e.source_url === freshSourceUrl));
 await call(`/projects/${importPid}`, 'DELETE');
 const { body: paused } = await call('/projects', 'POST', { name: `Paused ${stamp}`, status: 'paused', agents: [] });
 const { body: pausedTask } = await call(`/projects/${paused.created[0].id}/tasks`, 'POST', { title: 'Must not be claimed' });
