@@ -7,6 +7,7 @@ import {
   computeAttention,
   computeStats,
   daysFromNow,
+  groupAttention,
   isReady,
   openDescendants,
   rankReady,
@@ -176,7 +177,7 @@ export async function getHub(): Promise<Hub> {
   return {
     projects,
     timeline,
-    attention: sortAttention(projects.flatMap((p) => p.attention), projects),
+    attention: groupAttention(sortAttention(projects.flatMap((p) => p.attention), projects)),
     inProgress: live
       .flatMap((d) => d.tasks.filter((t) => t.status === "doing").map((t) => ref(d, t)))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),

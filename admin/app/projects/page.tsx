@@ -4,7 +4,12 @@ import ProjectsClient from "./ProjectsClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
+  const { view } = await searchParams;
   let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [] };
   let initialError: string | null = null;
   try {
@@ -33,7 +38,7 @@ export default async function ProjectsPage() {
         </div>
       ) : null}
 
-      <ProjectsClient hub={hub} />
+      <ProjectsClient hub={hub} initialView={view === "list" || view === "timeline" ? view : "board"} />
     </div>
   );
 }

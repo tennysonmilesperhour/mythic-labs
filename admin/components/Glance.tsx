@@ -43,7 +43,7 @@ export function AttentionList({
           return (
             <li key={a.key}>
               <Link
-                href={`/projects/${a.project_id}${a.task_id ? `?task=${a.task_id}` : ""}`}
+                href={a.href ?? `/projects/${a.project_id}${a.task_id ? `?task=${a.task_id}` : ""}`}
                 className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]"
               >
                 <span className={`font-mono text-[0.6rem] w-3 shrink-0 ${sev.cls}`} title={sev.label}>
@@ -52,7 +52,7 @@ export function AttentionList({
                 <span className="flex-1 min-w-0">
                   <span className="text-[0.88rem] text-fg">{a.title}</span>
                   <span className="block font-mono text-[0.58rem] text-fg-ghost truncate">
-                    {hideProject ? "" : `${a.project_name} · `}
+                    {hideProject || !a.project_name ? "" : `${a.project_name} · `}
                     {a.detail}
                   </span>
                 </span>

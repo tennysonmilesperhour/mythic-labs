@@ -173,6 +173,8 @@ export type AttentionItem = {
   title: string;
   detail: string;
   task_id?: string;
+  /** Set on grouped items: where to go instead of a single project. */
+  href?: string;
 };
 
 export type ProjectSummary = Project & { stats: ProjectStats; attention: AttentionItem[] };
@@ -393,6 +395,52 @@ export function sortAttention(items: AttentionItem[], projects: Pick<Project, "i
 }
 
 /** Live work first (by priority), then planned, then paused. */
+// Housekeeping flags that read better as one line when many projects share them.
+const GROUPABLE: Record<string, (n: number) => string> = {
+  empty: (n) => `${n} active projects have no open tasks`,
+  stuck: (n) => `${n} projects have nothing ready to work on`,
+  next: (n) => `${n} projects have no next action`,
+  stale: (n) => `${n} active projects have gone quiet`,
+  instructions: (n) => `${n} projects have agents but no build instructions`,
+  paused: (n) => `${n} projects paused 60+ days`,
+};
+
+/**
+ * Collapse housekeeping flags shared by `min` or more projects into one item,
+ * so a fresh import doesn't bury what's actually urgent. Blocked, overdue,
+ * stalled and decision flags always stay individual.
+ */
+export function groupAttention(items: AttentionItem[], min = 3): AttentionItem[] {
+  const kind = (a: AttentionItem) => a.key.split(":")[1];
+  const counts = new Map<string, AttentionItem[]>();
+  for (const a of items) {
+    if (GROUPABLE[kind(a)]) counts.set(kind(a), [...(counts.get(kind(a)) || []), a]);
+  }
+  const out: AttentionItem[] = [];
+  const emitted = new Set<string>();
+  for (const a of items) {
+    const k = kind(a);
+    const group = counts.get(k);
+    if (!group || group.length < min) {
+      out.push(a);
+      continue;
+    }
+    if (emitted.has(k)) continue;
+    emitted.add(k);
+    const names = group.map((g) => g.project_name);
+    out.push({
+      key: `group:${k}`,
+      severity: a.severity,
+      project_id: "",
+      project_name: "",
+      title: GROUPABLE[k](group.length),
+      detail: names.slice(0, 6).join(", ") + (names.length > 6 ? ` +${names.length - 6} more` : ""),
+      href: "/projects?view=list",
+    });
+  }
+  return out;
+}
+
 export function sortProjects<T extends Pick<Project, "status" | "priority" | "sort_order">>(ps: T[]): T[] {
   const group = (s: ProjectStatus) => (WORKABLE.includes(s) ? 0 : s === "planned" ? 1 : 2);
   return [...ps].sort(

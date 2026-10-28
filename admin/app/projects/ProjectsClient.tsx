@@ -45,12 +45,13 @@ type GhRepo = {
   private: boolean;
 };
 
-export default function ProjectsClient({ hub }: { hub: Hub }) {
+export default function ProjectsClient({ hub, initialView = "board" }: { hub: Hub; initialView?: View }) {
   const router = useRouter();
   const { timeline } = hub;
   const [projects, setProjects] = useState(hub.projects);
   useEffect(() => setProjects(hub.projects), [hub.projects]);
-  const [view, setView] = useState<View>("board");
+  const [view, setView] = useState<View>(initialView);
+  useEffect(() => setView(initialView), [initialView]);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [facet, setFacet] = useState("");
