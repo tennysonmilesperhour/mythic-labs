@@ -87,6 +87,8 @@ The dashboard doubles as the roadmap agents work from. The API is disabled unles
 
 The `roadmap` skill in `dev-workflows` teaches any agent this loop. Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
 
+For an owner-reviewed inventory import, `POST /api/projects/:id/tasks` also accepts `{ "items": [...] }`. Every task must have a stable `source_key`; existing keys are skipped, and the whole batch is written in one store mutation. Send a stable `Idempotency-Key` for replay safety. A retry with the same key and payload replays the original result; the same key with a different payload returns 409. Single-task POSTs keep their existing response and behavior.
+
 The dashboard's own pages and `/api/*` routes are still no-auth (single-admin mode), so keep Vercel Deployment Protection on.
 
 ---

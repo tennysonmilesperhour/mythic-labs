@@ -34,7 +34,7 @@ const MILESTONE_FIELDS = [
   "title", "description", "start_date", "target_date", "done", "sort_order",
 ] as const;
 const TASK_FIELDS = [
-  "title", "notes", "acceptance", "depends_on", "status", "priority", "agent",
+  "title", "source_key", "notes", "acceptance", "depends_on", "status", "priority", "agent",
   "due_date", "milestone_id", "parent_id", "sort_order",
 ] as const;
 const ENTRY_FIELDS = [
@@ -423,7 +423,48 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
 export async function createTask(projectId: string, input: Record<string, unknown>): Promise<Task> {
   return mutate(
     (t, s) => `${pfx(s, t.project_id)}add ${clip(t.title)}`,
-    (s) => newTask(projectIn(s, projectId), pick(input, TASK_FIELDS))
+    (s) => newTask(projectIn(s, projectId), pick(input, TASK_FIELDS.filter((field) => field !== "source_key")))
+  );
+}
+
+/** Import tasks in one atomic store mutation. A stable source_key makes retries safe. */
+export async function createTasks(
+  projectId: string,
+  inputs: Array<Record<string, unknown>>
+): Promise<{ created: Task[]; skipped: number }> {
+  return mutate(
+    (r, s) => `${pfx(s, projectId)}import ${r.created.length} tasks`,
+    (s) => {
+      const d = projectIn(s, projectId);
+      const sources = new Map<string, string>();
+      for (const detail of s.projects.values()) {
+        for (const task of detail.tasks) {
+          const sourceKey = normalizeSourceKey(task.source_key);
+          if (sourceKey) sources.set(sourceKey, detail.project.id);
+        }
+      }
+      const seen = new Set<string>();
+      const created: Task[] = [];
+      let skipped = 0;
+      for (const input of inputs) {
+        const clean = pick(input, TASK_FIELDS);
+        const sourceKey = normalizeSourceKey(clean.source_key);
+        if (!sourceKey) throw new Invalid("source_key required for batch task imports");
+        const existingProjectId = sources.get(sourceKey);
+        if (existingProjectId && existingProjectId !== projectId) {
+          throw new Conflict("task source_key already belongs to another project");
+        }
+        if (existingProjectId === projectId || seen.has(sourceKey)) {
+          skipped++;
+          continue;
+        }
+        clean.source_key = sourceKey;
+        const task = newTask(d, clean);
+        created.push(task);
+        seen.add(sourceKey);
+      }
+      return { created, skipped };
+    }
   );
 }
 
@@ -433,6 +474,14 @@ export async function updateTask(id: string, patch: Record<string, unknown>): Pr
     (t, s) => `${pfx(s, t.project_id)}${clip(t.title)} → ${"status" in clean ? t.status : `edit ${Object.keys(clean).join(", ")}`}`,
     (s) => {
       const { d, item } = findIn(s, "tasks", id);
+      if ("source_key" in clean) {
+        const key = normalizeSourceKey(clean.source_key);
+        if (!key) throw new Invalid("source_key cannot be blank");
+        const used = Array.from(s.projects.values()).flatMap((project) => project.tasks)
+          .some((task) => task.id !== id && normalizeSourceKey(task.source_key) === key);
+        if (used) throw new Conflict("task source_key already tracked");
+        clean.source_key = key;
+      }
       applyTaskPatch(d, item as Task, { ...clean });
       return item as Task;
     }
@@ -506,7 +555,7 @@ export async function createAgentTask(projectId: string, agent: string, input: R
     (s) => {
       const d = projectIn(s, projectId);
       assertAgentProject(d, agent);
-      const clean = pick(input, TASK_FIELDS);
+      const clean = pick(input, TASK_FIELDS.filter((field) => field !== "source_key"));
       const task = newTask(d, clean);
       addEntry(d, { kind: "progress", title: `Added task: ${task.title}`, author: agent });
       return task;
