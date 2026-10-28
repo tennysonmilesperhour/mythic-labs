@@ -121,9 +121,13 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
   for (const p of projects) {
     const bySource = current.find((x) => x.source_key?.trim() === p.source_key.trim());
     const byRepo = p.owner && p.repo ? current.find((x) => `${x.owner}/${x.repo}`.toLowerCase() === `${p.owner}/${p.repo}`.toLowerCase()) : undefined;
+    const byNameRows = current.filter((x) => x.name.trim().toLowerCase() === p.name.trim().toLowerCase());
+    if (byNameRows.length > 1) errors.push(`Project name ${p.name} matches multiple existing records; add an owner/repo or choose a unique category name.`);
+    const byName = byNameRows.length === 1 ? byNameRows[0] : undefined;
     if (bySource && byRepo && bySource.id !== byRepo.id) errors.push(`Project ${p.source_key} resolves to two different existing records.`);
+    if (bySource && byName && bySource.id !== byName.id || byRepo && byName && byRepo.id !== byName.id) errors.push(`Project ${p.source_key} name mapping conflicts with another existing record.`);
     if (bySource && p.owner && p.repo && (bySource.owner?.toLowerCase() !== p.owner.toLowerCase() || bySource.repo?.toLowerCase() !== p.repo.toLowerCase())) errors.push(`Project source_key ${p.source_key} conflicts with the existing owner/repo mapping.`);
-    const found = bySource || byRepo;
+    const found = bySource || byRepo || byName;
     if (found) matches.set(p.source_key, found);
     else projectsToCreate.push(p);
   }
