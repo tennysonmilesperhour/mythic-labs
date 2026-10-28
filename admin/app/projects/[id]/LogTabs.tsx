@@ -299,6 +299,14 @@ const DECISION_TONE: Record<DecisionStatus, "accent" | "dim" | "solid"> = {
   rejected: "dim",
 };
 
+function EvidenceSource({ href }: { href: string | null | undefined }) {
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" className="inline-block mt-2 font-mono text-[0.58rem] text-fg-ghost hover:text-accent">
+      EVIDENCE SOURCE ↗
+    </a>
+  ) : null;
+}
+
 export function DecisionsTab({ store }: { store: Store }) {
   const { add, patch, remove } = useEntries(store);
   const blank = {
@@ -421,6 +429,7 @@ export function DecisionsTab({ store }: { store: Store }) {
                 </div>
               ))}
             </div>
+            <EvidenceSource href={e.evidence_url} />
           </article>
         ))}
       </div>
@@ -464,6 +473,7 @@ export function NotesTab({ store }: { store: Store }) {
             <div className="text-[0.82rem] text-fg-dim leading-[1.6]">
               <InlineText multiline value={e.body} placeholder="…" onSave={(b) => patch(e.id, { body: b })} />
             </div>
+            <EvidenceSource href={e.evidence_url} />
           </div>
         ))}
       </div>
