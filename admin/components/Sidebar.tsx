@@ -7,9 +7,10 @@ import { GlyphMark } from "./Glyphs";
 export const NAV = [
   { href: "/", label: "Overview", num: "00" },
   { href: "/projects", label: "Projects", num: "01" },
-  { href: "/repos", label: "Repos", num: "02" },
-  { href: "/brain", label: "Brain", num: "03" },
-  { href: "/authoring", label: "Authoring", num: "04" },
+  { href: "/queue", label: "Queue", num: "02" },
+  { href: "/repos", label: "Repos", num: "03" },
+  { href: "/brain", label: "Brain", num: "04" },
+  { href: "/authoring", label: "Authoring", num: "05" },
 ];
 
 export default function Sidebar() {

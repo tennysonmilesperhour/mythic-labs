@@ -83,6 +83,14 @@ check('losers get 409', claims.filter((c) => c.status === 409).length === 4);
 const early = await call(`/agent/tasks/${after.task.id}/claim`, 'POST', undefined, agent('a2'));
 check('claiming a task with an open dependency is 409', early.status === 409);
 
+const { body: restrictedProject } = await call('/projects', 'POST', { name: `Restricted ${stamp}`, status: 'active', agents: ['allowed-agent'] });
+const { body: restrictedTask } = await call(`/projects/${restrictedProject.created[0].id}/tasks`, 'POST', { title: 'Assigned outside project', agent: 'outside-agent' });
+const excludedNext = await call(`/agent/next?project=${restrictedProject.created[0].id}`, 'GET', undefined, agent('outside-agent'));
+check('next task does not return an assignment the agent cannot claim', excludedNext.body.task === null);
+const { body: listedTask } = await call(`/projects/${restrictedProject.created[0].id}/tasks`, 'POST', { title: 'Assigned to listed agent', agent: 'allowed-agent' });
+const allowedNext = await call(`/agent/next?project=${restrictedProject.created[0].id}`, 'GET', undefined, agent('allowed-agent'));
+check('project-listed agent can receive the assigned task', allowedNext.body.task?.id === listedTask.task.id);
+
 const winner = claims.find((c) => c.status === 200).body.task.agent;
 const startedCount = (await call(`/projects/${pid}`)).body.entries.filter((e) => e.title === 'Started: First').length;
 await call(`/agent/tasks/${dep.task.id}/claim`, 'POST', undefined, agent(winner));
