@@ -1,5 +1,5 @@
 import { BadRequest, agentName, body, handle, requireAgent } from "@/lib/api";
-import { createEntries } from "@/lib/projects";
+import { createAgentEntry } from "@/lib/projects";
 
 const KINDS = ["changelog", "decision", "progress", "note"];
 
@@ -14,6 +14,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!KINDS.includes(String(b.kind))) throw new BadRequest(`kind must be one of ${KINDS.join(", ")}`);
     const entry = { ...b, author: agent, ...(b.kind === "decision" ? { decision_status: "proposed" } : {}) };
     delete (entry as Record<string, unknown>).agent;
-    return createEntries(id, [entry]);
-  });
+    return createAgentEntry(id, agent, entry);
+  }, req);
 }

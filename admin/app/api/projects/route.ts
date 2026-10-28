@@ -9,5 +9,5 @@ export async function GET() {
 export async function POST(req: Request) {
   const b = await body(req);
   const items = Array.isArray(b.items) ? (b.items as Record<string, unknown>[]) : [b];
-  return handle(() => createProjects(items));
+  return handle(() => createProjects(items), req);
 }

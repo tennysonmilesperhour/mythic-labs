@@ -26,7 +26,7 @@ import {
 // Data lives in git via store.ts: one JSON file per project.
 
 const PROJECT_FIELDS = [
-  "name", "owner", "repo", "status", "priority", "summary", "description",
+  "name", "owner", "repo", "source_key", "status", "priority", "summary", "description",
   "next_action", "agent_instructions", "tags", "agents", "tools", "links", "start_date",
   "target_date", "sort_order",
 ] as const;
@@ -202,6 +202,7 @@ export async function createProjects(
       const created: Project[] = [];
       const failed: Array<{ name: string; reason: string }> = [];
       const key = (o?: unknown, r?: unknown) => (o && r ? `${o}/${r}`.toLowerCase() : null);
+      const sourceKeys = new Set(Array.from(s.projects.values()).map((d) => d.project.source_key).filter(Boolean));
       const taken = new Set(
         Array.from(s.projects.values()).map((d) => key(d.project.owner, d.project.repo)).filter(Boolean)
       );
@@ -217,11 +218,17 @@ export async function createProjects(
           continue;
         }
         const k = key(clean.owner, clean.repo);
+        const sourceKey = typeof clean.source_key === "string" ? clean.source_key.trim() : "";
+        if (sourceKey && sourceKeys.has(sourceKey)) {
+          failed.push({ name: pname, reason: "source_key already tracked" });
+          continue;
+        }
         if (k && taken.has(k)) {
           failed.push({ name: pname, reason: "already tracked" });
           continue;
         }
         if (k) taken.add(k);
+        if (sourceKey) sourceKeys.add(sourceKey);
         const t = now();
         const project: Project = {
           id: newId(),
@@ -477,6 +484,62 @@ export async function createEntries(
   );
 }
 
+/** Agent writes are checked against project status in the same atomic mutation. */
+function assertAgentProject(d: ProjectDetail, agent: string) {
+  if (!WORKABLE.includes(d.project.status)) throw new Conflict(`project is ${d.project.status}; agent writes are disabled`);
+  if (d.project.agents.length && !d.project.agents.includes(agent)) throw new Conflict(`agent @${agent} is not enabled for this project`);
+}
+
+export async function createAgentTask(projectId: string, agent: string, input: Record<string, unknown>): Promise<Task> {
+  return mutate(
+    (task, s) => `${pfx(s, projectId)}add task ${clip(task.title)} (@${agent})`,
+    (s) => {
+      const d = projectIn(s, projectId);
+      assertAgentProject(d, agent);
+      const clean = pick(input, TASK_FIELDS);
+      if (!String(clean.title || "").trim()) throw new Invalid("title required");
+      const task: Task = {
+        id: newId(), project_id: projectId, milestone_id: null, parent_id: null,
+        title: "", notes: "", acceptance: "", depends_on: [], status: "todo", priority: "medium",
+        agent: null, due_date: null, claimed_at: null, done_at: null, sort_order: d.tasks.length,
+        created_at: now(), updated_at: now(), ...(clean as Partial<Task>),
+      };
+      task.title = String(clean.title).trim();
+      d.tasks.push(task);
+      addEntry(d, { kind: "progress", title: `Added task: ${task.title}`, author: agent });
+      touch(d);
+      return task;
+    }
+  );
+}
+
+export async function createAgentEntry(projectId: string, agent: string, input: Record<string, unknown>): Promise<{ created: Entry[]; skipped: number }> {
+  return mutate(
+    (r, s) => `${pfx(s, projectId)}${r.created.length ? `agent log ${clip(r.created[0].title)}` : "agent log duplicate"}`,
+    (s) => {
+      const d = projectIn(s, projectId);
+      assertAgentProject(d, agent);
+      if (input.source_url && d.entries.some((e) => e.source_url === input.source_url)) return { created: [], skipped: 1 };
+      const entry = addEntry(d, input);
+      touch(d);
+      return { created: [entry], skipped: 0 };
+    }
+  );
+}
+
+export async function updateAgentNextAction(projectId: string, agent: string, nextAction: string) {
+  return mutate(
+    (_result, s) => `${pfx(s, projectId)}update next action (@${agent})`,
+    (s) => {
+      const d = projectIn(s, projectId);
+      assertAgentProject(d, agent);
+      d.project.next_action = nextAction;
+      touch(d);
+      return { project: d.project, entry: null };
+    }
+  );
+}
+
 export async function updateEntry(id: string, patch: Record<string, unknown>): Promise<Entry> {
   const clean = pick(patch, ENTRY_FIELDS);
   return mutate(
@@ -532,9 +595,12 @@ export async function claimTask(id: string, agent: string): Promise<Task> {
     (s) => {
       const { d, item } = findIn(s, "tasks", id);
       const task = item as Task;
-      if (task.status === "doing" && task.agent && task.agent !== agent) {
+      assertAgentProject(d, agent);
+      if (task.status === "doing" && task.agent === agent) return task;
+      if (task.status === "doing" && task.agent !== agent) {
         throw new Conflict(`already claimed by @${task.agent}`);
       }
+      if (task.agent && task.agent !== agent) throw new Conflict(`assigned to @${task.agent}`);
       if (task.status !== "doing" && !isReady(task, d.tasks)) {
         throw new Conflict(`not ready (status ${task.status}, or waiting on dependencies or subtasks)`);
       }
@@ -560,6 +626,8 @@ export async function reportTask(
     (s) => {
       const { d, item } = findIn(s, "tasks", id);
       const task = item as Task;
+      assertAgentProject(d, agent);
+      if (task.status !== "doing" || task.agent !== agent) throw new Conflict("claim this task before reporting progress");
       if (input.status === "done") {
         const open = openDescendants(task, d.tasks);
         if (open.length) {

@@ -1,5 +1,5 @@
-import { BadRequest, body, handle, markdown, requireAgent } from "@/lib/api";
-import { getProjectDetail, updateProject } from "@/lib/projects";
+import { BadRequest, agentName, body, handle, markdown, requireAgent } from "@/lib/api";
+import { getProjectDetail, updateAgentNextAction } from "@/lib/projects";
 import { renderProjectMarkdown } from "@/lib/projectTypes";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -21,7 +21,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const b = await body(req);
   return handle(async () => {
     requireAgent(req);
+    const agent = agentName(req, b);
     if (typeof b.next_action !== "string") throw new BadRequest("only next_action can be set");
-    return updateProject(id, { next_action: b.next_action });
-  });
+    return updateAgentNextAction(id, agent, b.next_action);
+  }, req);
 }

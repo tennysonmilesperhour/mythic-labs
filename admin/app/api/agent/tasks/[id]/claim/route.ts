@@ -9,5 +9,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   return handle(async () => {
     requireAgent(req);
     return { task: await claimTask(id, agentName(req, b)) };
-  });
+  }, req);
 }
