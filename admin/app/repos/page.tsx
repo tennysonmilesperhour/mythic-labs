@@ -46,16 +46,18 @@ export default async function ReposPage() {
         Enable once, everywhere
       </h1>
       <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">
-        The brain no longer commits anything to your repos. Turn it on once for
-        your machine or your organization, and every repo inherits it. Track a
-        repo below only when it needs a different set of plugins.
+        The brain never commits anything to your repos. Turn it on once for
+        your machine or your organization, and every repo inherits it. Paths A
+        to C are how Claude Code loads it; path D covers Codex, Cursor and
+        other agents. Track a repo below only when it needs a different set of
+        plugins.
       </p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-px bg-line border border-line mb-16">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-line border border-line mb-16">
         <Path
           num="A"
           title="Your machine"
-          tag="Recommended for solo work"
+          tag="Claude Code · solo work"
           body="Installs at user scope. Every repo you open in Claude Code on this machine loads the plugin. Run once per machine."
         >
           <CopyBlock
@@ -70,7 +72,7 @@ export default async function ReposPage() {
         <Path
           num="B"
           title="Your organization"
-          tag="Team & Enterprise plans"
+          tag="Claude Team & Enterprise"
           body="An owner adds the repo under Organization settings → Plugins & skills → Add → Sync from GitHub, then sets default access to Installed by default or Required. Members get it in Claude Code when signed in with claude.ai."
         >
           <a
@@ -85,9 +87,24 @@ export default async function ReposPage() {
         <Path
           num="C"
           title="One repo, different plugins"
-          tag="Exceptions only"
+          tag="Claude Code · exceptions only"
           body="Track the repo below, toggle its plugins, then Copy JSON and commit it as .claude/settings.json. Repo settings override your user default. Check compares what's on GitHub with what you toggled."
         />
+        <Path
+          num="D"
+          title="Codex, Cursor and other agents"
+          tag="Any SKILL.md-aware tool"
+          body="Every skill is a folder with a SKILL.md in the open Agent Skills format, so other agents read the same files. Point the tool at a plugin's skills folder, or copy in the skills it needs. AGENTS.md briefs any agent working in this repo, and the roadmap skill works anywhere that can make HTTP calls."
+        >
+          <a
+            href={`https://github.com/${brainRepo}/blob/main/AGENTS.md`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-block font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-2 border border-line text-fg-dim hover:text-fg hover:border-fg-dim"
+          >
+            Read AGENTS.md ↗
+          </a>
+        </Path>
       </div>
 
       {initialError ? (

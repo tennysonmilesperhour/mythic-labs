@@ -35,7 +35,7 @@ export default async function AuthoringPage() {
           glyph={<GlyphMcp size={20} className="text-accent" />}
           title="Add MCP server"
           subtitle="Register an integration"
-          body="MCP servers are tools Claude can call — GitHub, Supabase, Vercel, Gmail, etc. Register one here and every repo with that plugin enabled gets the tool. The token list stays out of context until needed."
+          body="MCP servers are tools your agents can call: GitHub, Vercel, Gmail and so on. Register one here and every repo with that plugin enabled gets the tool. The token list stays out of context until needed."
         />
         <Explainer
           glyph={<GlyphCommand size={20} className="text-accent" />}
