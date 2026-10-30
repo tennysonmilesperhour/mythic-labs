@@ -191,6 +191,14 @@ export async function getHub(): Promise<Hub> {
           .map((t) => ref(d, t))
       )
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!)),
+    recent: all
+      .flatMap((d) =>
+        d.entries
+          .filter((e) => e.kind === "changelog" || e.kind === "decision")
+          .map((e) => ({ ...e, project_name: d.project.name }))
+      )
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, 8),
   };
 }
 

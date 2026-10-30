@@ -1,5 +1,5 @@
 import { getHub } from "@/lib/projects";
-import type { Hub } from "@/lib/projectTypes";
+import { STATUSES, type Hub, type ProjectStatus } from "@/lib/projectTypes";
 import ProjectsClient from "./ProjectsClient";
 
 export const dynamic = "force-dynamic";
@@ -7,10 +7,10 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; status?: string }>;
 }) {
-  const { view } = await searchParams;
-  let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [] };
+  const { view, status } = await searchParams;
+  let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [], recent: [] };
   let initialError: string | null = null;
   try {
     hub = await getHub();
@@ -38,7 +38,9 @@ export default async function ProjectsPage({
         </div>
       ) : null}
 
-      <ProjectsClient hub={hub} initialView={view === "list" || view === "timeline" ? view : "board"} />
+      <ProjectsClient hub={hub} initialView={view === "list" || view === "timeline" ? view : "board"}
+        initialStatus={STATUSES.includes(status as ProjectStatus) ? (status as ProjectStatus) : "all"}
+      />
     </div>
   );
 }

@@ -198,6 +198,8 @@ export type Hub = {
   attention: AttentionItem[];
   inProgress: TaskRef[];
   upcoming: TaskRef[];
+  /** Latest changelog and decision entries across all projects, newest first. */
+  recent: Array<Entry & { project_name: string }>;
 };
 
 // ─────────── dates ───────────
