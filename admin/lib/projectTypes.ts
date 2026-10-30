@@ -212,6 +212,10 @@ export function daysFromNow(n: number): string {
   return new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 }
 
+export function isUpcoming(dueDate: string | null, status: TaskStatus, through: string, from = today()): boolean {
+  return status !== "done" && !!dueDate && dueDate >= from && dueDate <= through;
+}
+
 export function daysSince(iso: string | null | undefined): number {
   if (!iso) return Infinity;
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -353,13 +357,19 @@ export function computeAttention(d: ProjectDetail, lastActivity: string | null):
   const workable = WORKABLE.includes(p.status);
 
   for (const t of tasks) {
+    // Paused work is intentionally quiet; the project-level long-pause flag
+    // remains the reminder to revisit it.
+    if (p.status === "paused") continue;
     if (t.status === "blocked") {
       add("high", `blocked:${t.id}`, `Blocked: ${t.title}`, t.agent ? `@${t.agent}` : "unassigned", t.id);
-    } else if (isOverdue(t.due_date, t.status === "done")) {
+    }
+    if (isOverdue(t.due_date, t.status === "done")) {
       add("high", `overdue:${t.id}`, `Overdue: ${t.title}`, `due ${fmtDate(t.due_date)}`, t.id);
-    } else if (t.status === "doing" && daysSince(t.updated_at) >= STALLED_CLAIM_DAYS) {
+    }
+    if (t.status === "doing" && daysSince(t.updated_at) >= STALLED_CLAIM_DAYS) {
       add("medium", `stalled:${t.id}`, `Stalled: ${t.title}`, `${t.agent ? `@${t.agent}, ` : ""}no update in ${daysSince(t.updated_at)}d`, t.id);
-    } else if (t.priority === "critical" && t.status !== "done" && p.status !== "paused") {
+    }
+    if (t.priority === "critical" && t.status !== "done") {
       // Critical work is urgent by definition, even before it's late or blocked.
       add("high", `critical:${t.id}`, `Critical: ${t.title}`, t.status === "doing" ? `in progress${t.agent ? `, @${t.agent}` : ""}` : t.agent ? `@${t.agent}` : "unassigned", t.id);
     }
