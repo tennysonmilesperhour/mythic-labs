@@ -163,12 +163,19 @@ claude plugin eval ./brand-systems --case <case> --runs 1 --ablation none --no-p
 # Full run with the no-plugin baseline (shows what the plugin adds, as Δ)
 claude plugin eval ./brand-systems --no-publish
 
-# CI gate (not wired up yet — needs an API key secret)
+# CI gate (what .github/workflows/plugin-evals.yml runs for each plugin)
 claude plugin eval ./brand-systems --trust-plugin --threshold 0.8 \
   --json results.json --no-publish --max-cost-usd 20
 ```
 
 Results land in `evals/results/` (gitignored). Validate structure separately with `claude plugin validate ./brand-systems`.
+
+**The CI gate.** `.github/workflows/plugin-evals.yml` runs on pull requests and pushes to `main` that touch `brand-systems/` or `dev-workflows/`, and on demand from the Actions tab. For each plugin it always runs `claude plugin validate` (free, no key). The paid eval suite runs only when the repository secret **`PLUGIN_EVAL_ANTHROPIC_API_KEY`** exists:
+
+- Secret name: `PLUGIN_EVAL_ANTHROPIC_API_KEY`. Value: an Anthropic API key (from console.anthropic.com, Settings, API Keys), ideally one made just for this with a monthly spend limit on its workspace. Add it at GitHub, repo Settings, Secrets and variables, Actions, New repository secret. The workflow passes it to Claude Code as `ANTHROPIC_API_KEY`.
+- Without the secret, the eval steps skip, the job stays green, and the run shows a "Plugin evals skipped" notice. Pull requests from forks never get secrets, so they skip the same way.
+- With it, a case scoring under 0.8 fails the job, and each plugin's run stops at $20 (`--max-cost-usd`). Results are uploaded as the `plugin-evals-<plugin>` artifact.
+- A plugin that gains an `evals/` directory must be added to the workflow's `matrix.plugin` list and its `paths` filters. The Claude Code version is pinned in `CLAUDE_CODE_VERSION`; bump it to a release at least a week old.
 
 ---
 
