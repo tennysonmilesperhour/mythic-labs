@@ -1,14 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { Marketplace } from "@/lib/brain";
+import { githubBlobUrl, githubRepoUrl } from "@/lib/taskMap";
 
 type Tab = "mcp" | "command" | "verify";
 
 export default function AuthoringClient({
   marketplace,
+  brainRepo,
 }: {
   marketplace: Marketplace;
+  /** owner/repo of the brain, for links to what was committed. */
+  brainRepo: string;
 }) {
   const [tab, setTab] = useState<Tab>("mcp");
 
@@ -42,8 +47,8 @@ export default function AuthoringClient({
       </div>
 
       <div className="border border-t-0 border-line bg-bg-warm/80 p-9">
-        {tab === "mcp" ? <McpForm marketplace={marketplace} /> : null}
-        {tab === "command" ? <CommandForm marketplace={marketplace} /> : null}
+        {tab === "mcp" ? <McpForm marketplace={marketplace} brainRepo={brainRepo} /> : null}
+        {tab === "command" ? <CommandForm marketplace={marketplace} brainRepo={brainRepo} /> : null}
         {tab === "verify" ? <VerifyForm /> : null}
       </div>
     </div>
@@ -52,13 +57,13 @@ export default function AuthoringClient({
 
 // ─────────────── MCP form ───────────────
 
-function McpForm({ marketplace }: { marketplace: Marketplace }) {
+function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRepo: string }) {
   const [plugin, setPlugin] = useState(marketplace.plugins[0]?.name || "");
   const [serverName, setServerName] = useState("");
   const [command, setCommand] = useState("npx");
   const [argsText, setArgsText] = useState("");
   const [envText, setEnvText] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<React.ReactNode>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -88,9 +93,7 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
       const json = await res.json();
       if (json.error) setResult(`✗ ${json.error}`);
       else
-        setResult(
-          `✓ committed ${json.path} · sha ${json.commit_sha.slice(0, 7)}`
-        );
+        setResult(<Committed brainRepo={brainRepo} path={json.path} sha={json.commit_sha} />);
     } finally {
       setBusy(false);
     }
@@ -185,13 +188,13 @@ function McpForm({ marketplace }: { marketplace: Marketplace }) {
 
 // ─────────────── Command form ───────────────
 
-function CommandForm({ marketplace }: { marketplace: Marketplace }) {
+function CommandForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRepo: string }) {
   const [plugin, setPlugin] = useState(marketplace.plugins[0]?.name || "");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [argHint, setArgHint] = useState("");
   const [body, setBody] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<React.ReactNode>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -213,7 +216,7 @@ function CommandForm({ marketplace }: { marketplace: Marketplace }) {
       if (json.error) setResult(`✗ ${json.error}`);
       else
         setResult(
-          `✓ ${json.invocation} · committed ${json.path} · ${json.commit_sha.slice(0, 7)}`
+          <Committed brainRepo={brainRepo} path={json.path} sha={json.commit_sha} prefix={json.invocation} />
         );
     } finally {
       setBusy(false);
@@ -329,6 +332,7 @@ type VerifyResult = {
 };
 
 function VerifyForm() {
+  const [checked, setChecked] = useState<{ owner: string; repo: string } | null>(null);
   const [target, setTarget] = useState("");
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -345,6 +349,7 @@ function VerifyForm() {
       setBusy(false);
       return;
     }
+    setChecked({ owner, repo });
     try {
       const res = await fetch(
         `/api/verify/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
@@ -397,8 +402,28 @@ function VerifyForm() {
               : "border-line bg-bg"
           }`}
         >
-          <div className="mono-label mb-4">
-            {result.ok ? "✓ Wired" : "✗ Not wired"}
+          <div className="mono-label mb-4 flex flex-wrap items-baseline justify-between gap-3">
+            <span>{result.ok ? "✓ Wired" : "✗ Not wired"}</span>
+            {checked ? (
+              <span className="flex gap-4 normal-case tracking-normal">
+                <a
+                  href={githubRepoUrl(checked.owner, checked.repo)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[0.65rem] text-fg-dim hover:text-accent"
+                >
+                  {checked.owner}/{checked.repo} ↗
+                </a>
+                <a
+                  href={githubBlobUrl(checked.owner, checked.repo, ".claude/settings.json")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[0.65rem] text-fg-dim hover:text-accent"
+                >
+                  .claude/settings.json ↗
+                </a>
+              </span>
+            ) : null}
           </div>
           {result.error ? (
             <div className="font-mono text-sm text-fg">{result.error}</div>
@@ -410,7 +435,7 @@ function VerifyForm() {
             <div className="mt-3">
               <div className="font-mono text-xs text-fg-ghost mb-1">Enabled:</div>
               <div className="font-mono text-sm text-fg">
-                {result.enabled.join(", ")}
+                <PluginLinks names={result.enabled} />
               </div>
             </div>
           ) : null}
@@ -420,7 +445,7 @@ function VerifyForm() {
                 Unknown plugins (typo or removed?):
               </div>
               <div className="font-mono text-sm text-fg">
-                {result.unknown_plugins.join(", ")}
+                <PluginLinks names={result.unknown_plugins} />
               </div>
             </div>
           ) : null}
@@ -430,7 +455,7 @@ function VerifyForm() {
                 Plugins not yet declared (default false):
               </div>
               <div className="font-mono text-sm text-fg-dim">
-                {result.missing_plugins.join(", ")}
+                <PluginLinks names={result.missing_plugins} />
               </div>
             </div>
           ) : null}
@@ -441,6 +466,38 @@ function VerifyForm() {
 }
 
 // ─────────────── shared ───────────────
+
+/** "✓ committed <path> · <sha>", each part opening on GitHub. */
+function Committed({ brainRepo, path, sha, prefix }: { brainRepo: string; path: string; sha: string; prefix?: string }) {
+  return (
+    <>
+      ✓ {prefix ? `${prefix} · ` : ""}committed{" "}
+      <a href={`https://github.com/${brainRepo}/blob/HEAD/${path}`} target="_blank" rel="noreferrer" className="text-fg hover:text-accent underline">
+        {path}
+      </a>{" "}
+      · sha{" "}
+      <a href={`https://github.com/${brainRepo}/commit/${sha}`} target="_blank" rel="noreferrer" className="text-fg hover:text-accent underline">
+        {sha.slice(0, 7)}
+      </a>
+    </>
+  );
+}
+
+/** Plugin names, each opening its page on Brain. Names may carry "@market". */
+function PluginLinks({ names }: { names: string[] }) {
+  return (
+    <>
+      {names.map((n, i) => (
+        <span key={n}>
+          {i ? ", " : ""}
+          <Link href={`/brain?plugin=${encodeURIComponent(n.split("@")[0])}`} className="hover:text-accent underline-offset-2 hover:underline">
+            {n}
+          </Link>
+        </span>
+      ))}
+    </>
+  );
+}
 
 function Field({
   label,

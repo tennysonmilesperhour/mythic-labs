@@ -1,10 +1,14 @@
 import { fetchMarketplace } from "@/lib/brain";
+import Link from "next/link";
+import { BRAIN_OWNER, BRAIN_REPO } from "@/lib/github";
+import { fixHref } from "@/lib/taskMap";
 import AuthoringClient from "./AuthoringClient";
 import { GlyphCommand, GlyphMcp, GlyphApplied } from "@/components/Glyphs";
 
 export const dynamic = "force-dynamic";
 
 export default async function AuthoringPage() {
+  const brainRepo = `${BRAIN_OWNER}/${BRAIN_REPO}`;
   let marketplace: Awaited<ReturnType<typeof fetchMarketplace>> | null = null;
   let error: string | null = null;
   try {
@@ -23,11 +27,17 @@ export default async function AuthoringPage() {
         Extend the brain
       </h1>
       <p className="text-fg-dim text-[1.02rem] max-w-2xl mb-12 leading-[1.8] font-light">
-        The <span className="text-fg">Brain</span> page shows what already
-        exists. This page is where you add to it — without opening an editor,
+        The{" "}
+        <Link href="/brain" className="text-fg underline underline-offset-2 hover:text-accent">
+          Brain
+        </Link>{" "}
+        page shows what already exists. This page is where you add to it — without opening an editor,
         cloning the repo, or remembering frontmatter conventions. Every action
-        here commits straight to mythic-labs and is live for every consuming
-        repo on the next session.
+        here commits straight to{" "}
+        <a href={`https://github.com/${brainRepo}`} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-accent">
+          {BRAIN_REPO}
+        </a>{" "}
+        and is live for every consuming repo on the next session.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-line border border-line mb-12">
@@ -42,6 +52,7 @@ export default async function AuthoringPage() {
           title="Create command"
           subtitle="Make a new slash command"
           body="Slash commands are pre-built workflows you can invoke in any consuming session. /brand-systems:diagnose is one. Author another here — it's available as /<plugin>:<name> the next time you type /."
+          link={{ href: `https://github.com/${brainRepo}/blob/HEAD/brand-systems/commands/diagnose.md`, label: "See /brand-systems:diagnose ↗" }}
         />
         <Explainer
           glyph={<GlyphApplied size={20} className="text-accent" />}
@@ -55,9 +66,12 @@ export default async function AuthoringPage() {
         <div className="border border-line bg-bg-warm/80 p-6 mb-8">
           <div className="mono-label mb-2">Marketplace unavailable</div>
           <p className="text-fg-dim text-sm">{error}</p>
+          <Link href={fixHref("source:market")} className="inline-block mt-3 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-accent hover:text-fg">
+            Fix it step by step →
+          </Link>
         </div>
       ) : (
-        <AuthoringClient marketplace={marketplace!} />
+        <AuthoringClient marketplace={marketplace!} brainRepo={brainRepo} />
       )}
     </div>
   );
@@ -68,11 +82,13 @@ function Explainer({
   title,
   subtitle,
   body,
+  link,
 }: {
   glyph: React.ReactNode;
   title: string;
   subtitle: string;
   body: string;
+  link?: { href: string; label: string };
 }) {
   return (
     <div className="bg-bg/80 p-6 accent-sweep">
@@ -82,6 +98,11 @@ function Explainer({
       </div>
       <div className="mono-label-dim mb-4">{subtitle}</div>
       <p className="text-fg-dim text-[0.85rem] leading-[1.7]">{body}</p>
+      {link ? (
+        <a href={link.href} target="_blank" rel="noreferrer" className="inline-block mt-3 font-mono text-[0.6rem] text-accent hover:text-fg">
+          {link.label}
+        </a>
+      ) : null}
     </div>
   );
 }

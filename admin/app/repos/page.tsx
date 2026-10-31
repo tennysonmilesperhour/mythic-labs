@@ -1,5 +1,8 @@
 import { listRepos, listRepoPlugins } from "@/lib/db";
 import { fetchMarketplace } from "@/lib/brain";
+import { loadAll } from "@/lib/projects";
+import { fixHref } from "@/lib/taskMap";
+import Link from "next/link";
 import { BRAIN_OWNER, BRAIN_REPO } from "@/lib/github";
 import CopyBlock from "@/components/CopyBlock";
 import ReposClient from "./ReposClient";
@@ -11,15 +14,22 @@ export default async function ReposPage() {
   let marketplace: Awaited<ReturnType<typeof fetchMarketplace>> | null = null;
   const pluginsByRepo: Record<string, Record<string, boolean>> = {};
   let initialError: string | null = null;
+  // owner/repo → project id, so a tracked repo can open its project too.
+  const projectByRepo: Record<string, string> = {};
 
   try {
     [repos, marketplace] = await Promise.all([
       listRepos(),
       fetchMarketplace(),
     ]);
-    const allPlugins = await Promise.all(
-      repos.map((r) => listRepoPlugins(r.id))
-    );
+    const [allPlugins, projects] = await Promise.all([
+      Promise.all(repos.map((r) => listRepoPlugins(r.id))),
+      loadAll().catch(() => []),
+    ]);
+    for (const d of projects) {
+      const p = d.project;
+      if (p.owner && p.repo) projectByRepo[`${p.owner}/${p.repo}`.toLowerCase()] = p.id;
+    }
     repos.forEach((r, idx) => {
       pluginsByRepo[r.id] = {};
       for (const rp of allPlugins[idx]) {
@@ -65,7 +75,15 @@ export default async function ReposPage() {
           />
           {otherPlugins.length ? (
             <p className="font-mono text-[0.6rem] text-fg-ghost mt-3 leading-relaxed">
-              Others: {otherPlugins.map((n) => `${n}@${marketName}`).join(" · ")}
+              Others:{" "}
+              {otherPlugins.map((n, i) => (
+                <span key={n}>
+                  {i ? " · " : ""}
+                  <Link href={`/brain?plugin=${encodeURIComponent(n)}`} className="hover:text-accent">
+                    {n}@{marketName}
+                  </Link>
+                </span>
+              ))}
             </p>
           ) : null}
         </Path>
@@ -115,6 +133,9 @@ export default async function ReposPage() {
             Set GITHUB_TOKEN and PM_DATA_REPO (a private repo) in Vercel. Tracked
             repos are stored in repos.json there.
           </p>
+          <Link href={fixHref("source:store")} className="inline-block mt-3 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-accent hover:text-fg">
+            Fix it step by step →
+          </Link>
         </div>
       ) : null}
 
@@ -127,6 +148,7 @@ export default async function ReposPage() {
         marketplace={marketplace}
         brainRepo={brainRepo}
         initialPluginState={pluginsByRepo}
+        projectByRepo={projectByRepo}
       />
     </div>
   );
