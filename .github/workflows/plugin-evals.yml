@@ -49,7 +49,12 @@ jobs:
           node-version: 22
 
       - name: Install Claude Code
-        run: npm install --global --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+        # Install scripts stay off for dependencies; only Claude Code's own
+        # postinstall runs, to place its native binary.
+        run: |
+          npm install --global --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs"
+          claude --version
 
       - name: Validate plugin structure
         run: claude plugin validate "./${{ matrix.plugin }}"
