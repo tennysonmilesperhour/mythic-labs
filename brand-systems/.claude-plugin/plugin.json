@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "brand-systems",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The Mythic Labs method for archetypal brand work: Discovery (archetype-diagnosis), Architecture (brand-architecture), Shadow (shadow-analysis), and Expression (unified-expression), plus voice audits. Evidence-bound, foundation-up, not surface-down.",
   "author": {
     "name": "Mythic Labs"

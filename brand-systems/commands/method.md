@@ -1,5 +1,5 @@
 ---
-description: Run the full Mythic Labs method — Discovery, Architecture, Shadow, Expression — on a brand, product, or set of artifacts and return a diagnostic dossier.
+description: Run the full Mythic Labs method (Discovery, Architecture, Shadow, Expression) on a brand, product, or set of artifacts and return a diagnostic dossier.
 argument-hint: <brand-name | URL | paste artifacts>
 ---
 
@@ -20,5 +20,5 @@ Run the full Mythic Labs method on: **$ARGUMENTS**
    five-line summary: foundation, integration verdict, worst leak, top
    structural move, top expression rule.
 
-For a large research job, delegate steps 1–5 to the `archetypal-analyst`
+For a large research job, delegate steps 1-5 to the `archetypal-analyst`
 agent and then write the full Expression Spec yourself.

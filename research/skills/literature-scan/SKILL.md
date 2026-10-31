@@ -9,16 +9,16 @@ Compact, citation-grounded answer to "what does the research say."
 
 ## Procedure
 
-1. `search_articles` with the user's query — tune up to 20 results
+1. `search_articles` with the user's query: tune up to 20 results
 2. Filter for relevance + recency (default: last 5 years unless user says otherwise)
-3. For the top 5–10, fetch metadata
+3. For the top 5-10, fetch metadata
 4. Look for related work via `find_related_articles` on the most-cited result
-5. Synthesize a brief state-of-field paragraph from titles + abstracts only — do not fabricate findings from titles alone
+5. Synthesize a brief state-of-field paragraph from titles + abstracts only; do not fabricate findings from titles alone
 
 ## Output Format
 
 ```
-LITERATURE SCAN — <topic>
+LITERATURE SCAN: <topic>
 ═════════════════════════
 Query:     <as-issued>
 Window:    <year range>

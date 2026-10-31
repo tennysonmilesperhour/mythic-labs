@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "dev-workflows",
-  "version": "0.2.0",
-  "description": "Engineering workflows — PR triage, branch hygiene, and the roadmap loop for autonomous build agents (next task, claim, report, log). Light-touch hooks that run only when relevant.",
+  "version": "0.2.1",
+  "description": "Engineering workflows: PR triage, branch hygiene, and the roadmap loop for autonomous build agents (next task, claim, report, log). Light-touch hooks that run only when relevant.",
   "author": {
     "name": "Mythic Labs"
   },

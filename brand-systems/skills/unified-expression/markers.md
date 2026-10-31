@@ -1,7 +1,7 @@
 # Expression Markers by Archetype
 
-Starting tendencies, not rules. Every rule in an Expression Spec must still be
-justified by the specific brand's structure — these markers only tell you
+These are starting tendencies. Every rule in an Expression Spec must still be
+justified by the specific brand's structure; these markers only tell you
 where to start looking.
 
 | Archetype | Voice register | Rhythm | Stance to reader | Visual temperature & density | Interface metaphor |
@@ -21,6 +21,6 @@ where to start looking.
 
 ## Translating secondary archetypes
 
-The secondary archetype modulates the dominant — it never overrides it. Use it
+The secondary archetype modulates the dominant and never overrides it. Use it
 for one dimension at most (e.g. a Sage dominant with Jester secondary keeps
 Sage voice and structure but allows wit in microcopy and empty states).

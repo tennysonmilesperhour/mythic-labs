@@ -5,17 +5,17 @@ description: Audit existing copy, marketing material, or product UI for voice/to
 
 # Voice Audit
 
-You are checking whether a piece of copy matches the brand's established archetypal register. You are not rewriting from scratch — you are diagnosing drift.
+You are checking whether a piece of copy matches the brand's established archetypal register. Your job is to diagnose where it drifts from that register. Rewrite only the passages you flag.
 
 ## Inputs
 
 Ask for (or accept):
 1. The copy under review
 2. The anchor, in order of preference:
-   - An **Expression Spec** from `unified-expression` — audit against its rules,
+   - An **Expression Spec** from `unified-expression`; audit against its rules,
      starting with the ones listed under its AUDIT HOOK
    - The brand's established archetype (run `archetype-diagnosis` first if unknown)
-3. Optionally, 2–3 anchor examples of on-brand prior work
+3. Optionally, 2-3 anchor examples of on-brand prior work
 
 When auditing against a spec, cite the rule number for every drift.
 
@@ -48,11 +48,11 @@ DRIFTS DETECTED
 
 ON-VOICE PASSAGES
 ─────────────────
-▸ <reference> — leave as-is
+▸ <reference>: leave as-is
 ```
 
 ## Guardrails
 
 - Don't rewrite passages that are already on-voice.
 - Never propose a rewrite that's "smoother" but archetypally wrong.
-- Surface the rule, not just the fix.
+- Name the rule behind every fix.

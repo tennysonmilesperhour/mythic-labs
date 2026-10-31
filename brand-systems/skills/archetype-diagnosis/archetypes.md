@@ -3,7 +3,7 @@
 Twelve archetypes in four orientations. Use this to shortlist candidates, then
 separate close pairs with the discriminating questions at the end.
 
-## Yearning for paradise — independence & fulfillment
+## Yearning for paradise: independence & fulfillment
 
 | | Innocent | Explorer | Sage |
 |---|---|---|---|
@@ -13,7 +13,7 @@ separate close pairs with the discriminating questions at the end.
 | Shadow form | Denial, naivety | Aimlessness, chronic dissatisfaction | Detachment, condescension |
 | Tells in artifacts | Purity language, nostalgia, white space, "simple" | Horizons, solitude, "beyond", rugged materials | Evidence, citations, measured cadence, restraint |
 
-## Leaving a mark — risk & mastery
+## Leaving a mark: risk & mastery
 
 | | Hero | Outlaw | Magician |
 |---|---|---|---|
@@ -23,7 +23,7 @@ separate close pairs with the discriminating questions at the end.
 | Shadow form | Arrogance, need for enemies | Destruction, nihilism | Manipulation, opacity |
 | Tells in artifacts | Challenge framing, metrics, an opponent, "push" | Anti-establishment, rule-breaking, defiance | Before/after, "transform", effortless, mystery |
 
-## Connecting with others — belonging & enjoyment
+## Connecting with others: belonging & enjoyment
 
 | | Everyman | Lover | Jester |
 |---|---|---|---|
@@ -33,7 +33,7 @@ separate close pairs with the discriminating questions at the end.
 | Shadow form | Self-erasure, blandness | Obsession, people-pleasing | Cruelty as humor, unseriousness |
 | Tells in artifacts | Plain talk, everyday scenes, fair price | Sensory language, close-ups, indulgence | Wordplay, surprise, color, self-deprecation |
 
-## Providing structure — stability & control
+## Providing structure: stability & control
 
 | | Caregiver | Creator | Ruler |
 |---|---|---|---|
@@ -54,8 +54,8 @@ separate close pairs with the discriminating questions at the end.
 | Caregiver / Innocent | Does it protect you, or restore your goodness? | Protect → Caregiver. Restore → Innocent. |
 | Caregiver / Lover | Is the warmth protective or intimate? | Protective → Caregiver. Intimate, sensory → Lover. |
 | Ruler / Sage | Is authority earned by control or by knowledge? | Control → Ruler. Knowledge → Sage. |
-| Everyman / Jester | Both unpretentious — does it belong or play? | Belong → Everyman. Play → Jester. |
-| Outlaw / Jester | Both irreverent — angry at the system or laughing at it? | Angry → Outlaw. Laughing → Jester. |
+| Everyman / Jester | Both unpretentious: does it belong or play? | Belong → Everyman. Play → Jester. |
+| Outlaw / Jester | Both irreverent: angry at the system or laughing at it? | Angry → Outlaw. Laughing → Jester. |
 | Innocent / Everyman | Aspirational purity or realist belonging? | Purity → Innocent. Realism → Everyman. |
 
 ## Evidence weighting
