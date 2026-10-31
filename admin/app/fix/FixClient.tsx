@@ -78,7 +78,7 @@ export default function FixClient({
   const open = tasks.filter((t) => t.status !== "done");
   const planHref = `/projects/${project.id}?tab=plan`;
   const setupHref = `/projects/${project.id}?tab=setup`;
-  const links = [...project.links, ...repoLinks(project), ...toolLinks(project.tools)];
+  const links = [...project.links, ...repoLinks(project), ...toolLinks(project.tools, project)];
 
   const body = (() => {
     switch (kind) {

@@ -34,7 +34,7 @@ export default async function MyTasksPage() {
     (t, ts) => (t.status === "blocked" ? "blocked" : `after ${waitingOn(t, ts).map((w) => w.title).join(", ") || "subtasks"}`)
   );
   const blockedOthers = rows((t) => !isMine(t) && t.status === "blocked", (t) => (t.agent ? `@${t.agent} is stuck` : "blocked, unassigned"));
-  const unowned = rows((t) => open(t) && !t.agent && (t.priority === "critical" || isOverdue(t.due_date, false)), (t) => `${t.priority}${due(t)}, nobody assigned`);
+  const unowned = rows((t) => open(t) && !t.agent && !isMine(t) && (t.priority === "critical" || isOverdue(t.due_date, false)), (t) => `${t.priority}${due(t)}, nobody assigned`);
   const calls = (hub?.attention ?? []).filter((a) => !a.task_id);
 
   return (
@@ -42,7 +42,7 @@ export default async function MyTasksPage() {
       <header className="border-b border-line pb-6">
         <h1 className="serif-display text-[2.2rem] md:text-[2.6rem] leading-none mb-2">My tasks</h1>
         <p className="text-fg-dim text-sm max-w-2xl leading-relaxed">
-          Everything only you can do: tasks assigned to @{ME}, decisions waiting on your call, and agents stuck on a
+          Everything only you can do: tasks assigned to @{ME} or whose notes say &quot;owner step&quot;, decisions waiting on your call, and agents stuck on a
           blocker. Each row opens a task map with the steps, links and text to paste.
         </p>
       </header>

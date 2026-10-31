@@ -24,7 +24,11 @@ import {
   extractUrls,
   isMine,
   labelFor,
+  repoFileLinks,
   repoLinks,
+  secretLinks,
+  secretNames,
+  serviceLinks,
   slug,
   taskHref,
   toolLinks,
@@ -95,12 +99,17 @@ export default function TaskMapClient({
 
   const steps = extractSteps(task.notes);
   const snippets = extractSnippets(task.notes, task.acceptance);
+  const text = [task.title, task.notes, task.acceptance];
   const found = extractUrls(task.notes, task.acceptance);
+  const files = repoFileLinks(project, task.notes, task.acceptance);
+  const secrets = secretNames(...text);
   const links: Array<{ title: string; items: MapLink[] }> = [
     { title: "Found in this task", items: found.map((url) => ({ label: labelFor(url), url })) },
+    { title: "Repo files this task points to", items: files },
+    { title: "Where to do it", items: [...secretLinks(project, ...text), ...serviceLinks(...text)] },
     { title: "Project links", items: project.links },
     { title: "Repository", items: repoLinks(project, task.title) },
-    { title: "Tools this project uses", items: toolLinks(project.tools) },
+    { title: "Tools this project uses", items: toolLinks(project.tools, project) },
   ].filter((g) => g.items.length);
   const decisions = entries.filter((e) => e.kind === "decision" && e.decision_status === "accepted");
   const proposed = entries.filter((e) => e.kind === "decision" && e.decision_status === "proposed");
@@ -263,7 +272,13 @@ export default function TaskMapClient({
             </div>
           </Block>
 
-          <Block n="2" title="Steps" hint={steps.length ? "Pulled from the task notes. Ticks are saved in this browser." : "No step list in the notes. Write them as '- step' lines and they appear here as a checklist."}>
+          <Block n="2" title="Steps" hint={
+              steps.length
+                ? "Pulled from the task notes. Ticks are saved in this browser."
+                : files.length
+                  ? "The notes point at repo docs for the detail. Lines written as '- step' in the notes show here as a checklist."
+                  : "No step list in the notes. Write them as '- step' lines and they appear here as a checklist."
+            }>
             {waiting.length ? (
               <div className="border border-fg px-4 py-3 mb-4 text-[0.88rem]">
                 First finish what this waits on:
@@ -277,6 +292,18 @@ export default function TaskMapClient({
               </div>
             ) : null}
             {steps.length ? <StepList id={task.id} steps={steps} /> : null}
+            {!steps.length && files.length ? (
+              <div className="border border-line bg-bg/70 px-4 py-3 text-[0.88rem]">
+                The steps are written up in the repo:
+                <ul className="mt-2 flex flex-col gap-1">
+                  {files.map((f) => (
+                    <li key={f.url}>
+                      <a href={f.url} target="_blank" rel="noreferrer" className="text-accent hover:text-fg font-mono text-[0.8rem]">{f.label} ↗</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {subtasks.length ? (
               <ul className="flex flex-col mt-3">
                 {subtasks.map((s) => (
@@ -303,12 +330,15 @@ export default function TaskMapClient({
               {snippets.map((s, i) => (
                 <Copy key={i} label={i === 0 ? "From the notes" : undefined} text={s} />
               ))}
+              {secrets.map((name, i) => (
+                <Copy key={name} label={i === 0 ? "Secret and variable names (paste as the Name; the value comes from the service)" : undefined} text={name} />
+              ))}
               {humanOnly ? (
                 <Copy label="Report when done (paste into a PR, message or the project log)" text={report} />
               ) : (
                 <Copy label={`Brief for ${task.agent ? `@${task.agent}` : "an agent"} (paste into its session)`} text={brief} />
               )}
-              {project.owner && project.repo ? (
+              {project.owner && project.repo && !humanOnly ? (
                 <Copy label="Start a branch for it" text={`git checkout -b ${branch}`} />
               ) : null}
               {humanOnly ? (

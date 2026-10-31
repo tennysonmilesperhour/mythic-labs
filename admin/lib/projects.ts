@@ -1,3 +1,4 @@
+import { isMine } from "./taskMap";
 import { mutate, newId, readSnapshot, type Snapshot } from "./store";
 import {
   SOON_DAYS,
@@ -193,7 +194,7 @@ export async function getHub(): Promise<Hub> {
       )
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!)),
     mine: live
-      .flatMap((d) => d.tasks.filter((t) => t.agent === "me" && t.status !== "done").map((t) => ref(d, t)))
+      .flatMap((d) => d.tasks.filter((t) => isMine(t) && t.status !== "done").map((t) => ref(d, t)))
       .sort(
         (a, b) =>
           Number(b.status === "doing") - Number(a.status === "doing") ||
