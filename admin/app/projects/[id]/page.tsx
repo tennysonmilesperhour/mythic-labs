@@ -10,10 +10,10 @@ export default async function ProjectPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ task?: string }>;
+  searchParams: Promise<{ task?: string; tab?: string; entry?: string }>;
 }) {
   const { id } = await params;
-  const { task } = await searchParams;
+  const { task, tab, entry } = await searchParams;
   let detail: Awaited<ReturnType<typeof getProjectDetail>>;
   try {
     detail = await getProjectDetail(id);
@@ -39,6 +39,8 @@ export default async function ProjectPage({
     <ProjectDetailClient
       initial={detail}
       focusTask={task ?? null}
+      initialTab={tab ?? null}
+      focusEntry={entry ?? null}
       suggestions={{
         agents: used("agents"),
         tools: [...plugins, ...used("tools")],

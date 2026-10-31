@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   TASK_STATUSES,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/projectTypes";
 import { Chip, InlineText, PRIORITY_MARK, Progress, api, btnGhost, btnPrimary, inputBase, inputCls } from "@/components/ProjectBits";
 import { GlyphClose } from "@/components/Glyphs";
+import { taskHref } from "@/lib/taskMap";
 import { DateInput, type Store } from "./ProjectDetailClient";
 
 const byOrder = (a: Task, b: Task) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
@@ -411,6 +413,15 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         <span className={late ? "text-accent" : t.due_date ? "" : "opacity-0 group-hover:opacity-100"}>
           <DateInput value={t.due_date} onChange={(due_date) => rp.patchTask(t.id, { due_date })} />
         </span>
+        <Link
+          href={taskHref(t.id)}
+          className={`font-mono text-[0.55rem] uppercase tracking-[0.15em] shrink-0 hover:text-fg ${
+            t.agent === "me" ? "text-accent" : "text-fg-ghost opacity-0 group-hover:opacity-100"
+          }`}
+          title="Open the task map: steps, links and text to paste"
+        >
+          map →
+        </Link>
         <button
           onClick={() => rp.removeTask(t.id)}
           className="text-fg-ghost hover:text-fg opacity-0 group-hover:opacity-100 shrink-0"

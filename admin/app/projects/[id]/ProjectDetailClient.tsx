@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AGENT_PRESETS,
   PRIORITIES,
@@ -13,6 +13,7 @@ import {
   rankReady,
   taskPath,
   fmtDate,
+  isOverdue,
   relTime,
   renderProjectMarkdown,
   type Entry,
@@ -34,6 +35,7 @@ import {
   inputCls,
 } from "@/components/ProjectBits";
 import CopyBlock from "@/components/CopyBlock";
+import { taskHref } from "@/lib/taskMap";
 import { AttentionList } from "@/components/Glance";
 import { GlyphArrow, GlyphClose } from "@/components/Glyphs";
 import PlanTab from "./PlanTab";
@@ -60,16 +62,28 @@ export default function ProjectDetailClient({
   initial,
   suggestions,
   focusTask,
+  initialTab,
+  focusEntry,
 }: {
   initial: ProjectDetail;
   suggestions: { agents: string[]; tools: string[]; tags: string[] };
   focusTask: string | null;
+  /** ?tab= deep link, e.g. from a decision or changelog row elsewhere. */
+  initialTab: string | null;
+  /** ?entry= deep link: scrolled to and outlined once the tab renders. */
+  focusEntry: string | null;
 }) {
   const [project, setProject] = useState(initial.project);
   const [milestones, setMilestones] = useState(initial.milestones);
   const [tasks, setTasks] = useState(initial.tasks);
   const [entries, setEntries] = useState(initial.entries);
-  const [tab, setTab] = useState<Tab>("plan");
+  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "plan");
+  useEffect(() => {
+    if (!focusEntry) return;
+    const el = document.getElementById(`entry-${focusEntry}`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    el?.classList.add("outline", "outline-1", "outline-accent");
+  }, [focusEntry]);
   const [error, setError] = useState<string | null>(null);
 
   const patchProject: Store["patchProject"] = async (patch) => {
@@ -191,10 +205,15 @@ export default function ProjectDetailClient({
         <Cell label="Progress">
           <Progress done={stats.done} total={stats.total} />
         </Cell>
-        <Cell label="Ready" value={stats.ready} />
-        <Cell label="Doing" value={stats.doing} />
-        <Cell label="Blocked" value={stats.blocked} warn={stats.blocked > 0} />
-        <Cell label="Overdue" value={stats.overdue} warn={stats.overdue > 0} />
+        <Cell label="Ready" value={stats.ready} href={firstMap(rankReady(tasks, milestones)[0])} />
+        <Cell label="Doing" value={stats.doing} href={firstMap(tasks.find((t) => t.status === "doing"))} />
+        <Cell label="Blocked" value={stats.blocked} warn={stats.blocked > 0} href={firstMap(tasks.find((t) => t.status === "blocked"), "blocked")} />
+        <Cell
+          label="Overdue"
+          value={stats.overdue}
+          warn={stats.overdue > 0}
+          href={firstMap(tasks.find((t) => isOverdue(t.due_date, t.status === "done")), "overdue")}
+        />
         <Cell label="Priority">
           <select
             value={project.priority}
@@ -250,24 +269,36 @@ export default function ProjectDetailClient({
   );
 }
 
+const firstMap = (t: Task | undefined, why?: string) => (t ? taskHref(t.id, why) : undefined);
+
 function Cell({
   label,
   value,
   warn,
+  href,
   children,
 }: {
   label: string;
   value?: number;
   warn?: boolean;
+  /** The first task this number counts, so the count opens straight into it. */
+  href?: string;
   children?: React.ReactNode;
 }) {
-  return (
-    <div className="bg-bg/85 px-4 py-3 min-w-0">
+  const inner = (
+    <>
       <div className={warn ? "mono-label mb-2" : "mono-label-dim mb-2"}>{label}</div>
       {children ?? (
         <div className={`serif-display text-[1.8rem] leading-none tnum ${warn ? "text-accent" : ""}`}>{value}</div>
       )}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className="block bg-bg/85 px-4 py-3 min-w-0 hover:bg-bg-warm" title={`Open the first ${label.toLowerCase()} task`}>
+      {inner}
+    </Link>
+  ) : (
+    <div className="bg-bg/85 px-4 py-3 min-w-0">{inner}</div>
   );
 }
 
@@ -452,7 +483,7 @@ export function Section({
   );
 }
 
-const INSTRUCTIONS_TEMPLATE = `Setup: npm ci, then npm run dev
+export const INSTRUCTIONS_TEMPLATE = `Setup: npm ci, then npm run dev
 Branch: claude/<short-task-name> off main; open a draft PR per task
 Checks before pushing: npm run lint && npm test && npm run build
 Definition of done: acceptance criteria met, checks green, PR open, changelog entry logged

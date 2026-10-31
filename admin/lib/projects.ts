@@ -192,6 +192,14 @@ export async function getHub(): Promise<Hub> {
           .map((t) => ref(d, t))
       )
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!)),
+    mine: live
+      .flatMap((d) => d.tasks.filter((t) => t.agent === "me" && t.status !== "done").map((t) => ref(d, t)))
+      .sort(
+        (a, b) =>
+          Number(b.status === "doing") - Number(a.status === "doing") ||
+          Number(a.status === "blocked") - Number(b.status === "blocked") ||
+          (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999")
+      ),
     recent: all
       .flatMap((d) =>
         d.entries

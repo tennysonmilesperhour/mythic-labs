@@ -376,7 +376,8 @@ function RepoCard({
 
   return (
     <div
-      className="accent-sweep border border-line bg-bg/80 p-4 flex flex-col gap-3 h-full ease-mythic"
+      id={`repo-${repo.id}`}
+      className="accent-sweep border border-line bg-bg/80 p-4 flex flex-col gap-3 h-full ease-mythic scroll-mt-24 target:outline target:outline-1 target:outline-accent"
       style={{ transition: "background-color var(--motion-base) var(--ease-mythic)" }}
     >
       <div className="flex items-start justify-between gap-2">

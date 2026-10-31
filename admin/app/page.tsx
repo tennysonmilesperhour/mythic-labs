@@ -5,6 +5,7 @@ import { fetchMarketplace } from "@/lib/brain";
 import { AttentionList, TaskRefList } from "@/components/Glance";
 import { Freshness } from "@/components/OverviewBits";
 import { StatusDot } from "@/components/ProjectBits";
+import { ME, fixHref } from "@/lib/taskMap";
 import {
   STALE_DAYS,
   STALLED_CLAIM_DAYS,
@@ -69,6 +70,9 @@ export default async function Overview() {
     (m) => !m.done && m.target_date && m.target_date >= today() && m.target_date <= soon
   );
 
+  const mine = hub?.mine ?? [];
+  const calls = attention.filter((a) => !a.task_id).length;
+
   // A broken source leads the page; when all are fine it sits at the bottom.
   const sourcesOk = hubR.ok && marketR.ok && agentApiOn;
   const sources = (
@@ -86,6 +90,7 @@ export default async function Overview() {
                 : hubR.error
             }
             fix={hubR.ok ? undefined : "Set PM_DATA_REPO (private owner/repo), PM_DATA_BRANCH and GITHUB_TOKEN."}
+            href={fixHref("source:store")}
           />
           <Source
             name="Plugin marketplace"
@@ -98,6 +103,7 @@ export default async function Overview() {
                   : marketR.error
             }
             fix={marketR.ok ? undefined : "Reads .claude-plugin/marketplace.json from BRAIN_OWNER/BRAIN_REPO with GITHUB_TOKEN."}
+            href={marketR.ok ? "/brain" : fixHref("source:market")}
           />
           <Source
             name="Agent API"
@@ -110,6 +116,7 @@ export default async function Overview() {
                 : "Agents can't read the roadmap or claim tasks."
             }
             fix={agentApiOn ? undefined : "Set PM_AGENT_API_ENABLED=true and PM_AGENT_TOKEN to turn it on."}
+            href={fixHref("source:agent")}
           />
         </div>
       </Section>
@@ -130,6 +137,30 @@ export default async function Overview() {
       </header>
 
       {sourcesOk ? null : sources}
+
+      {/* ── Your work ── */}
+      {hubR.ok ? (
+        <Section
+          title="Only you can do"
+          count={mine.length + calls}
+          what={`Tasks assigned to @${ME} plus decisions and fixes waiting on you. Each opens a task map with the steps, links and text to paste.`}
+          action={{ href: "/tasks", label: "Open my tasks" }}
+        >
+          {mine.length ? (
+            <TaskRefList tasks={mine} show="due" limit={5} empty="" moreHref="/tasks" />
+          ) : (
+            <EmptyBox>
+              Nothing is assigned to @{ME}. Give yourself a task from any plan or task map, or see{" "}
+              <Link className="text-accent underline" href="/tasks">My tasks</Link> for decisions waiting on you.
+            </EmptyBox>
+          )}
+          {calls ? (
+            <Link href="/tasks" className="block mt-3 font-mono text-[0.6rem] text-fg-dim hover:text-fg">
+              + {calls} decision{calls > 1 ? "s" : ""} and fix{calls > 1 ? "es" : ""} on My tasks →
+            </Link>
+          ) : null}
+        </Section>
+      ) : null}
 
       {/* ── Needs you ── */}
       <Section
@@ -157,9 +188,9 @@ export default async function Overview() {
               <span><span className="text-fg">■</span> needs you: blocked, overdue, critical, late, past target</span>
               <span><span className="text-accent">◆</span> watch: stalled, quiet, decision proposed, nothing ready</span>
               {tidy.length ? (
-                <Link href="/projects?view=list" className="hover:text-fg">
+                <Link href="/tasks" className="hover:text-fg">
                   · {tidy.length} housekeeping flag{tidy.length > 1 ? "s" : ""} (missing next action or build
-                  instructions, long pauses) on Projects →
+                  instructions, long pauses) on My tasks →
                 </Link>
               ) : null}
             </div>
@@ -220,6 +251,7 @@ export default async function Overview() {
                   tasks={hub!.inProgress}
                   show="since"
                   limit={6}
+                  moreHref="/queue#in-progress-verify"
                   empty="No task is marked doing. Ready tasks wait in the queue until a person or agent claims one."
                 />
               </div>
@@ -236,7 +268,7 @@ export default async function Overview() {
                     {msSoon.slice(0, 4).map((m) => (
                       <li key={m.id}>
                         <Link
-                          href={`/projects/${m.project_id}`}
+                          href={`/projects/${m.project_id}?tab=plan`}
                           className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent"
                         >
                           <span className="font-mono text-[0.55rem] uppercase tracking-[0.15em] text-accent shrink-0">
@@ -304,7 +336,7 @@ export default async function Overview() {
             <ul className="border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
               {market.plugins.map((p) => (
                 <li key={p.name}>
-                  <Link href="/brain" className="block px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">
+                  <Link href={`/brain?plugin=${encodeURIComponent(p.name)}`} className="block px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">
                     <span className="font-mono text-[0.78rem] text-fg">{p.name}</span>
                     {p.description ? (
                       <span className="block text-[0.8rem] text-fg-dim truncate">{p.description}</span>
@@ -334,7 +366,7 @@ export default async function Overview() {
               {repos.slice(0, 8).map((r) => (
                 <li key={r.id}>
                   <Link
-                    href="/repos"
+                    href={`/repos#repo-${r.id}`}
                     className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]"
                   >
                     <span className="flex-1 min-w-0 truncate font-mono text-[0.78rem] text-fg">
@@ -347,7 +379,9 @@ export default async function Overview() {
                 </li>
               ))}
               {repos.length > 8 ? (
-                <li className="px-4 py-2 font-mono text-[0.58rem] text-fg-ghost">+ {repos.length - 8} more on Repos</li>
+                <li>
+                  <Link href="/repos" className="block px-4 py-2 font-mono text-[0.58rem] text-fg-ghost hover:text-fg">+ {repos.length - 8} more on Repos →</Link>
+                </li>
               ) : null}
             </ul>
           )}
@@ -370,7 +404,11 @@ export default async function Overview() {
             {hub!.recent.map((e) => (
               <li key={e.id}>
                 <Link
-                  href={`/projects/${e.project_id}`}
+                  href={
+                    e.kind === "decision" && e.decision_status === "proposed"
+                      ? fixHref(`${e.project_id}:decision:${e.id}`)
+                      : `/projects/${e.project_id}?tab=${e.kind === "decision" ? "decisions" : "changelog"}&entry=${e.id}`
+                  }
                   className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent"
                 >
                   <span className="font-mono text-[0.55rem] uppercase tracking-[0.15em] text-fg-dim w-20 shrink-0">
@@ -484,6 +522,7 @@ function Source({
   ok,
   detail,
   fix,
+  href,
   okLabel = "Connected",
   offLabel = "Unavailable",
 }: {
@@ -491,11 +530,13 @@ function Source({
   ok: boolean;
   detail: string;
   fix?: string;
+  /** Where to go: the source itself when it works, its step-by-step fix when it doesn't. */
+  href: string;
   okLabel?: string;
   offLabel?: string;
 }) {
   return (
-    <div className="bg-bg p-4">
+    <Link href={href} className="block bg-bg p-4 hover:bg-bg-warm">
       <div className="flex items-baseline justify-between gap-3 mb-1.5">
         <span className="text-[0.85rem] text-fg">{name}</span>
         <span className={`font-mono text-[0.58rem] uppercase tracking-[0.15em] ${ok ? "text-accent" : "text-fg"}`}>
@@ -505,14 +546,18 @@ function Source({
       </div>
       <p className="font-mono text-[0.62rem] text-fg-dim leading-relaxed break-words">{detail}</p>
       {fix ? <p className="font-mono text-[0.6rem] text-fg-ghost leading-relaxed mt-1.5">{fix}</p> : null}
-    </div>
+      {ok ? null : <p className="font-mono text-[0.58rem] uppercase tracking-[0.18em] text-accent mt-2">Fix it step by step →</p>}
+    </Link>
   );
 }
 
 function Unavailable({ source }: { source: string }) {
   return (
     <EmptyBox>
-      Can&apos;t show this: the {source.toLowerCase()} didn&apos;t load. See Data sources above for the error and fix.
+      Can&apos;t show this: the {source.toLowerCase()} didn&apos;t load.{" "}
+      <Link className="text-accent underline" href={fixHref(source === "Project store" ? "source:store" : "source:market")}>
+        Fix it step by step →
+      </Link>
     </EmptyBox>
   );
 }

@@ -11,6 +11,7 @@ import {
   type TaskRef,
 } from "@/lib/projectTypes";
 import { StatusDot } from "./ProjectBits";
+import { attentionHref, taskHref } from "@/lib/taskMap";
 
 const SEVERITY_MARK: Record<Severity, { mark: string; cls: string; label: string }> = {
   high: { mark: "■", cls: "text-fg", label: "needs you" },
@@ -43,7 +44,7 @@ export function AttentionList({
           return (
             <li key={a.key}>
               <Link
-                href={a.href ?? `/projects/${a.project_id}${a.task_id ? `?task=${a.task_id}` : ""}`}
+                href={attentionHref(a)}
                 className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]"
               >
                 <span className={`font-mono text-[0.6rem] w-3 shrink-0 ${sev.cls}`} title={sev.label}>
@@ -82,11 +83,14 @@ export function TaskRefList({
   empty,
   show,
   limit = 6,
+  moreHref = "/queue",
 }: {
   tasks: TaskRef[];
   empty: string;
   show: "since" | "due";
   limit?: number;
+  /** Where "+ N more" leads. */
+  moreHref?: string;
 }) {
   if (!tasks.length) return <p className="text-fg-ghost text-sm">{empty}</p>;
   return (
@@ -96,7 +100,7 @@ export function TaskRefList({
         return (
           <li key={t.id}>
             <Link
-              href={`/projects/${t.project_id}?task=${t.id}`}
+              href={taskHref(t.id)}
               className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent"
             >
               <StatusDot status={t.project_status} />
@@ -113,7 +117,11 @@ export function TaskRefList({
         );
       })}
       {tasks.length > limit ? (
-        <li className="font-mono text-[0.58rem] text-fg-ghost pt-2">+ {tasks.length - limit} more</li>
+        <li>
+          <Link href={moreHref} className="block font-mono text-[0.58rem] text-fg-ghost hover:text-fg pt-2">
+            + {tasks.length - limit} more →
+          </Link>
+        </li>
       ) : null}
     </ul>
   );

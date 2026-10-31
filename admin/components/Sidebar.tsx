@@ -6,12 +6,13 @@ import { GlyphMark } from "./Glyphs";
 
 export const NAV = [
   { href: "/", label: "Overview", num: "00" },
-  { href: "/projects", label: "Projects", num: "01" },
-  { href: "/queue", label: "Queue", num: "02" },
-  { href: "/import", label: "Import", num: "03" },
-  { href: "/repos", label: "Repos", num: "04" },
-  { href: "/brain", label: "Brain", num: "05" },
-  { href: "/authoring", label: "Authoring", num: "06" },
+  { href: "/tasks", label: "My tasks", num: "01" },
+  { href: "/projects", label: "Projects", num: "02" },
+  { href: "/queue", label: "Queue", num: "03" },
+  { href: "/import", label: "Import", num: "04" },
+  { href: "/repos", label: "Repos", num: "05" },
+  { href: "/brain", label: "Brain", num: "06" },
+  { href: "/authoring", label: "Authoring", num: "07" },
 ];
 
 export default function Sidebar() {
