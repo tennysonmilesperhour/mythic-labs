@@ -9,6 +9,7 @@ import {
   daysFromNow,
   groupAttention,
   isReady,
+  isUpcoming,
   openDescendants,
   rankReady,
   sortAttention,
@@ -187,7 +188,7 @@ export async function getHub(): Promise<Hub> {
     upcoming: live
       .flatMap((d) =>
         d.tasks
-          .filter((t) => t.status !== "done" && t.due_date && t.due_date <= soon)
+          .filter((t) => isUpcoming(t.due_date, t.status, soon))
           .map((t) => ref(d, t))
       )
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!)),

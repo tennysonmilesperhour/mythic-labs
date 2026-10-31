@@ -1,4 +1,4 @@
-import { mutate, newId, readSnapshot, type TrackedRepo } from "./store";
+import { mutate, newId, readSnapshot, storeLocation, type TrackedRepo } from "./store";
 
 // The Repos page's tracked exceptions, stored in repos.json alongside the
 // project files (see store.ts).
@@ -10,6 +10,11 @@ export type RepoPlugin = {
   plugin_slug: string;
   enabled: boolean;
 };
+
+/** A presentation-safe description of the configured project repository. */
+export function dataSourceLabel(): string {
+  return storeLocation().startsWith("disk:") ? "local files" : "GitHub";
+}
 
 export async function listRepos(): Promise<Repo[]> {
   const { repos } = await readSnapshot();

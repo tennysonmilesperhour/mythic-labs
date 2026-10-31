@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { listRepos } from "@/lib/db";
+import { dataSourceLabel, listRepos } from "@/lib/db";
 import { getHub } from "@/lib/projects";
 import { fetchMarketplace } from "@/lib/brain";
-import { storeLocation } from "@/lib/store";
 import { AttentionList, TaskRefList } from "@/components/Glance";
 import { Freshness } from "@/components/OverviewBits";
 import { StatusDot } from "@/components/ProjectBits";
@@ -46,7 +45,7 @@ export default async function Overview() {
   const agentApiOn = process.env.PM_AGENT_API_ENABLED === "true" && !!process.env.PM_AGENT_TOKEN;
   let storeName = "";
   try {
-    storeName = storeLocation();
+    storeName = dataSourceLabel();
   } catch {
     storeName = "";
   }
@@ -83,7 +82,7 @@ export default async function Overview() {
             ok={hubR.ok}
             detail={
               hubR.ok
-                ? `${projects.length} projects · ${storeName.startsWith("disk:") ? "local files" : storeName || "GitHub"}`
+                ? `${projects.length} projects · ${storeName || "GitHub"}`
                 : hubR.error
             }
             fix={hubR.ok ? undefined : "Set PM_DATA_REPO (private owner/repo), PM_DATA_BRANCH and GITHUB_TOKEN."}
