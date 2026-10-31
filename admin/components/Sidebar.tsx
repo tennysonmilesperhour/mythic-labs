@@ -62,7 +62,7 @@ export default function Sidebar() {
                   "color var(--motion-base) var(--ease-mythic), padding-left var(--motion-base) var(--ease-mythic)",
               }}
             >
-              {/* Left rule — solid accent when active, gentle when hovered */}
+              {/* Left rule: solid accent when active, gentle when hovered */}
               <span
                 className={`
                   absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[2px]

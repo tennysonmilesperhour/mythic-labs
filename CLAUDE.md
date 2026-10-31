@@ -53,7 +53,7 @@ Each top-level plugin directory follows the same shape:
 | `skills/<name>/SKILL.md` | Skills. Frontmatter `description` is always-loaded; body loads on invocation. |
 | `agents/<name>.md` | Subagents. Same frontmatter pattern. |
 | `commands/<name>.md` | Slash commands. Invoked as `/<plugin-name>:<command>`. |
-| `hooks/hooks.json` | Hooks. Run by the harness — zero context cost. |
+| `hooks/hooks.json` | Hooks. Run by the harness, so they cost zero context. |
 | `.mcp.json` | MCP server declarations bundled with the plugin. |
 
 ### Writing a new skill
@@ -64,7 +64,7 @@ Make the directory and `SKILL.md`:
 plugin-name/skills/your-skill/SKILL.md
 ```
 
-Frontmatter must include `name` and `description`. The description is what's always in context, so write it for *trigger fidelity* — when should Claude reach for this?
+Frontmatter must include `name` and `description`. The description is what's always in context, so write it for *trigger fidelity*: when should Claude reach for this?
 
 ```yaml
 ---
@@ -73,12 +73,12 @@ description: One sharp sentence covering WHAT it does and WHEN to use it. Includ
 ---
 ```
 
-Below the frontmatter, document the procedure, output format, and guardrails. Keep bodies tight — they're loaded into context once invoked.
+Below the frontmatter, document the procedure, output format, and guardrails. Keep bodies tight; they're loaded into context once invoked.
 
 **Keep skills portable.** `SKILL.md` is the open Agent Skills format, read by Codex, Cursor, Copilot, and others as well as Claude. To stay portable:
 
 - Use only `name` and `description` in frontmatter (the spec also allows `license`, `compatibility`, `metadata`, `allowed-tools`). `name` is lowercase letters, digits, and hyphens, matching the directory; `description` is at most 1024 characters.
-- Keep each skill self-contained. Put supporting files in the skill's own directory and refer to them by bare filename. Don't reference another skill's files with `../`, and don't rely on `${CLAUDE_PLUGIN_ROOT}` in skill bodies — it only expands in Claude Code.
+- Keep each skill self-contained. Put supporting files in the skill's own directory and refer to them by bare filename. Don't reference another skill's files with `../`, and don't rely on `${CLAUDE_PLUGIN_ROOT}` in skill bodies, because it only expands in Claude Code.
 
 ### Writing a new subagent
 
@@ -86,7 +86,7 @@ Same pattern, in `agents/<name>.md`. Optionally declare `tools:` to restrict the
 
 ### Adding a hook
 
-Edit `<plugin>/hooks/hooks.json`. Hooks fire on harness events (`PostToolUse`, `PreToolUse`, `SessionStart`, etc.) and never enter the model's context — perfect for guardrails and notifications.
+Edit `<plugin>/hooks/hooks.json`. Hooks fire on harness events (`PostToolUse`, `PreToolUse`, `SessionStart`, etc.) and never enter the model's context, which makes them right for guardrails and notifications.
 
 ### Adding MCP servers
 
@@ -119,13 +119,13 @@ Claude Code uses **progressive disclosure**. With this brain setup:
 
 | Component | Always-on cost | On-demand cost |
 |---|---|---|
-| Skill description (enabled) | ~10–30 tokens | full body loads on invocation |
+| Skill description (enabled) | ~10-30 tokens | full body loads on invocation |
 | Skill description (disabled) | **0** | n/a |
-| Agent description (enabled) | ~10–30 tokens | full body on delegation |
+| Agent description (enabled) | ~10-30 tokens | full body on delegation |
 | Hook | **0** (runs as shell, never enters context) | n/a |
-| MCP tool list | tool names only | tool *schemas* deferred — load via `ToolSearch` when needed |
+| MCP tool list | tool names only | tool *schemas* deferred, loaded via `ToolSearch` when needed |
 
-So if a consuming repo enables `dev-workflows` only, the always-on cost is roughly **the sum of skill/agent descriptions in that one plugin** — typically a few hundred tokens. The rest of the brain is dormant.
+So if a consuming repo enables `dev-workflows` only, the always-on cost is roughly **the sum of skill/agent descriptions in that one plugin**, typically a few hundred tokens. The rest of the brain is dormant.
 
 ---
 
@@ -142,17 +142,29 @@ So if a consuming repo enables `dev-workflows` only, the always-on cost is rough
 
 When editing inside `mythic-labs` itself:
 
-- Treat **skills as the public API** — their `description` field is contractual; consuming sessions decide whether to invoke based on it.
+- Treat **skills as the public API**: their `description` field is contractual; consuming sessions decide whether to invoke based on it.
 - Keep skill bodies under ~150 lines. If a skill needs more, break it up or move detail into supporting files in the skill directory (these load only when the skill itself loads).
 - Bump `version` in `plugin.json` when behavior changes meaningfully.
+
+### Writing style
+
+This applies to every word that ships: site copy, dashboard UI text, READMEs, skills, docs, commit messages and PR descriptions. Write plainly and directly. Never use phrasing that reads as obviously AI-generated:
+
+- **No em dashes (—) or en dashes (–).** Use a period, comma, colon, semicolon or parentheses. Write number ranges as `10-30`. An empty table cell or value says "none" or "not set", never a dash.
+- **No "not X, but Y" framing:** "It's not a mask, it's a Self", "We don't build brands. We uncover them", "not just X, but Y", "X, not Y". Say what the thing is.
+- **No setup-then-reveal fragments:** "No pitch, no theater. Just listening.", "Deep clarity. No disconnect.", "The result? ...", "Here's the thing:".
+- **No filler and stock phrases:** "quietly", "simply", "seamlessly", "effortlessly", "truly", "delve", "leverage", "unlock", "elevate", "tapestry", "landscape", "testament to", "at its core", "in today's world", "every journey begins with a single step".
+- **No rule-of-three padding** or rhetorical questions answered in the next sentence.
+
+Before committing copy, search the changed files for `—` and `–` and for the phrases above.
 
 ### Testing skills with evals
 
 Plugins with an `evals/` directory are tested with `claude plugin eval`. Each case is `evals/<case>/prompt.md` (a realistic request that doesn't name the skill) plus graders in `evals/<case>/graders/*.md`. Every new or changed skill should have:
 
-- a **trigger** grader — `type: tool_used`, `tool: Skill`, `input_match` naming the skill
-- an **outcome** grader — `regex` for structure, `llm` with concrete PASS/FAIL conditions for judgment
-- where routing could go wrong, a **must-not-fire** grader — `min: 0`, `max: 0`, `arm: both`
+- a **trigger** grader: `type: tool_used`, `tool: Skill`, `input_match` naming the skill
+- an **outcome** grader: `regex` for structure, `llm` with concrete PASS/FAIL conditions for judgment
+- where routing could go wrong, a **must-not-fire** grader: `min: 0`, `max: 0`, `arm: both`
 
 Use fictional brands in fixtures. Never characterize a real company in a test.
 

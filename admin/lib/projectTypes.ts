@@ -589,7 +589,7 @@ export function renderRoadmapMarkdown(details: ProjectDetail[], attention: Atten
     const p = d.project;
     const open = d.tasks.filter((t) => t.status !== "done").length;
     const ready = d.tasks.filter((t) => isReady(t, d.tasks)).length;
-    out.push(`| ${p.name} | ${STATUS_META[p.status].label} | ${p.priority} | ${open} | ${ready} | ${(p.next_action || "—").replace(/\|/g, "/")} |`);
+    out.push(`| ${p.name} | ${STATUS_META[p.status].label} | ${p.priority} | ${open} | ${ready} | ${(p.next_action || "none").replace(/\|/g, "/")} |`);
   }
   out.push("");
   if (attention.length) {

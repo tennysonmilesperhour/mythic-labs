@@ -1,5 +1,5 @@
 /**
- * Editorial glyph set — thin-stroke SVGs that act as typographic specimens
+ * Editorial glyph set: thin-stroke SVGs that act as typographic specimens
  * for the brain's artifact taxonomy. All glyphs share the same canvas
  * (24×24), stroke language (1.3px hairline), and accent treatment so they
  * read as a single family.
@@ -25,7 +25,7 @@ const base = (size: number) => ({
   "aria-hidden": "true" as const,
 });
 
-/* Skill — a poised rhombus suggesting a faceted gem / specimen */
+/* Skill: a poised rhombus suggesting a faceted gem / specimen */
 export function GlyphSkill({ size = 16, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -37,7 +37,7 @@ export function GlyphSkill({ size = 16, className, title }: GlyphProps) {
   );
 }
 
-/* Agent — a triangular envoy with a small inner mark */
+/* Agent: a triangular envoy with a small inner mark */
 export function GlyphAgent({ size = 16, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -48,7 +48,7 @@ export function GlyphAgent({ size = 16, className, title }: GlyphProps) {
   );
 }
 
-/* Command — slash with a flanking hairline (literal but elegant) */
+/* Command: slash with a flanking hairline (literal but elegant) */
 export function GlyphCommand({ size = 16, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -62,7 +62,7 @@ export function GlyphCommand({ size = 16, className, title }: GlyphProps) {
   );
 }
 
-/* Hook — two interlocked arcs (a hook in profile) */
+/* Hook: two interlocked arcs (a hook in profile) */
 export function GlyphHook({ size = 16, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -73,7 +73,7 @@ export function GlyphHook({ size = 16, className, title }: GlyphProps) {
   );
 }
 
-/* MCP — a node connected by two faint chords (a relay) */
+/* MCP: a node connected by two faint chords (a relay) */
 export function GlyphMcp({ size = 16, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -91,7 +91,7 @@ export function GlyphMcp({ size = 16, className, title }: GlyphProps) {
   );
 }
 
-/* Fork — a marker for forked repos. Two branches descending. */
+/* Fork: a marker for forked repos. Two branches descending. */
 export function GlyphFork({ size = 14, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -105,7 +105,7 @@ export function GlyphFork({ size = 14, className, title }: GlyphProps) {
   );
 }
 
-/* Applied — a confident open circle with an interior mark (a sealed wax) */
+/* Applied: a confident open circle with an interior mark (a sealed wax) */
 export function GlyphApplied({ size = 14, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -116,7 +116,7 @@ export function GlyphApplied({ size = 14, className, title }: GlyphProps) {
   );
 }
 
-/* Pending — a hollow circle with a hairline gap (the work is open) */
+/* Pending: a hollow circle with a hairline gap (the work is open) */
 export function GlyphPending({ size = 14, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -127,7 +127,7 @@ export function GlyphPending({ size = 14, className, title }: GlyphProps) {
   );
 }
 
-/* Plus — for the Add button */
+/* Plus: for the Add button */
 export function GlyphPlus({ size = 12, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -138,7 +138,7 @@ export function GlyphPlus({ size = 12, className, title }: GlyphProps) {
   );
 }
 
-/* Close — for the remove (×) */
+/* Close: for the remove (×) */
 export function GlyphClose({ size = 12, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -149,7 +149,7 @@ export function GlyphClose({ size = 12, className, title }: GlyphProps) {
   );
 }
 
-/* Arrow — a thin right-arrow used for "Open →" and Apply */
+/* Arrow: a thin right-arrow used for "Open →" and Apply */
 export function GlyphArrow({ size = 12, className, title }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>
@@ -160,7 +160,7 @@ export function GlyphArrow({ size = 12, className, title }: GlyphProps) {
   );
 }
 
-/* The signature mark — used in the sidebar logo / pinned moments. */
+/* The signature mark: used in the sidebar logo / pinned moments. */
 export function GlyphMark({ size = 18, className }: GlyphProps) {
   return (
     <svg {...base(size)} className={className}>

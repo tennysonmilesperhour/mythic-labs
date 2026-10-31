@@ -10,13 +10,13 @@ Diagnostic Union Technicians
 
 Mythic Labs uses Jungian psychology and architectural dynamics to discover the deep structural identity of products, brands, and audiences. We build everything from that foundation up.
 
-We do not build brands. We uncover their archetypal foundations.
+We uncover the archetypal foundation a brand already has, then build from it.
 
 ## The Diagnostic Lens
 
-Like a Jungian analyst diagnosing unconscious patterns, we diagnose the archetypal structure of your product or organization. We do not impose a personality. We discover what is already there.
+Like a Jungian analyst diagnosing unconscious patterns, we diagnose the archetypal structure of your product or organization. We work with the personality that is already there.
 
-The foundational identity wants to emerge, to complete its own hero's journey, to become architecturally whole. The brand is not a mask. It is a Self in the process of becoming.
+The foundational identity wants to emerge, to complete its own hero's journey, to become architecturally whole. A brand is a Self in the process of becoming.
 
 ## The Threefold Path
 
@@ -27,7 +27,7 @@ Map the foundational identity structure. What archetypal pattern does it natural
 Build structural relationships between brand, product, and audience using complementary dynamics and spatial psychology. Every element emerges from the same foundation.
 
 ### Phase 03: Unified Expression
-Brand identity, product interface, spatial design, and service architecture express the same structural truth. Deep clarity. No disconnect between what you say and what you are.
+Brand identity, product interface, spatial design, and service architecture express the same structural truth. What you say and what you are come from the same place.
 
 ## The Contrast
 
@@ -45,7 +45,7 @@ Brand identity, product interface, spatial design, and service architecture expr
 
 **hello@mythiclabs.studio**
 
-We begin every engagement with a diagnostic conversation. No pitch, no theater. Just deep structural listening.
+We begin every engagement with a diagnostic conversation. We spend it listening to the structure underneath what you've built.
 
 ---
 

@@ -90,7 +90,7 @@ body {
   font-style: normal;
 }
 
-/* Hairline with a leading accent rule — the landing's "::before { width:64px }" trick. */
+/* Hairline with a leading accent rule: the landing's "::before { width:64px }" trick. */
 .hairline-accent {
   display: inline-flex;
   align-items: center;
@@ -115,12 +115,12 @@ body {
   background: var(--accent);
 }
 
-/* Tabular lining figures — used for stat numerals so they don't dance. */
+/* Tabular lining figures: used for stat numerals so they don't dance. */
 .tnum {
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-/* Drop cap — used once per major description for editorial weight. */
+/* Drop cap: used once per major description for editorial weight. */
 .dropcap::first-letter {
   font-family: "Cormorant Garamond", serif;
   font-weight: 400;
@@ -168,7 +168,7 @@ body {
   box-shadow: var(--shadow-lifted);
 }
 
-/* Glass surface — used for the sidebar and floating bars. */
+/* Glass surface: used for the sidebar and floating bars. */
 .glass {
   background: rgba(247, 245, 240, 0.72);
   backdrop-filter: blur(20px) saturate(140%);
@@ -199,7 +199,7 @@ body {
   pointer-events: none;
 }
 
-/* Living-canvas wrapper — always behind page content. */
+/* Living-canvas wrapper: always behind page content. */
 .living-canvas {
   position: fixed;
   inset: 0;
@@ -216,7 +216,7 @@ body {
   overflow-x: clip;
 }
 
-/* Hover-shift list items — the landing's phil-list pattern. */
+/* Hover-shift list items: the landing's phil-list pattern. */
 .hover-shift {
   transition: padding-left var(--motion-base) var(--ease-mythic),
     color var(--motion-base) var(--ease-mythic);

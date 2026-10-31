@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Living canvas — three slow-drifting warm gradient orbs.
+ * Living canvas: three slow-drifting warm gradient orbs.
  * Ported from mythic_labs_landing.html so the dashboard inherits the
  * same atmospheric breath as the public brand site.
  */
