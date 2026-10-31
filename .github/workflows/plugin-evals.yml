@@ -1,0 +1,83 @@
+name: Plugin evals
+
+# The CI gate CLAUDE.md describes under "Testing skills with evals".
+# Every run validates each plugin's structure (free, no key needed). The
+# paid eval suite runs only when the PLUGIN_EVAL_ANTHROPIC_API_KEY repository
+# secret exists; without it those steps skip and the job stays green with a
+# notice saying so. Pull requests from forks never receive secrets, so they
+# take the same skip path.
+on:
+  pull_request:
+    paths:
+      - "brand-systems/**"
+      - "dev-workflows/**"
+      - ".github/workflows/plugin-evals.yml"
+  push:
+    branches: [main]
+    paths:
+      - "brand-systems/**"
+      - "dev-workflows/**"
+      - ".github/workflows/plugin-evals.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evals:
+    name: Evals (${{ matrix.plugin }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Plugins that ship an evals/ directory. Add a plugin here when it gains one.
+        plugin: [brand-systems, dev-workflows]
+    env:
+      # Pinned and at least a week old, matching the repo's dependency age rule.
+      CLAUDE_CODE_VERSION: 2.1.299
+      HAS_EVAL_KEY: ${{ secrets.PLUGIN_EVAL_ANTHROPIC_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install Claude Code
+        # Install scripts stay off for dependencies; only Claude Code's own
+        # postinstall runs, to place its native binary.
+        run: |
+          npm install --global --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          node "$(npm root --global)/@anthropic-ai/claude-code/install.cjs"
+          claude --version
+
+      - name: Validate plugin structure
+        run: claude plugin validate "./${{ matrix.plugin }}"
+
+      - name: Skip evals without an API key
+        if: env.HAS_EVAL_KEY != 'true'
+        run: |
+          echo "::notice title=Plugin evals skipped::The PLUGIN_EVAL_ANTHROPIC_API_KEY repository secret is not set, so the ${{ matrix.plugin }} eval suite did not run. Structure validation still ran. See CLAUDE.md, Testing skills with evals."
+
+      - name: Run eval suite
+        if: env.HAS_EVAL_KEY == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.PLUGIN_EVAL_ANTHROPIC_API_KEY }}
+        run: |
+          claude plugin eval "./${{ matrix.plugin }}" --trust-plugin --threshold 0.8 \
+            --json "${{ matrix.plugin }}-results.json" --no-publish --max-cost-usd 20
+
+      - name: Keep eval results
+        if: always() && env.HAS_EVAL_KEY == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-evals-${{ matrix.plugin }}
+          path: |
+            ${{ matrix.plugin }}-results.json
+            ${{ matrix.plugin }}/evals/results/
+          if-no-files-found: ignore
