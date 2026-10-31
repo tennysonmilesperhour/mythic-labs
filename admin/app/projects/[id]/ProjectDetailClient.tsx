@@ -35,7 +35,7 @@ import {
   inputCls,
 } from "@/components/ProjectBits";
 import CopyBlock from "@/components/CopyBlock";
-import { taskHref } from "@/lib/taskMap";
+import { facetHref, taskHref, toolLinks } from "@/lib/taskMap";
 import { AttentionList } from "@/components/Glance";
 import { GlyphArrow, GlyphClose } from "@/components/Glyphs";
 import PlanTab from "./PlanTab";
@@ -78,6 +78,10 @@ export default function ProjectDetailClient({
   const [tasks, setTasks] = useState(initial.tasks);
   const [entries, setEntries] = useState(initial.entries);
   const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "plan");
+  // Links within this page (e.g. ?tab=activity) change the prop, not the mount.
+  useEffect(() => {
+    if (TABS.includes(initialTab as Tab)) setTab(initialTab as Tab);
+  }, [initialTab]);
   useEffect(() => {
     if (!focusEntry) return;
     const el = document.getElementById(`entry-${focusEntry}`);
@@ -168,9 +172,9 @@ export default function ProjectDetailClient({
         </div>
         <div className="flex flex-col items-end gap-2">
           <StatusToggle value={project.status} onChange={(status) => patchProject({ status })} />
-          <span className="font-mono text-[0.58rem] text-fg-ghost">
+          <Link href="?tab=activity" className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent" title="Status history in Activity">
             {STATUS_META[project.status].label} since {relTime(project.status_changed_at)}
-          </span>
+          </Link>
         </div>
       </div>
 
@@ -202,7 +206,7 @@ export default function ProjectDetailClient({
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-7 gap-px bg-line border border-line mb-10">
-        <Cell label="Progress">
+        <Cell label="Progress" href="?tab=plan">
           <Progress done={stats.done} total={stats.total} />
         </Cell>
         <Cell label="Ready" value={stats.ready} href={firstMap(rankReady(tasks, milestones)[0])} />
@@ -269,7 +273,8 @@ export default function ProjectDetailClient({
   );
 }
 
-const firstMap = (t: Task | undefined, why?: string) => (t ? taskHref(t.id, why) : undefined);
+// The first task the number counts; with none, the plan is the next place to look.
+const firstMap = (t: Task | undefined, why?: string) => (t ? taskHref(t.id, why) : "?tab=plan");
 
 function Cell({
   label,
@@ -294,7 +299,11 @@ function Cell({
     </>
   );
   return href ? (
-    <Link href={href} className="block bg-bg/85 px-4 py-3 min-w-0 hover:bg-bg-warm" title={`Open the first ${label.toLowerCase()} task`}>
+    <Link
+      href={href}
+      className="block bg-bg/85 px-4 py-3 min-w-0 hover:bg-bg-warm"
+      title={href.startsWith("?") ? "Open the plan" : `Open the first ${label.toLowerCase()} task`}
+    >
       {inner}
     </Link>
   ) : (
@@ -353,6 +362,7 @@ function SetupTab({
           placeholder="add agent…"
           prefix="@"
         />
+        <ChipLinks items={project.agents.map((a) => ({ label: `@${a}`, href: facetHref("agent", a) }))} hint="projects with" />
       </Section>
       <Section title="Connected tools" hint="MCP servers, services and brain plugins this project relies on.">
         <TagInput
@@ -361,6 +371,7 @@ function SetupTab({
           suggestions={Array.from(new Set([...TOOL_PRESETS, ...suggestions.tools]))}
           placeholder="add tool…"
         />
+        <ChipLinks items={toolLinks(project.tools, project).map((l) => ({ label: l.label, href: l.url }))} hint="open" />
       </Section>
       <Section title="Tags">
         <TagInput
@@ -369,6 +380,7 @@ function SetupTab({
           suggestions={suggestions.tags}
           placeholder="add tag…"
         />
+        <ChipLinks items={project.tags.map((t) => ({ label: t, href: facetHref("tag", t) }))} hint="projects tagged" />
       </Section>
       <Section title="GitHub repo" hint="Enables the changelog importer.">
         <div className="flex gap-2">
@@ -463,13 +475,34 @@ function SetupTab({
   );
 }
 
+/** Links under an editable chip input: the chips themselves stay editable. */
+function ChipLinks({ items, hint }: { items: Array<{ label: string; href: string }>; hint: string }) {
+  if (!items.length) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-2 font-mono text-[0.58rem] text-fg-ghost">
+      <span>{hint}:</span>
+      {items.map((i) =>
+        /^https?:\/\//.test(i.href) ? (
+          <a key={i.href + i.label} href={i.href} target="_blank" rel="noreferrer" className="text-fg-dim hover:text-accent">
+            {i.label} ↗
+          </a>
+        ) : (
+          <Link key={i.href} href={i.href} className="text-fg-dim hover:text-accent">
+            {i.label} →
+          </Link>
+        )
+      )}
+    </div>
+  );
+}
+
 export function Section({
   title,
   hint,
   children,
 }: {
   title: string;
-  hint?: string;
+  hint?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -565,7 +598,14 @@ function AgentsTab({ store }: { store: Store }) {
       <div className="flex flex-col gap-8">
         <Section
           title="Agent API"
-          hint="For autonomous agents. Set PM_AGENT_TOKEN on the dashboard; agents with the roadmap skill (dev-workflows) run this loop themselves."
+          hint={
+            <>
+              For autonomous agents. Set PM_AGENT_TOKEN on the dashboard (
+              <Link href="/fix?key=source%3Aagent" className="text-accent hover:text-fg">how</Link>); agents with the{" "}
+              <Link href="/brain?plugin=dev-workflows" className="text-accent hover:text-fg">roadmap skill (dev-workflows)</Link>{" "}
+              run this loop themselves.
+            </>
+          }
         >
           <CopyBlock text={api} />
         </Section>

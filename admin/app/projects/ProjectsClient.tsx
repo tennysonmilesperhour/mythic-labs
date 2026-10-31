@@ -33,6 +33,8 @@ import {
   inputCls,
 } from "@/components/ProjectBits";
 import { GlyphPlus } from "@/components/Glyphs";
+import SubLink from "@/components/SubLink";
+import { attentionHref, facetHref, githubRepoUrl, projectHref, toolLinks } from "@/lib/taskMap";
 
 type View = "board" | "list" | "timeline";
 type GhRepo = {
@@ -49,10 +51,13 @@ export default function ProjectsClient({
   hub,
   initialView = "board",
   initialStatus = "all",
+  initialFacet = "",
 }: {
   hub: Hub;
   initialView?: View;
   initialStatus?: ProjectStatus | "all";
+  /** "agent:x", "tool:x" or "tag:x" from ?facet=, so chips elsewhere can link here. */
+  initialFacet?: string;
 }) {
   const router = useRouter();
   const { timeline } = hub;
@@ -62,7 +67,9 @@ export default function ProjectsClient({
   useEffect(() => setView(initialView), [initialView]);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "all">(initialStatus);
   const [search, setSearch] = useState("");
-  const [facet, setFacet] = useState("");
+  const [facet, setFacet] = useState(initialFacet);
+  useEffect(() => setFacet(initialFacet), [initialFacet]);
+  useEffect(() => setStatusFilter(initialStatus), [initialStatus]);
   const [panel, setPanel] = useState<"none" | "new" | "import">("none");
   const [flash, setFlash] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -127,10 +134,9 @@ export default function ProjectsClient({
       bits.push(`${hub.inProgress.length} task${hub.inProgress.length > 1 ? "s" : ""} in progress across ${n} project${n > 1 ? "s" : ""}.`);
     }
     if (ready) bits.push(`${ready} ready to pick up.`);
-    const nextMs = msSoon.find((m) => (m.target_date ?? "") >= today()) ?? msSoon[0];
-    if (nextMs) bits.push(`Next milestone: ${nextMs.title} (${nextMs.project_name}) ${dueLabel(nextMs.target_date)}.`);
     return bits.join(" ");
-  }, [needsYou, hub, ready, msSoon]);
+  }, [needsYou, hub, ready]);
+  const nextMs = msSoon.find((m) => (m.target_date ?? "") >= today()) ?? msSoon[0];
 
   const setStatus = async (id: string, status: ProjectStatus) => {
     const prev = projects;
@@ -157,14 +163,24 @@ export default function ProjectsClient({
     <div>
       {projects.length ? (
         <>
-          <p className="serif-display text-[1.3rem] md:text-[1.7rem] leading-snug text-fg max-w-4xl mb-8">{headline}</p>
+          <p className="serif-display text-[1.3rem] md:text-[1.7rem] leading-snug text-fg max-w-4xl mb-8">
+            {headline}
+            {nextMs ? (
+              <>
+                {" "}
+                <Link href={projectHref(nextMs.project_id, "plan")} className="hover:text-accent">
+                  Next milestone: {nextMs.title} ({nextMs.project_name}) {dueLabel(nextMs.target_date)}.
+                </Link>
+              </>
+            ) : null}
+          </p>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line mb-8">
-            <Pulse label="Needs you" value={needsYou} warn={needsYou > 0} sub={`${hub.attention.length} flags total`} />
-            <Pulse label="In motion" value={counts.active + counts.building} sub="active + building" />
-            <Pulse label="In progress" value={hub.inProgress.length} sub="tasks being worked" />
-            <Pulse label="Ready" value={ready} sub="unblocked, can start now" />
-            <Pulse label={`Due · ${SOON_DAYS}d`} value={hub.upcoming.length + msSoon.length} sub={`${msSoon.length} milestones`} />
+            <Pulse label="Needs you" value={needsYou} warn={needsYou > 0} sub={`${hub.attention.length} flags total`} href="/tasks" />
+            <Pulse label="In motion" value={counts.active + counts.building} sub="active + building" href="/projects?view=list&status=active" />
+            <Pulse label="In progress" value={hub.inProgress.length} sub="tasks being worked" href="/queue#in-progress-verify" />
+            <Pulse label="Ready" value={ready} sub="unblocked, can start now" href="/queue#needs-investigation" />
+            <Pulse label={`Due · ${SOON_DAYS}d`} value={hub.upcoming.length + msSoon.length} sub={`${msSoon.length} milestones`} href="#due-soon" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-8 mb-14">
@@ -177,7 +193,7 @@ export default function ProjectsClient({
                 <PanelHead label="In progress now" count={hub.inProgress.length} />
                 <TaskRefList tasks={hub.inProgress} empty="No task is marked doing." show="since" />
               </section>
-              <section>
+              <section id="due-soon" className="scroll-mt-20">
                 <PanelHead label={`Due in ${SOON_DAYS} days`} count={hub.upcoming.length} />
                 <TaskRefList tasks={hub.upcoming} empty="No task due soon." show="due" />
               </section>
@@ -289,7 +305,9 @@ export default function ProjectsClient({
               >
                 <div className="flex items-center gap-2 px-1 mb-3">
                   <StatusDot status={s} />
-                  <span className="mono-label">{STATUS_META[s].label}</span>
+                  <Link href={`/projects?view=list&status=${s}`} className="mono-label hover:text-fg" title={`List ${STATUS_META[s].label.toLowerCase()} projects`}>
+                    {STATUS_META[s].label}
+                  </Link>
                   <span className="font-mono text-[0.6rem] text-fg-ghost tnum">{col.length}</span>
                 </div>
                 <div className="flex flex-col gap-3">
@@ -328,15 +346,15 @@ function PanelHead({ label, count }: { label: string; count: number }) {
   );
 }
 
-function Pulse({ label, value, sub, warn }: { label: string; value: number; sub?: string; warn?: boolean }) {
+function Pulse({ label, value, sub, warn, href }: { label: string; value: number; sub?: string; warn?: boolean; href: string }) {
   return (
-    <div className="bg-bg/85 p-5">
+    <Link href={href} className="block bg-bg/85 p-5 hover:bg-bg-warm">
       <div className={warn ? "mono-label" : "mono-label-dim"}>{label}</div>
       <div className={`serif-display text-[2.4rem] leading-none mt-2 tnum ${warn ? "text-accent" : "text-fg"}`}>
         {value}
       </div>
       {sub ? <div className="font-mono text-[0.58rem] text-fg-ghost mt-2">{sub}</div> : null}
-    </div>
+    </Link>
   );
 }
 
@@ -372,7 +390,9 @@ function ProjectCard({
       </div>
       {p.owner && p.repo ? (
         <div className="font-mono text-[0.6rem] text-fg-ghost truncate mb-2">
-          {p.owner}/{p.repo}
+          <SubLink href={githubRepoUrl(p.owner, p.repo)} title="Open on GitHub">
+            {p.owner}/{p.repo} ↗
+          </SubLink>
         </div>
       ) : null}
       {p.summary ? <p className="text-fg-dim text-[0.8rem] leading-[1.55] mb-3 line-clamp-2">{p.summary}</p> : null}
@@ -384,15 +404,35 @@ function ProjectCard({
       ) : null}
       <Progress done={p.stats.done} total={p.stats.total} />
       <div className="flex flex-wrap gap-1 mt-3">
-        {flags.high ? <Chip tone="solid" title={p.attention.map((a) => a.title).join("\n")}>{flags.high} need you</Chip> : null}
-        {flags.medium ? <Chip title={p.attention.map((a) => a.title).join("\n")}>{flags.medium} to watch</Chip> : null}
-        {p.stats.ready ? <Chip tone="accent">{p.stats.ready} ready</Chip> : null}
-        {p.stats.doing ? <Chip>{p.stats.doing} doing</Chip> : null}
+        {flags.high ? (
+          <Chip tone="solid" title={p.attention.map((a) => a.title).join("\n")}>
+            <SubLink href={attentionHref(p.attention.find((a) => a.severity === "high")!)}>{flags.high} need you</SubLink>
+          </Chip>
+        ) : null}
+        {flags.medium ? (
+          <Chip title={p.attention.map((a) => a.title).join("\n")}>
+            <SubLink href={attentionHref(p.attention.find((a) => a.severity === "medium")!)}>{flags.medium} to watch</SubLink>
+          </Chip>
+        ) : null}
+        {p.stats.ready ? (
+          <Chip tone="accent">
+            <SubLink href={projectHref(p.id, "plan")}>{p.stats.ready} ready</SubLink>
+          </Chip>
+        ) : null}
+        {p.stats.doing ? (
+          <Chip>
+            <SubLink href={projectHref(p.id, "plan")}>{p.stats.doing} doing</SubLink>
+          </Chip>
+        ) : null}
         {p.agents.slice(0, 3).map((a) => (
-          <Chip key={a} tone="accent">@{a}</Chip>
+          <Chip key={a} tone="accent">
+            <SubLink href={facetHref("agent", a)} title={`Projects with @${a}`}>@{a}</SubLink>
+          </Chip>
         ))}
-        {p.tools.slice(0, 2).map((t) => (
-          <Chip key={t}>{t}</Chip>
+        {toolLinks(p.tools.slice(0, 2), p).map((t) => (
+          <Chip key={t.label}>
+            <SubLink href={t.url} title={`Open ${t.label}`}>{t.label}</SubLink>
+          </Chip>
         ))}
       </div>
       {p.stats.nextMilestone ? (
@@ -401,8 +441,10 @@ function ProjectCard({
             isOverdue(p.stats.nextMilestone.target_date, false) ? "text-accent" : "text-fg-ghost"
           }`}
         >
-          ◇ {p.stats.nextMilestone.title}
-          {p.stats.nextMilestone.target_date ? ` · ${fmtDate(p.stats.nextMilestone.target_date)}` : ""}
+          <SubLink href={projectHref(p.id, "plan")} title="Open the plan">
+            ◇ {p.stats.nextMilestone.title}
+            {p.stats.nextMilestone.target_date ? ` · ${fmtDate(p.stats.nextMilestone.target_date)}` : ""}
+          </SubLink>
         </div>
       ) : null}
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-line">
@@ -440,24 +482,36 @@ function ListView({
                   <span className="font-mono text-[0.6rem] text-accent mr-2">{PRIORITY_MARK[p.priority]}</span>
                   {p.name}
                 </Link>
-                {p.repo ? <div className="font-mono text-[0.58rem] text-fg-ghost">{p.owner}/{p.repo}</div> : null}
+                {p.owner && p.repo ? (
+                  <a href={githubRepoUrl(p.owner, p.repo)} target="_blank" rel="noreferrer" className="block font-mono text-[0.58rem] text-fg-ghost hover:text-accent">
+                    {p.owner}/{p.repo} ↗
+                  </a>
+                ) : null}
               </td>
               <td className="px-4 py-3">
                 <StatusToggle value={p.status} onChange={(s) => onStatus(p.id, s)} size="sm" />
               </td>
-              <td className="px-4 py-3 text-[0.8rem] text-fg-dim max-w-[16rem]">{p.next_action || "—"}</td>
+              <td className="px-4 py-3 text-[0.8rem] text-fg-dim max-w-[16rem]">
+                <Link href={`/projects/${p.id}`} className="hover:text-accent">
+                  {p.next_action || "—"}
+                </Link>
+              </td>
               <td className="px-4 py-3 w-36">
                 <Progress done={p.stats.done} total={p.stats.total} />
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">
                   {p.agents.map((a) => (
-                    <Chip key={a} tone="accent">@{a}</Chip>
+                    <Link key={a} href={facetHref("agent", a)} title={`Projects with @${a}`}>
+                      <Chip tone="accent">@{a}</Chip>
+                    </Link>
                   ))}
                 </div>
               </td>
               <td className={`px-4 py-3 font-mono text-[0.62rem] ${isOverdue(p.target_date, false) ? "text-accent" : "text-fg-dim"}`}>
-                {fmtDate(p.target_date) || "—"}
+                <Link href={projectHref(p.id, "plan")} className="hover:text-accent">
+                  {fmtDate(p.target_date) || "—"}
+                </Link>
               </td>
               <td className="px-4 py-3 font-mono text-[0.6rem] text-fg-ghost">{relTime(p.stats.lastActivity)}</td>
             </tr>
@@ -501,7 +555,7 @@ function TimelineView({ items, projects }: { items: TimelineItem[]; projects: Pr
               const isMs = r.kind === "milestone";
               const done = isMs ? r.m.done : false;
               const late = isOverdue(r.date, done);
-              const href = `/projects/${isMs ? r.m.project_id : r.p.id}`;
+              const href = isMs ? projectHref(r.m.project_id, "plan") : projectHref(r.p.id, "setup");
               return (
                 <li key={r.key} className="pl-6 py-3 relative">
                   <span
@@ -518,7 +572,7 @@ function TimelineView({ items, projects }: { items: TimelineItem[]; projects: Pr
                     </span>
                     <span className="font-mono text-[0.6rem] text-fg-dim flex items-center gap-1.5">
                       <StatusDot status={isMs ? r.m.project_status : r.p.status} />
-                      {isMs ? r.m.project_name : "project launch"}
+                      {isMs ? <SubLink href={projectHref(r.m.project_id)}>{r.m.project_name}</SubLink> : "project launch"}
                     </span>
                     {isMs && r.m.tasks_total ? (
                       <span className="font-mono text-[0.6rem] text-fg-ghost tnum">
@@ -712,13 +766,30 @@ function ImportPanel({
                       setPicked(next);
                     }}
                   />
-                  <span className="font-mono text-xs text-fg w-40 md:w-64 shrink-0 truncate">
+                  <a
+                    href={githubRepoUrl(r.owner, r.repo)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-mono text-xs text-fg w-40 md:w-64 shrink-0 truncate hover:text-accent"
+                    title="Open on GitHub"
+                  >
                     <span className="text-fg-ghost">{r.owner}/</span>
                     {r.repo}
-                  </span>
+                  </a>
                   <span className="text-[0.75rem] text-fg-dim flex-1 truncate">{r.description}</span>
                   <span className="font-mono text-[0.58rem] text-fg-ghost w-28 text-right">
-                    {already ? "tracked" : `${STATUS_META[guessStatus(r)].label} · ${relTime(r.pushed_at)}`}
+                    {already ? (
+                      <Link
+                        href={projectHref(tracked.find((t) => `${t.owner}/${t.repo}`.toLowerCase() === k.toLowerCase())?.id ?? "")}
+                        onClick={(e) => e.stopPropagation()}
+                        className="hover:text-accent"
+                      >
+                        tracked →
+                      </Link>
+                    ) : (
+                      `${STATUS_META[guessStatus(r)].label} · ${relTime(r.pushed_at)}`
+                    )}
                   </span>
                 </label>
               );
