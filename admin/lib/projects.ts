@@ -1,28 +1,51 @@
-import { isMine } from "./taskMap";
-import { mutate, newId, readSnapshot, type Snapshot } from "./store";
+import { ME, isMine } from "./taskMap";
 import {
+  listHistory,
+  mutate,
+  newId,
+  readFileAt,
+  readSnapshot,
+  storeHasHistory,
+  type HistoryEntry,
+  type Snapshot,
+} from "./store";
+import {
+  HEALTH_LEVELS,
+  PRIORITIES,
+  PRIORITY_RANK,
+  RECURRENCES,
   SOON_DAYS,
   STATUSES,
   STATUS_META,
+  TASK_STATUSES,
   WORKABLE,
   computeAttention,
   computeStats,
   daysFromNow,
   groupAttention,
   isReady,
+  isSnoozed,
   isUpcoming,
+  nextOccurrence,
+  normalizeDetail,
+  normalizeTask,
   openDescendants,
+  projectHealth,
   rankReady,
   sortAttention,
   sortProjects,
   type Entry,
   type Hub,
+  type InboxItem,
   type Milestone,
+  type Priority,
   type Project,
   type ProjectDetail,
   type ProjectStatus,
+  type Recurrence,
   type Task,
   type TaskRef,
+  type TaskStatus,
 } from "./projectTypes";
 
 // Data lives in git via store.ts: one JSON file per project.
@@ -30,19 +53,59 @@ import {
 const PROJECT_FIELDS = [
   "name", "owner", "repo", "source_key", "status", "priority", "summary", "description",
   "next_action", "agent_instructions", "tags", "agents", "tools", "links", "start_date",
-  "target_date", "sort_order",
+  "target_date", "last_reviewed_at", "sort_order",
 ] as const;
 const MILESTONE_FIELDS = [
   "title", "description", "start_date", "target_date", "done", "sort_order",
 ] as const;
 const TASK_FIELDS = [
   "title", "source_key", "notes", "acceptance", "depends_on", "status", "priority", "agent",
-  "due_date", "milestone_id", "parent_id", "sort_order",
+  "due_date", "estimate", "planned_for", "recurrence", "labels", "snoozed_until", "milestone_id", "parent_id", "sort_order",
 ] as const;
 const ENTRY_FIELDS = [
-  "kind", "title", "body", "entry_date", "author", "version", "change_type", "source_url", "evidence_url",
-  "decision_status", "context", "alternatives", "consequences",
+  "kind", "task_id", "title", "body", "entry_date", "author", "version", "change_type", "source_url", "evidence_url",
+  "decision_status", "health", "context", "alternatives", "consequences",
 ] as const;
+const INBOX_FIELDS = ["title", "notes", "source", "project_id", "agent", "priority", "due_date", "estimate", "labels"] as const;
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Reject malformed task fields before they reach the store. Mutates `clean` into canonical shape. */
+function validateTaskFields(clean: Record<string, unknown>) {
+  if ("status" in clean && !(TASK_STATUSES as readonly string[]).includes(String(clean.status))) {
+    throw new Invalid(`status must be one of ${TASK_STATUSES.join(", ")}`);
+  }
+  if ("priority" in clean && !(PRIORITIES as readonly string[]).includes(String(clean.priority))) {
+    throw new Invalid(`priority must be one of ${PRIORITIES.join(", ")}`);
+  }
+  for (const f of ["due_date", "planned_for", "snoozed_until"] as const) {
+    if (f in clean && clean[f] !== null && !(typeof clean[f] === "string" && DATE_RE.test(clean[f] as string))) {
+      throw new Invalid(`${f} must be YYYY-MM-DD or null`);
+    }
+  }
+  if ("estimate" in clean) {
+    if (clean.estimate === null || clean.estimate === "" || clean.estimate === undefined) clean.estimate = null;
+    else {
+      const n = Number(clean.estimate);
+      if (!Number.isFinite(n) || n <= 0 || n > 100) throw new Invalid("estimate must be a positive number of points, or null");
+      clean.estimate = Math.round(n);
+    }
+  }
+  if ("recurrence" in clean) {
+    if (!clean.recurrence) clean.recurrence = null;
+    else if (!(RECURRENCES as readonly string[]).includes(String(clean.recurrence))) {
+      throw new Invalid(`recurrence must be one of ${RECURRENCES.join(", ")}, or null`);
+    }
+  }
+  if ("labels" in clean) {
+    if (!Array.isArray(clean.labels)) throw new Invalid("labels must be an array of strings");
+    clean.labels = Array.from(
+      new Set((clean.labels as unknown[]).map((l) => String(l).trim().replace(/^#/, "")).filter(Boolean))
+    );
+  }
+  if ("agent" in clean && clean.agent !== null && typeof clean.agent !== "string") throw new Invalid("agent must be a string or null");
+  if ("agent" in clean && typeof clean.agent === "string") clean.agent = clean.agent.trim() || null;
+}
 
 function pick(
   input: Record<string, unknown>,
@@ -90,9 +153,15 @@ function touch(d: ProjectDetail) {
 function addEntry(d: ProjectDetail, input: Record<string, unknown>): Entry {
   const clean = pick(input, ENTRY_FIELDS);
   if (!String(clean.title || "").trim()) throw new Invalid("title required");
+  if (clean.task_id && !d.tasks.some((t) => t.id === clean.task_id)) throw new NotFound("task not found in this project");
+  if ("health" in clean && clean.health !== null && !(HEALTH_LEVELS as readonly string[]).includes(String(clean.health))) {
+    throw new Invalid(`health must be one of ${HEALTH_LEVELS.join(", ")}, or null`);
+  }
+  if (clean.kind === "update" && !clean.health) throw new Invalid("a status update needs a health call");
   const entry: Entry = {
     id: newId(),
     project_id: d.project.id,
+    task_id: null,
     kind: "note",
     title: "",
     body: "",
@@ -103,6 +172,7 @@ function addEntry(d: ProjectDetail, input: Record<string, unknown>): Entry {
     source_url: null,
     evidence_url: null,
     decision_status: null,
+    health: null,
     context: "",
     alternatives: "",
     consequences: "",
@@ -149,12 +219,24 @@ export function summarize(d: ProjectDetail) {
     ...d.entries.map((e) => e.created_at),
     d.project.updated_at,
   ]);
-  return { ...d.project, stats, attention: computeAttention(d, stats.lastActivity) };
+  const attention = computeAttention(d, stats.lastActivity);
+  return { ...d.project, stats, attention, health: projectHealth(d, stats, attention) };
 }
+
+/** Today's plan for one project: planned for today or earlier, yours and due by today, or yours and in progress. */
+export function isToday(t: Task, day: string): boolean {
+  if (t.status === "done" || isSnoozed(t, day)) return false;
+  if (t.planned_for && t.planned_for <= day) return true;
+  if (!isMine(t)) return false;
+  return t.status === "doing" || (!!t.due_date && t.due_date <= day);
+}
+
+const TODAY_RANK = (t: Task, day: string) =>
+  t.status === "doing" ? 0 : t.due_date && t.due_date < day ? 1 : t.due_date === day ? 2 : t.status === "blocked" ? 4 : 3;
 
 /** Everything the projects hub shows at a glance. */
 export async function getHub(): Promise<Hub> {
-  const all = await loadAll();
+  const [all, inbox] = await Promise.all([loadAll(), listInbox()]);
   const projects = sortProjects(all.map(summarize));
   const ref = (d: ProjectDetail, t: Task): TaskRef => ({
     ...t,
@@ -163,6 +245,7 @@ export async function getHub(): Promise<Hub> {
   });
 
   const soon = daysFromNow(SOON_DAYS);
+  const day = today();
   const live = all.filter((d) => d.project.status !== "paused");
   const timeline = all
     .flatMap((d) =>
@@ -194,21 +277,85 @@ export async function getHub(): Promise<Hub> {
       )
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!)),
     mine: live
-      .flatMap((d) => d.tasks.filter((t) => isMine(t) && t.status !== "done").map((t) => ref(d, t)))
+      .flatMap((d) => d.tasks.filter((t) => isMine(t) && t.status !== "done" && !isSnoozed(t, day)).map((t) => ref(d, t)))
       .sort(
         (a, b) =>
           Number(b.status === "doing") - Number(a.status === "doing") ||
           Number(a.status === "blocked") - Number(b.status === "blocked") ||
           (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999")
       ),
+    today: live
+      .flatMap((d) => d.tasks.filter((t) => isToday(t, day)).map((t) => ref(d, t)))
+      .sort(
+        (a, b) =>
+          TODAY_RANK(a, day) - TODAY_RANK(b, day) ||
+          PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+          (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") ||
+          a.sort_order - b.sort_order
+      ),
+    doneToday: all
+      .flatMap((d) => d.tasks.filter((t) => t.status === "done" && t.done_at?.slice(0, 10) === day).map((t) => ref(d, t)))
+      .sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? "")),
+    inbox,
     recent: all
       .flatMap((d) =>
         d.entries
-          .filter((e) => e.kind === "changelog" || e.kind === "decision")
+          .filter((e) => e.kind === "changelog" || e.kind === "decision" || e.kind === "update")
           .map((e) => ({ ...e, project_name: d.project.name }))
       )
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .slice(0, 8),
+  };
+}
+
+// ─────────── search ───────────
+
+export type SearchIndex = {
+  projects: Array<Pick<Project, "id" | "name" | "status" | "priority" | "owner" | "repo" | "summary" | "tags" | "agents">>;
+  tasks: Array<
+    Pick<Task, "id" | "project_id" | "title" | "status" | "priority" | "agent" | "due_date" | "labels" | "planned_for" | "estimate"> & {
+      project_name: string;
+      ready: boolean;
+    }
+  >;
+  milestones: Array<Pick<Milestone, "id" | "project_id" | "title" | "target_date" | "done"> & { project_name: string }>;
+  entries: Array<Pick<Entry, "id" | "project_id" | "kind" | "title" | "entry_date" | "decision_status" | "author"> & { project_name: string }>;
+  inbox: Array<Pick<InboxItem, "id" | "title" | "created_at">>;
+  generated_at: string;
+};
+
+/** Everything the command palette searches, trimmed to what a result row shows. */
+export async function searchIndex(): Promise<SearchIndex> {
+  const [all, inbox] = await Promise.all([loadAll(), listInbox()]);
+  const projects = sortProjects(all.map((d) => d.project));
+  return {
+    projects: projects.map(({ id, name, status, priority, owner, repo, summary, tags, agents }) => ({ id, name, status, priority, owner, repo, summary, tags, agents })),
+    tasks: all.flatMap((d) =>
+      d.tasks.map((t) => ({
+        id: t.id,
+        project_id: t.project_id,
+        project_name: d.project.name,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        agent: t.agent,
+        due_date: t.due_date,
+        labels: t.labels,
+        planned_for: t.planned_for,
+        estimate: t.estimate,
+        ready: isReady(t, d.tasks),
+      }))
+    ),
+    milestones: all.flatMap((d) =>
+      d.milestones.map((m) => ({ id: m.id, project_id: m.project_id, project_name: d.project.name, title: m.title, target_date: m.target_date, done: m.done }))
+    ),
+    entries: all.flatMap((d) =>
+      d.entries
+        .filter((e) => e.kind !== "status" && e.kind !== "progress")
+        .map((e) => ({ id: e.id, project_id: e.project_id, project_name: d.project.name, kind: e.kind, title: e.title, entry_date: e.entry_date, decision_status: e.decision_status, author: e.author }))
+    ),
+    inbox: inbox.map(({ id, title, created_at }) => ({ id, title, created_at })),
+    generated_at: now(),
   };
 }
 
@@ -269,6 +416,7 @@ export async function createProjects(
           links: [],
           start_date: null,
           target_date: null,
+          last_reviewed_at: null,
           sort_order: 0,
           ...(clean as Partial<Project>),
           status_changed_at: t,
@@ -392,14 +540,22 @@ export async function deleteMilestone(id: string): Promise<void> {
 
 function newTask(d: ProjectDetail, clean: Record<string, unknown>): Task {
   if (!String(clean.title || "").trim()) throw new Invalid("title required");
+  validateTaskFields(clean);
   if (clean.parent_id) {
     // Subtasks live in their parent's project and milestone.
     const parent = d.tasks.find((t) => t.id === clean.parent_id);
     if (!parent) throw new NotFound("parent task not found in this project");
     if (!clean.milestone_id) clean.milestone_id = parent.milestone_id;
   }
+  if (clean.milestone_id && !d.milestones.some((m) => m.id === clean.milestone_id)) {
+    throw new NotFound("milestone not found in this project");
+  }
+  if (Array.isArray(clean.depends_on)) {
+    const ids = new Set(d.tasks.map((t) => t.id));
+    clean.depends_on = (clean.depends_on as string[]).filter((x) => ids.has(x));
+  }
   const t = now();
-  const task: Task = {
+  const task: Task = normalizeTask({
     id: newId(),
     project_id: d.project.id,
     milestone_id: null,
@@ -412,13 +568,19 @@ function newTask(d: ProjectDetail, clean: Record<string, unknown>): Task {
     priority: "medium",
     agent: null,
     due_date: null,
+    estimate: null,
+    planned_for: null,
+    recurrence: null,
+    labels: [],
+    snoozed_until: null,
     claimed_at: null,
     done_at: null,
     sort_order: d.tasks.length,
     created_at: t,
     updated_at: t,
     ...(clean as Partial<Task>),
-  };
+  });
+  task.title = String(task.title).trim();
   if (task.status === "done") task.done_at = t;
   if (task.status === "doing") task.claimed_at = t;
   d.tasks.push(task);
@@ -426,17 +588,55 @@ function newTask(d: ProjectDetail, clean: Record<string, unknown>): Task {
   return task;
 }
 
-function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unknown>) {
+/**
+ * Apply a validated patch. Finishing a recurring task spawns its next
+ * occurrence (due date advanced by the rule) and leaves the finished copy as
+ * plain history, so a reopened task never spawns twice.
+ */
+function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unknown>): { spawned: Task | null } {
+  validateTaskFields(clean);
   if (Array.isArray(clean.depends_on)) {
     const ids = new Set(d.tasks.map((t) => t.id));
     clean.depends_on = (clean.depends_on as string[]).filter((x) => x !== task.id && ids.has(x));
   }
+  if ("milestone_id" in clean && clean.milestone_id && !d.milestones.some((m) => m.id === clean.milestone_id)) {
+    throw new NotFound("milestone not found in this project");
+  }
+  if ("parent_id" in clean && clean.parent_id) {
+    if (clean.parent_id === task.id) throw new Invalid("a task cannot be its own parent");
+    const parent = d.tasks.find((t) => t.id === clean.parent_id);
+    if (!parent) throw new NotFound("parent task not found in this project");
+    if (openDescendants(task, d.tasks).some((x) => x.id === parent.id) || d.tasks.some((x) => x.parent_id === task.id && x.id === parent.id)) {
+      throw new Invalid("a task cannot be moved under its own subtask");
+    }
+  }
+  let spawned: Task | null = null;
   if ("status" in clean && clean.status !== task.status) {
     task.done_at = clean.status === "done" ? now() : null;
     if (clean.status === "doing") task.claimed_at = now();
+    if (clean.status === "done" && task.recurrence) {
+      const rule = task.recurrence as Recurrence;
+      const t = now();
+      spawned = normalizeTask({
+        ...task,
+        id: newId(),
+        status: "todo",
+        due_date: nextOccurrence(rule, task.due_date ?? today()),
+        planned_for: null,
+        claimed_at: null,
+        done_at: null,
+        sort_order: d.tasks.length,
+        created_at: t,
+        updated_at: t,
+      });
+      d.tasks.push(spawned);
+      task.recurrence = null;
+    }
   }
   Object.assign(task, clean, { updated_at: now() });
+  if (spawned && "recurrence" in clean) task.recurrence = null;
   touch(d);
+  return { spawned };
 }
 
 export async function createTask(projectId: string, input: Record<string, unknown>): Promise<Task> {
@@ -487,10 +687,10 @@ export async function createTasks(
   );
 }
 
-export async function updateTask(id: string, patch: Record<string, unknown>): Promise<Task> {
+export async function updateTask(id: string, patch: Record<string, unknown>): Promise<{ task: Task; spawned: Task | null }> {
   const clean = pick(patch, TASK_FIELDS);
   return mutate(
-    (t, s) => `${pfx(s, t.project_id)}${clip(t.title)} → ${"status" in clean ? t.status : `edit ${Object.keys(clean).join(", ")}`}`,
+    (r, s) => `${pfx(s, r.task.project_id)}${clip(r.task.title)} → ${"status" in clean ? r.task.status : `edit ${Object.keys(clean).join(", ")}`}`,
     (s) => {
       const { d, item } = findIn(s, "tasks", id);
       if ("source_key" in clean) {
@@ -501,33 +701,166 @@ export async function updateTask(id: string, patch: Record<string, unknown>): Pr
         if (used) throw new Conflict("task source_key already tracked");
         clean.source_key = key;
       }
-      applyTaskPatch(d, item as Task, { ...clean });
-      return item as Task;
+      const { spawned } = applyTaskPatch(d, item as Task, { ...clean });
+      return { task: item as Task, spawned };
     }
   );
 }
 
-export async function deleteTask(id: string): Promise<void> {
-  await mutate(
-    (t: string) => `Delete task ${clip(t)}`,
+/**
+ * Edit many tasks in one commit: `items` carries each task's id and its patch.
+ * Tasks may belong to different projects. Any invalid patch aborts the whole batch.
+ */
+export async function updateTasks(items: Array<Record<string, unknown>>): Promise<{ tasks: Task[]; spawned: Task[] }> {
+  if (!items.length) throw new Invalid("items required");
+  return mutate(
+    (r, s) => {
+      const names = Array.from(new Set(r.tasks.map((t) => s.projects.get(t.project_id)?.project.name ?? "?")));
+      return `${names.length === 1 ? `${names[0]}: ` : ""}edit ${r.tasks.length} tasks`;
+    },
     (s) => {
-      const { d, item } = findIn(s, "tasks", id);
-      const drop = new Set([id, ...openDescendants(item as Task, d.tasks).map((t) => t.id)]);
-      // openDescendants skips finished subtasks; sweep every descendant.
-      let grew = true;
-      while (grew) {
-        grew = false;
-        for (const t of d.tasks) {
-          if (t.parent_id && drop.has(t.parent_id) && !drop.has(t.id)) {
-            drop.add(t.id);
-            grew = true;
-          }
-        }
+      const tasks: Task[] = [];
+      const spawned: Task[] = [];
+      for (const input of items) {
+        const id = String(input.id ?? "");
+        if (!id) throw new Invalid("every item needs an id");
+        const clean = pick(input, TASK_FIELDS.filter((f) => f !== "source_key"));
+        const { d, item } = findIn(s, "tasks", id);
+        const result = applyTaskPatch(d, item as Task, { ...clean });
+        tasks.push(item as Task);
+        if (result.spawned) spawned.push(result.spawned);
       }
-      d.tasks = d.tasks.filter((t) => !drop.has(t.id));
-      for (const t of d.tasks) t.depends_on = t.depends_on.filter((x) => !drop.has(x));
-      touch(d);
-      return (item as Task).title;
+      return { tasks, spawned };
+    }
+  );
+}
+
+/** Reorder tasks: `order` lists task ids in their new sequence; each may also move to a milestone or parent. */
+export async function reorderTasks(
+  projectId: string,
+  order: Array<{ id: string; milestone_id?: string | null; parent_id?: string | null }>
+): Promise<Task[]> {
+  return mutate(
+    (_r, s) => `${pfx(s, projectId)}reorder plan`,
+    (s) => {
+      const d = projectIn(s, projectId);
+      const byId = new Map(d.tasks.map((t) => [t.id, t]));
+      order.forEach((o, i) => {
+        const t = byId.get(o.id);
+        if (!t) throw new NotFound(`task ${o.id} not found in this project`);
+        const patch: Record<string, unknown> = { sort_order: i };
+        if (o.milestone_id !== undefined) patch.milestone_id = o.milestone_id;
+        if (o.parent_id !== undefined) patch.parent_id = o.parent_id;
+        applyTaskPatch(d, t, patch);
+      });
+      // Subtasks follow their parent's milestone.
+      for (const t of d.tasks) {
+        if (!t.parent_id) continue;
+        const parent = byId.get(t.parent_id);
+        if (parent && t.milestone_id !== parent.milestone_id) t.milestone_id = parent.milestone_id;
+      }
+      return d.tasks;
+    }
+  );
+}
+
+/** A task and every task beneath it, so deletes take whole subtrees. */
+function subtree(d: ProjectDetail, ids: string[]): Set<string> {
+  const drop = new Set(ids);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const t of d.tasks) {
+      if (t.parent_id && drop.has(t.parent_id) && !drop.has(t.id)) {
+        drop.add(t.id);
+        grew = true;
+      }
+    }
+  }
+  return drop;
+}
+
+/** Delete a task and its subtasks. Returns what was removed so the caller can offer undo. */
+export async function deleteTask(id: string): Promise<{ removed: Task[] }> {
+  const { removed } = await deleteTasks([id]);
+  return { removed };
+}
+
+/** Delete many tasks (and their subtasks) across projects in one commit. */
+export async function deleteTasks(ids: string[]): Promise<{ removed: Task[] }> {
+  if (!ids.length) throw new Invalid("ids required");
+  return mutate(
+    (r) => (r.removed.length === 1 ? `Delete task ${clip(r.removed[0].title)}` : `Delete ${r.removed.length} tasks`),
+    (s) => {
+      const removed: Task[] = [];
+      const byProject = new Map<ProjectDetail, string[]>();
+      for (const id of ids) {
+        const { d } = findIn(s, "tasks", id);
+        byProject.set(d, [...(byProject.get(d) ?? []), id]);
+      }
+      byProject.forEach((list, d) => {
+        const drop = subtree(d, list);
+        removed.push(...d.tasks.filter((t) => drop.has(t.id)));
+        d.tasks = d.tasks.filter((t) => !drop.has(t.id));
+        for (const t of d.tasks) t.depends_on = t.depends_on.filter((x) => !drop.has(x));
+        touch(d);
+      });
+      return { removed };
+    }
+  );
+}
+
+/**
+ * Undo a delete: put tasks back with their original ids. Links to things that
+ * no longer exist (parent, milestone, dependencies) are dropped rather than
+ * left dangling.
+ */
+export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }> {
+  if (!tasks.length) throw new Invalid("tasks required");
+  return mutate(
+    (r) => (r.restored.length === 1 ? `Restore task ${clip(r.restored[0].title)}` : `Restore ${r.restored.length} tasks`),
+    (s) => {
+      const restored: Task[] = [];
+      const incoming = new Set(tasks.map((t) => t.id));
+      for (const raw of tasks) {
+        if (!raw || typeof raw.id !== "string" || typeof raw.project_id !== "string" || typeof raw.title !== "string") {
+          throw new Invalid("each task needs id, project_id and title");
+        }
+        const d = projectIn(s, raw.project_id);
+        if (d.tasks.some((t) => t.id === raw.id)) continue;
+        const clean = pick(raw as unknown as Record<string, unknown>, TASK_FIELDS.filter((f) => f !== "source_key"));
+        validateTaskFields(clean);
+        const ids = new Set([...d.tasks.map((t) => t.id), ...incoming]);
+        const task = normalizeTask({
+          ...(clean as Partial<Task>),
+          id: raw.id,
+          project_id: d.project.id,
+          title: raw.title,
+          notes: String(clean.notes ?? ""),
+          acceptance: String(clean.acceptance ?? ""),
+          status: (clean.status as TaskStatus) ?? "todo",
+          priority: (clean.priority as Priority) ?? "medium",
+          agent: (clean.agent as string | null) ?? null,
+          due_date: (clean.due_date as string | null) ?? null,
+          estimate: (clean.estimate as number | null) ?? null,
+          planned_for: (clean.planned_for as string | null) ?? null,
+          recurrence: (clean.recurrence as Recurrence | null) ?? null,
+          labels: (clean.labels as string[]) ?? [],
+          snoozed_until: (clean.snoozed_until as string | null) ?? null,
+          depends_on: ((clean.depends_on as string[]) ?? []).filter((x) => x !== raw.id && ids.has(x)),
+          parent_id: clean.parent_id && ids.has(clean.parent_id as string) ? (clean.parent_id as string) : null,
+          milestone_id: clean.milestone_id && d.milestones.some((m) => m.id === clean.milestone_id) ? (clean.milestone_id as string) : null,
+          sort_order: typeof clean.sort_order === "number" ? clean.sort_order : d.tasks.length,
+          claimed_at: raw.claimed_at ?? null,
+          done_at: raw.done_at ?? null,
+          created_at: raw.created_at || now(),
+          updated_at: now(),
+        });
+        d.tasks.push(task);
+        restored.push(task);
+        touch(d);
+      }
+      return { restored };
     }
   );
 }
@@ -576,8 +909,24 @@ export async function createAgentTask(projectId: string, agent: string, input: R
       assertAgentProject(d, agent);
       const clean = pick(input, TASK_FIELDS.filter((field) => field !== "source_key"));
       const task = newTask(d, clean);
-      addEntry(d, { kind: "progress", title: `Added task: ${task.title}`, author: agent });
+      addEntry(d, { kind: "progress", task_id: task.parent_id ?? task.id, title: `Added task: ${task.title}`, author: agent });
       return task;
+    }
+  );
+}
+
+/** A comment or progress note on one task, from you or an agent. */
+export async function commentOnTask(taskId: string, author: string, body: string): Promise<Entry> {
+  if (!body.trim()) throw new Invalid("say something");
+  return mutate(
+    (e, s) => `${pfx(s, e.project_id)}comment on ${clip(s.projects.get(e.project_id)?.tasks.find((t) => t.id === taskId)?.title ?? "task")}${by(author)}`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", taskId);
+      const task = item as Task;
+      const entry = addEntry(d, { kind: "progress", task_id: task.id, title: body.trim().split("\n")[0].slice(0, 140), body: body.trim(), author });
+      task.updated_at = now();
+      touch(d);
+      return entry;
     }
   );
 }
@@ -677,7 +1026,7 @@ export async function claimTask(id: string, agent: string): Promise<Task> {
         throw new Conflict(`not ready (status ${task.status}, or waiting on dependencies or subtasks)`);
       }
       applyTaskPatch(d, task, { status: "doing", agent });
-      addEntry(d, { kind: "progress", title: `Started: ${task.title}`, author: agent });
+      addEntry(d, { kind: "progress", task_id: task.id, title: `Started: ${task.title}`, author: agent });
       return task;
     }
   );
@@ -707,8 +1056,180 @@ export async function reportTask(
         }
       }
       applyTaskPatch(d, task, input.status ? { status: input.status } : {});
-      addEntry(d, { kind: "progress", title: `${verb}: ${task.title}`, body: input.note ?? "", author: agent });
+      addEntry(d, { kind: "progress", task_id: task.id, title: `${verb}: ${task.title}`, body: input.note ?? "", author: agent });
       return task;
+    }
+  );
+}
+
+// ─────────── inbox ───────────
+
+export async function listInbox(): Promise<InboxItem[]> {
+  const s = await readSnapshot();
+  return [...s.inbox.items].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+function cleanInbox(input: Record<string, unknown>): Record<string, unknown> {
+  const clean = pick(input, INBOX_FIELDS);
+  if ("title" in clean && !String(clean.title ?? "").trim()) throw new Invalid("title required");
+  if ("title" in clean) clean.title = String(clean.title).trim();
+  if ("notes" in clean) clean.notes = String(clean.notes ?? "");
+  if ("source" in clean) clean.source = clean.source ? String(clean.source).slice(0, 64) : null;
+  if ("project_id" in clean) clean.project_id = clean.project_id ? String(clean.project_id) : null;
+  const taskish: Record<string, unknown> = {};
+  for (const f of ["agent", "priority", "due_date", "estimate", "labels"] as const) if (f in clean) taskish[f] = clean[f];
+  if ("priority" in taskish && taskish.priority === null) delete taskish.priority;
+  validateTaskFields(taskish);
+  Object.assign(clean, taskish);
+  if ("priority" in clean && !clean.priority) clean.priority = null;
+  return clean;
+}
+
+/** Capture a thought. It waits in the inbox until it is sorted into a project. */
+export async function captureInbox(input: Record<string, unknown>): Promise<InboxItem> {
+  const clean = cleanInbox({ title: "", ...input });
+  return mutate(
+    (i) => `Inbox: ${clip(i.title)}`,
+    (s) => {
+      if (clean.project_id && !s.projects.has(clean.project_id as string)) throw new NotFound("project not found");
+      const item: InboxItem = {
+        id: newId(),
+        title: "",
+        notes: "",
+        source: ME,
+        project_id: null,
+        agent: null,
+        priority: null,
+        due_date: null,
+        estimate: null,
+        labels: [],
+        created_at: now(),
+        ...(clean as Partial<InboxItem>),
+      };
+      s.inbox.items.push(item);
+      return item;
+    }
+  );
+}
+
+export async function updateInboxItem(id: string, patch: Record<string, unknown>): Promise<InboxItem> {
+  const clean = cleanInbox(patch);
+  return mutate(
+    (i) => `Inbox: edit ${clip(i.title)}`,
+    (s) => {
+      const item = s.inbox.items.find((x) => x.id === id);
+      if (!item) throw new NotFound("inbox item not found");
+      if (clean.project_id && !s.projects.has(clean.project_id as string)) throw new NotFound("project not found");
+      Object.assign(item, clean);
+      return item;
+    }
+  );
+}
+
+export async function deleteInboxItem(id: string): Promise<InboxItem> {
+  return mutate(
+    (i) => `Inbox: drop ${clip(i.title)}`,
+    (s) => {
+      const item = s.inbox.items.find((x) => x.id === id);
+      if (!item) throw new NotFound("inbox item not found");
+      s.inbox.items = s.inbox.items.filter((x) => x.id !== id);
+      return item;
+    }
+  );
+}
+
+/**
+ * Turn a capture into a task. The item's hints are the defaults; `input` can
+ * override any of them and must name the project. One commit removes the
+ * capture and adds the task, so a retry cannot create two.
+ */
+export async function triageInbox(id: string, input: Record<string, unknown>): Promise<{ task: Task }> {
+  return mutate(
+    (r, s) => `${pfx(s, r.task.project_id)}add ${clip(r.task.title)} from inbox`,
+    (s) => {
+      const item = s.inbox.items.find((x) => x.id === id);
+      if (!item) throw new NotFound("inbox item not found");
+      const projectId = String(input.project_id ?? item.project_id ?? "");
+      if (!projectId) throw new Invalid("pick a project");
+      const d = projectIn(s, projectId);
+      const fields: Record<string, unknown> = {
+        title: item.title,
+        notes: item.notes,
+        agent: item.agent,
+        priority: item.priority ?? "medium",
+        due_date: item.due_date,
+        estimate: item.estimate,
+        labels: item.labels,
+      };
+      const overrides = pick(input, TASK_FIELDS.filter((f) => f !== "source_key"));
+      for (const [k, v] of Object.entries(overrides)) if (v !== undefined) fields[k] = v;
+      const task = newTask(d, fields);
+      s.inbox.items = s.inbox.items.filter((x) => x.id !== id);
+      return { task };
+    }
+  );
+}
+
+// ─────────── history ───────────
+
+export function historyAvailable(): boolean {
+  try {
+    return storeHasHistory();
+  } catch {
+    return false;
+  }
+}
+
+/** Recent commits to the data store, optionally only those that touched one project. */
+export async function getHistory(projectId?: string, limit = 50): Promise<HistoryEntry[]> {
+  if (projectId && !/^[\w-]+$/.test(projectId)) throw new Invalid("bad project id");
+  return listHistory(limit, projectId ? `projects/${projectId}.json` : undefined);
+}
+
+/** A project as it was at a commit, parsed and normalized; null when it did not exist. */
+export async function getProjectAt(id: string, sha: string): Promise<ProjectDetail | null> {
+  if (!/^[\w-]+$/.test(id)) throw new Invalid("bad project id");
+  if (!/^[0-9a-f]{7,40}$/.test(sha)) throw new Invalid("bad commit id");
+  const text = await readFileAt(sha, `projects/${id}.json`);
+  if (text === null) return null;
+  let parsed: ProjectDetail;
+  try {
+    parsed = JSON.parse(text) as ProjectDetail;
+  } catch {
+    throw new Invalid("that version is not valid JSON");
+  }
+  if (!parsed?.project || parsed.project.id !== id || !Array.isArray(parsed.tasks) || !Array.isArray(parsed.milestones) || !Array.isArray(parsed.entries)) {
+    throw new Invalid("that version is not a project record");
+  }
+  return ordered(normalizeDetail(parsed));
+}
+
+/** Put a project back the way it was at a commit. Logged on the project itself. */
+export async function restoreProject(id: string, sha: string): Promise<ProjectDetail> {
+  const past = await getProjectAt(id, sha);
+  if (!past) throw new NotFound("the project did not exist at that commit");
+  return mutate(
+    (d) => `${d.project.name}: restore version ${sha.slice(0, 7)}`,
+    (s) => {
+      const current = s.projects.get(id);
+      // Other projects may hold tasks with the same ids only if the file was copied; refuse that.
+      for (const [otherId, other] of Array.from(s.projects.entries())) {
+        if (otherId === id) continue;
+        const ids = new Set([...other.tasks, ...other.milestones, ...other.entries].map((x) => x.id));
+        if ([...past.tasks, ...past.milestones, ...past.entries].some((x) => ids.has(x.id))) {
+          throw new Conflict("that version shares record ids with another project");
+        }
+      }
+      const restored: ProjectDetail = structuredClone(past);
+      restored.project.updated_at = now();
+      if (current) restored.project.status_changed_at = current.project.status === restored.project.status ? current.project.status_changed_at : now();
+      addEntry(restored, {
+        kind: "progress",
+        title: `Restored the project to its version from ${past.project.updated_at.slice(0, 10)} (${sha.slice(0, 7)})`,
+        author: ME,
+      });
+      s.projects.set(id, restored);
+      return restored;
     }
   );
 }

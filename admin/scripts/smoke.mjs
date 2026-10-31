@@ -150,6 +150,95 @@ check('progress entries logged', detail.entries.filter((e) => e.kind === 'progre
 await call(`/projects/${pid}`, 'DELETE');
 check('project deleted', (await call(`/projects/${pid}`)).status === 404);
 
+// ─── planning fields, inbox, bulk edits, undo, comments, search, history, feeds ───
+const { body: planProject } = await call('/projects', 'POST', { name: `Planning ${stamp}`, status: 'active', agents: [], summary: 'before' });
+const planPid = planProject.created[0].id;
+const badEstimate = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bad estimate', estimate: -3 });
+const badRecurrence = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bad recurrence', recurrence: 'fortnightly' });
+const badDate = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bad date', planned_for: 'tomorrow' });
+check('invalid estimate, recurrence and planned_for are rejected', badEstimate.status === 400 && badRecurrence.status === 400 && badDate.status === 400);
+const { body: weekly } = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Weekly dependency update', recurrence: 'weekly', due_date: '2026-11-02', estimate: 3, labels: ['chore', '#ops', 'chore'] });
+check('labels are deduplicated and stripped of #', JSON.stringify(weekly.task.labels) === JSON.stringify(['chore', 'ops']) && weekly.task.estimate === 3);
+const finished = await call(`/tasks/${weekly.task.id}`, 'PATCH', { status: 'done' });
+check('finishing a recurring task spawns the next occurrence a week later',
+  finished.status === 200 && finished.body.task.status === 'done' && finished.body.task.recurrence === null &&
+  finished.body.spawned?.status === 'todo' && finished.body.spawned.due_date === '2026-11-09' && finished.body.spawned.recurrence === 'weekly' && finished.body.spawned.estimate === 3);
+const reopened = await call(`/tasks/${weekly.task.id}`, 'PATCH', { status: 'todo' });
+const refinished = await call(`/tasks/${weekly.task.id}`, 'PATCH', { status: 'done' });
+check('a reopened occurrence does not spawn twice', reopened.status === 200 && refinished.body.spawned === null);
+const { body: a } = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bulk A' });
+const { body: bTask } = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bulk B' });
+const { body: child } = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bulk B child', parent_id: bTask.task.id });
+const commitsBeforeBulk = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const bulk = await call('/tasks', 'PATCH', { items: [{ id: a.task.id, priority: 'high', planned_for: '2026-11-01' }, { id: bTask.task.id, agent: 'claude-code', estimate: 5 }] });
+const commitsAfterBulk = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+check('bulk patch edits several tasks in one commit', bulk.status === 200 && bulk.body.tasks.length === 2 && bulk.body.tasks[0].priority === 'high' && bulk.body.tasks[1].agent === 'claude-code' && commitsAfterBulk === commitsBeforeBulk + 1);
+const bulkInvalid = await call('/tasks', 'PATCH', { items: [{ id: a.task.id, priority: 'low' }, { id: 'missing-task', priority: 'low' }] });
+check('bulk patch with one bad id writes nothing', bulkInvalid.status === 404 && (await call(`/projects/${planPid}`)).body.tasks.find((t) => t.id === a.task.id).priority === 'high');
+const snoozed = await call(`/tasks/${a.task.id}`, 'PATCH', { snoozed_until: '2999-01-01' });
+check('snoozed tasks leave today and the attention list', snoozed.status === 200 && snoozed.body.task.snoozed_until === '2999-01-01');
+const comment = await call(`/tasks/${bTask.task.id}/comments`, 'POST', { body: 'Owner note: ship behind a flag' });
+check('owner comments attach to the task', comment.status === 200 && comment.body.entry.task_id === bTask.task.id && comment.body.entry.author === 'me');
+const agentComment = await call(`/agent/tasks/${bTask.task.id}/comments`, 'POST', { body: 'Which flag name?' }, agent('claude-code'));
+const thread = await call(`/agent/tasks/${bTask.task.id}`, 'GET', undefined, agent('claude-code'));
+check('agents read the task thread with both sides', agentComment.status === 200 && thread.status === 200 && thread.body.thread.length === 2 && thread.body.thread[1].author === 'claude-code' && thread.body.task.subtasks.length === 1);
+const update = await call(`/projects/${planPid}/entries`, 'POST', { kind: 'update', title: 'Week 44', body: 'Flag work on track', health: 'on_track' });
+const updateNoHealth = await call(`/projects/${planPid}/entries`, 'POST', { kind: 'update', title: 'Week 45' });
+check('status updates carry a health call', update.status === 200 && update.body.created[0].health === 'on_track' && updateNoHealth.status === 400);
+const removed = await call(`/tasks/${bTask.task.id}`, 'DELETE');
+check('deleting a parent returns the whole subtree for undo', removed.status === 200 && removed.body.removed.length === 2);
+const restored = await call('/tasks/restore', 'POST', { tasks: removed.body.removed });
+const afterRestore = (await call(`/projects/${planPid}`)).body;
+check('undo restores tasks with their original ids and parent links',
+  restored.body.restored.length === 2 && afterRestore.tasks.some((t) => t.id === bTask.task.id) && afterRestore.tasks.find((t) => t.id === child.task.id)?.parent_id === bTask.task.id &&
+  afterRestore.entries.some((e) => e.task_id === bTask.task.id));
+const restoredAgain = await call('/tasks/restore', 'POST', { tasks: removed.body.removed });
+check('restoring twice is a no-op', restoredAgain.body.restored.length === 0);
+const reorder = await call(`/projects/${planPid}/reorder`, 'POST', { order: [{ id: bTask.task.id }, { id: a.task.id }] });
+const ordered = (await call(`/projects/${planPid}`)).body.tasks.filter((t) => [a.task.id, bTask.task.id].includes(t.id)).sort((x, y) => x.sort_order - y.sort_order).map((t) => t.title);
+check('reorder writes the new sequence', reorder.status === 200 && JSON.stringify(ordered) === JSON.stringify(['Bulk B', 'Bulk A']));
+
+const captured = await call('/inbox', 'POST', { title: 'Try the new build pipeline', priority: 'high', labels: ['ops'], due_date: '2026-11-20' });
+const proposed = await call('/agent/inbox', 'POST', { title: 'Consider rate limiting', project_id: planPid }, agent('claude-code'));
+const inboxList = await call('/inbox');
+check('captures and agent proposals land in the inbox', captured.status === 200 && proposed.status === 200 && proposed.body.item.source === 'claude-code' && inboxList.body.items.length >= 2);
+const badCapture = await call('/inbox', 'POST', { title: '   ' });
+check('blank captures are rejected', badCapture.status === 400);
+const commitsBeforeTriage = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const triaged = await call(`/inbox/${captured.body.item.id}/triage`, 'POST', { project_id: planPid, agent: 'claude-code' });
+const commitsAfterTriage = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const inboxAfter = await call('/inbox');
+check('triage turns a capture into a task in one commit and keeps its hints',
+  triaged.status === 200 && triaged.body.task.priority === 'high' && triaged.body.task.due_date === '2026-11-20' && triaged.body.task.agent === 'claude-code' && triaged.body.task.labels.includes('ops') &&
+  !inboxAfter.body.items.some((i) => i.id === captured.body.item.id) && commitsAfterTriage === commitsBeforeTriage + 1);
+const triageMissing = await call(`/inbox/${captured.body.item.id}/triage`, 'POST', { project_id: planPid });
+check('triaging twice is refused', triageMissing.status === 404);
+await call(`/inbox/${proposed.body.item.id}`, 'DELETE');
+
+const index = await call('/search');
+check('search index lists projects, tasks and inbox', index.status === 200 && index.body.projects.some((p) => p.id === planPid) && index.body.tasks.some((t) => t.id === a.task.id && t.project_name === `Planning ${stamp}`));
+const hubNow = await call('/projects');
+check('hub carries today, done today, inbox and health', Array.isArray(hubNow.body.today) && Array.isArray(hubNow.body.doneToday) && Array.isArray(hubNow.body.inbox) && hubNow.body.projects.find((p) => p.id === planPid)?.health?.level);
+const ics = await fetch(`${B}/calendar.ics`);
+const icsText = await ics.text();
+check('calendar feed lists due dates as all-day events', ics.headers.get('content-type')?.startsWith('text/calendar') && icsText.includes('BEGIN:VEVENT') && icsText.includes('DTSTART;VALUE=DATE:20261120'));
+const digest = await fetch(`${B}/digest`);
+check('digest renders the brief as Markdown', digest.ok && (await digest.text()).startsWith('# Brief for'));
+
+await call(`/projects/${planPid}`, 'PATCH', { summary: 'after' });
+const history = await call(`/history?project=${planPid}`);
+check('history lists commits that touched the project, newest first', history.status === 200 && history.body.available === true && history.body.commits.length >= 3 && /after|edit summary/.test(history.body.commits[0].message));
+const beforeSha = history.body.commits.find((c) => /summary|Planning/.test(c.message) && c.sha !== history.body.commits[0].sha)?.sha || history.body.commits[1].sha;
+const preview = await call(`/projects/${planPid}/history/${beforeSha}`);
+check('a past version can be previewed', preview.status === 200 && preview.body.project.id === planPid);
+const commitsBeforeRestore = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const restoredProject = await call(`/projects/${planPid}/history/${beforeSha}`, 'POST');
+const commitsAfterRestore = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+check('restoring a version rewrites nothing and adds one commit', restoredProject.status === 200 && restoredProject.body.project.summary === 'before' && commitsAfterRestore === commitsBeforeRestore + 1 && restoredProject.body.entries.some((e) => /Restored the project/.test(e.title)));
+const badSha = await call(`/projects/${planPid}/history/not-a-sha`);
+check('malformed commit ids are rejected', badSha.status === 400);
+await call(`/projects/${planPid}`, 'DELETE');
+
 await fetch('http://localhost:4010/__test/legacy');
 const legacyRead = await call('/projects');
 check('validated pre-versioned records remain readable', legacyRead.status === 200 && legacyRead.body.projects?.some((p) => p.id === 'legacy-fixture'));

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getHub } from "@/lib/projects";
-import { STATUSES, type Hub, type ProjectStatus } from "@/lib/projectTypes";
+import { EMPTY_HUB, STATUSES, type Hub, type ProjectStatus } from "@/lib/projectTypes";
 import ProjectsClient from "./ProjectsClient";
 import { fixHref } from "@/lib/taskMap";
 
@@ -12,7 +12,7 @@ export default async function ProjectsPage({
   searchParams: Promise<{ view?: string; status?: string; facet?: string }>;
 }) {
   const { view, status, facet } = await searchParams;
-  let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [], mine: [], recent: [] };
+  let hub: Hub = EMPTY_HUB;
   let initialError: string | null = null;
   try {
     hub = await getHub();
