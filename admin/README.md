@@ -32,7 +32,14 @@ private project data repository / existing branch
 └── operations.json      durable idempotency receipts
 ```
 
-Every edit is one commit, so Git history is the audit trail. Set `PM_DATA_OWNER`, `PM_DATA_REPO`, and `PM_DATA_BRANCH` independently of `BRAIN_OWNER` / `BRAIN_REPO`. The app verifies the destination is private before reading or writing, and fails closed when config, branch, or incompatible data files are missing or inaccessible. A validated pre-versioned project-only snapshot remains readable; its missing metadata files are added atomically on the first mutation without changing existing records. It never initializes an empty branch automatically. Preview deployments may use only `preview/*` branches; production cannot use a preview branch. The server-side `GITHUB_TOKEN` needs existing Contents read/write access to the private data repository. This change does not create or broaden token access.
+Every edit is one commit, so Git history is the audit trail. Set `PM_DATA_OWNER`, `PM_DATA_REPO`, and `PM_DATA_BRANCH` independently of `BRAIN_OWNER` / `BRAIN_REPO`. The app verifies the destination is private before reading or writing, and fails closed when config, branch, or incompatible data files are missing or inaccessible. A validated pre-versioned project-only snapshot remains readable; its missing metadata files are added atomically on the first mutation without changing existing records. It never initializes an empty branch automatically, so seed a new data repository by hand before the first deploy (see below). Preview deployments may use only `preview/*` branches; production cannot use a preview branch. The server-side `GITHUB_TOKEN` needs existing Contents read/write access to the private data repository. This change does not create or broaden token access.
+
+**Seeding a new data repository.** Create a private repository (for example `mythic-pm-data`), and commit these two files to the branch you will name in `PM_DATA_BRANCH`. With them in place the store reads an empty but valid dataset; without them it refuses to start.
+
+```
+repos.json       {"schemaVersion": 1, "repos": [], "plugins": {}}
+operations.json  {"schemaVersion": 1, "items": {}}
+```
 
 How writes stay safe (`lib/store.ts`): each change reads the branch head, applies the edit, and commits all touched files at once with a non-forced ref update. If someone else committed first, GitHub rejects it (422) and the store re-reads and re-applies, up to 5 tries. Agent claims run their checks inside that loop, so two agents can't both claim a task. `operations.json` records request idempotency keys in the same commit as the mutation. GitHub changelog imports also deduplicate by `source_url`.
 
@@ -56,15 +63,25 @@ vercel --cwd admin
 
 When configuring the project in Vercel, set the **Root Directory** to `admin/`.
 
-Add env vars (see `admin/.env.local.example`):
+#### Vercel environment variables
 
-```
-GITHUB_TOKEN=ghp_...
-BRAIN_OWNER=tennysonmilesperhour
-BRAIN_REPO=mythic-labs
-PM_AGENT_API_ENABLED=false
-PM_AGENT_TOKEN=<shared trusted-admin token>
-```
+Set these in the Vercel project (Settings, Environment Variables). `admin/.env.local.example` has the same list with comments. Supabase was removed in #10, so delete any leftover `SUPABASE_*` or `NEXT_PUBLIC_SUPABASE_*` variables; nothing reads them.
+
+| Variable | Environments | Value |
+|---|---|---|
+| `GITHUB_TOKEN` | Production, Preview | The fine-grained PAT from step 2. Server-side only. |
+| `PM_DATA_OWNER` | Production, Preview | GitHub account that owns the private data repository, e.g. `tennysonmilesperhour`. Owner only, no slash. |
+| `PM_DATA_REPO` | Production, Preview | Name of the private data repository, e.g. `mythic-pm-data`. Name only, no slash. Must be private or the app refuses it. |
+| `PM_DATA_BRANCH` | Production | The seeded branch, normally `main`. Must not start with `preview/`. |
+| `PM_DATA_BRANCH` | Preview | A seeded branch that starts with `preview/`, e.g. `preview/main`. Preview deployments refuse any other branch. |
+| `BRAIN_OWNER` | Production, Preview | `tennysonmilesperhour`. Optional: this is the default. |
+| `BRAIN_REPO` | Production, Preview | `mythic-labs`. Optional: this is the default. |
+| `PM_AGENT_API_ENABLED` | Production | `false` until you decide to let agents use the roadmap API; `true` turns it on. Anything other than the exact string `true` keeps it off. |
+| `PM_AGENT_TOKEN` | Production | A long random string, e.g. the output of `openssl rand -hex 32`. Required only when the agent API is enabled; agents send it as their `MYTHIC_PM_TOKEN`. |
+
+Do not set these on Vercel: `PM_DATA_DIR` (local development only; a Vercel deployment with it set refuses to start) and `GITHUB_API_URL` (only for the fake GitHub in the smoke test). `VERCEL_ENV` is set by Vercel itself.
+
+The dashboard has no login of its own, so keep Vercel Deployment Protection on (Settings, Deployment Protection). If agents call the API, create a Protection Bypass for Automation secret there and give it to them as `MYTHIC_PM_BYPASS`.
 
 ---
 
