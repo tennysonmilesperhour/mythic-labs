@@ -746,7 +746,7 @@ function ImportPanel({
               {busy ? "Importing…" : `Import ${picked.size}`}
             </button>
           </div>
-          <div className="max-h-80 overflow-y-auto border border-line bg-bg/70 divide-y divide-[rgba(26,24,20,0.06)]">
+          <div className="max-h-80 overflow-y-auto border border-line bg-bg/70 divide-y divide-line-soft">
             {list.map((r) => {
               const k = key(r);
               const already = have.has(k.toLowerCase());

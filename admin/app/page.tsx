@@ -337,7 +337,7 @@ export default async function Overview() {
               <Link className="text-accent underline" href="/authoring">Authoring</Link>.
             </EmptyBox>
           ) : (
-            <ul className="border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
+            <ul className="border border-line divide-y divide-line-soft bg-bg/85">
               {market.plugins.map((p) => (
                 <li key={p.name}>
                   <Link href={`/brain?plugin=${encodeURIComponent(p.name)}`} className="block px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">
@@ -366,7 +366,7 @@ export default async function Overview() {
               <Link className="text-accent underline" href="/repos">Repos</Link> only when it needs a different set.
             </EmptyBox>
           ) : (
-            <ul className="border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
+            <ul className="border border-line divide-y divide-line-soft bg-bg/85">
               {repos.slice(0, 8).map((r) => (
                 <li key={r.id}>
                   <Link

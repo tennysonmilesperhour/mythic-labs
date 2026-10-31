@@ -64,7 +64,7 @@ export default async function MyTasksPage() {
             <Head title="Your calls" count={calls.length} />
             <p className="text-fg-ghost text-[0.78rem] mb-3">Project decisions and fixes nobody else can make.</p>
             {calls.length ? (
-              <ul className="border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
+              <ul className="border border-line divide-y divide-line-soft bg-bg/85">
                 {calls.map((a) => (
                   <li key={a.key}>
                     <Link href={attentionHref(a)} className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">
@@ -112,7 +112,7 @@ function Group({ title, rows, empty }: { title: string; rows: Row[]; empty: stri
     <section>
       <Head title={title} count={rows.length} />
       {rows.length ? (
-        <ul className="mt-3 border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
+        <ul className="mt-3 border border-line divide-y divide-line-soft bg-bg/85">
           {rows.map((t) => (
             <li key={t.id}>
               <Link href={taskHref(t.id, t.status === "blocked" ? "blocked" : undefined)} className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">
