@@ -20,13 +20,13 @@ The foundational identity wants to emerge, to complete its own hero's journey, t
 
 ## The Threefold Path
 
-### Phase 01 — Archetypal Discovery
+### Phase 01: Archetypal Discovery
 Map the foundational identity structure. What archetypal pattern does it naturally embody? What deep human need does it address? We uncover what is already present.
 
-### Phase 02 — Architectural Design
+### Phase 02: Architectural Design
 Build structural relationships between brand, product, and audience using complementary dynamics and spatial psychology. Every element emerges from the same foundation.
 
-### Phase 03 — Unified Expression
+### Phase 03: Unified Expression
 Brand identity, product interface, spatial design, and service architecture express the same structural truth. Deep clarity. No disconnect between what you say and what you are.
 
 ## The Contrast
@@ -49,5 +49,5 @@ We begin every engagement with a diagnostic conversation. No pitch, no theater. 
 
 ---
 
-*Mythic Labs 2026 — Diagnostic Union Technicians*
+*Mythic Labs 2026. Diagnostic Union Technicians.*
 
