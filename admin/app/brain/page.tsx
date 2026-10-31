@@ -3,7 +3,8 @@ import BrainClient from "./BrainClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function BrainPage() {
+export default async function BrainPage({ searchParams }: { searchParams: Promise<{ plugin?: string }> }) {
+  const { plugin } = await searchParams;
   let plugins: Awaited<ReturnType<typeof fetchPluginDetail>>[] = [];
   let error: string | null = null;
 
@@ -37,7 +38,7 @@ export default async function BrainPage() {
           <p className="text-fg-dim text-sm">{error}</p>
         </div>
       ) : (
-        <BrainClient plugins={plugins} />
+        <BrainClient plugins={plugins} initial={plugin} />
       )}
     </div>
   );

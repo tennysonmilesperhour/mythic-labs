@@ -10,7 +10,7 @@ export default async function ProjectsPage({
   searchParams: Promise<{ view?: string; status?: string }>;
 }) {
   const { view, status } = await searchParams;
-  let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [], recent: [] };
+  let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [], mine: [], recent: [] };
   let initialError: string | null = null;
   try {
     hub = await getHub();

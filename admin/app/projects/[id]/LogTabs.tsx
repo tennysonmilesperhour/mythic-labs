@@ -155,7 +155,7 @@ export function ChangelogTab({ store }: { store: Store }) {
               </div>
               <ul className="flex flex-col">
                 {items.map((e) => (
-                  <li key={e.id} className="group flex items-baseline gap-3 py-2 border-b border-line">
+                  <li key={e.id} id={`entry-${e.id}`} className="group flex items-baseline gap-3 py-2 border-b border-line scroll-mt-24">
                     <select
                       value={e.change_type ?? "changed"}
                       onChange={(ev) => patch(e.id, { change_type: ev.target.value as ChangeType })}
@@ -383,7 +383,7 @@ export function DecisionsTab({ store }: { store: Store }) {
 
       <div className="flex flex-col gap-4">
         {ordered.map((e) => (
-          <article key={e.id} className={`group border border-line bg-bg/85 p-5 ${e.decision_status === "superseded" || e.decision_status === "rejected" ? "opacity-60" : ""}`}>
+          <article key={e.id} id={`entry-${e.id}`} className={`scroll-mt-24 group border border-line bg-bg/85 p-5 ${e.decision_status === "superseded" || e.decision_status === "rejected" ? "opacity-60" : ""}`}>
             <div className="flex items-baseline gap-3 mb-3">
               <span className="font-mono text-[0.58rem] text-fg-ghost">ADR-{String(list.length - list.indexOf(e)).padStart(3, "0")}</span>
               <h3 className="serif-display text-[1.4rem] leading-tight flex-1">

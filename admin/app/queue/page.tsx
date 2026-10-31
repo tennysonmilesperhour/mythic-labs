@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { loadAll } from "@/lib/projects";
 import type { ProjectDetail, Task } from "@/lib/projectTypes";
+import { taskHref } from "@/lib/taskMap";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,11 @@ function TaskCard({ project, task }: { project: ProjectDetail; task: Task }) {
           {task.priority} · {task.status}
         </span>
       </div>
-      <h3 className="text-fg text-sm font-medium leading-snug">{task.title}</h3>
+      <h3 className="text-fg text-sm font-medium leading-snug">
+        <Link href={taskHref(task.id, task.status === "blocked" ? "blocked" : undefined)} className="hover:text-accent">
+          {task.title} →
+        </Link>
+      </h3>
       {task.notes ? <p className="text-fg-dim text-sm leading-relaxed mt-2 whitespace-pre-wrap">{task.notes}</p> : null}
       {task.due_date ? <p className="mono-label-dim mt-3">Due {task.due_date}</p> : null}
       <p className="text-fg-ghost text-xs leading-relaxed mt-3">{laneNotes[lane]}</p>

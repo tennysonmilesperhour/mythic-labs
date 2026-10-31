@@ -17,8 +17,10 @@ const KIND_META: Record<
   mcp: { label: "MCP", color: "text-fg-dim" },
 };
 
-export default function BrainClient({ plugins }: { plugins: PluginDetail[] }) {
-  const [activeSlug, setActiveSlug] = useState<string>(plugins[0]?.slug || "");
+export default function BrainClient({ plugins, initial }: { plugins: PluginDetail[]; initial?: string }) {
+  const [activeSlug, setActiveSlug] = useState<string>(
+    plugins.find((p) => p.slug === initial || p.name === initial)?.slug || plugins[0]?.slug || ""
+  );
   const [kindFilter, setKindFilter] = useState<Kind | "all">("all");
   const active = plugins.find((p) => p.slug === activeSlug);
 

@@ -198,6 +198,8 @@ export type Hub = {
   attention: AttentionItem[];
   inProgress: TaskRef[];
   upcoming: TaskRef[];
+  /** Open tasks assigned to "me" (human-only work), in progress first. */
+  mine: TaskRef[];
   /** Latest changelog and decision entries across all projects, newest first. */
   recent: Array<Entry & { project_name: string }>;
 };
@@ -454,7 +456,7 @@ export function groupAttention(items: AttentionItem[], min = 3): AttentionItem[]
       project_name: "",
       title: GROUPABLE[k](group.length),
       detail: names.slice(0, 6).join(", ") + (names.length > 6 ? ` +${names.length - 6} more` : ""),
-      href: "/projects?view=list",
+      href: `/fix?key=group:${k}`,
     });
   }
   return out;
