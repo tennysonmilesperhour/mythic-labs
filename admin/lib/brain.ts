@@ -38,10 +38,32 @@ export type PluginDetail = {
   hasMcp: boolean;
 };
 
+// The brain repo changes rarely; keep reads for a minute so every page
+// doesn't wait on a dozen GitHub calls.
+const TTL_MS = 60_000;
+const memo = new Map<string, { at: number; value: Promise<unknown> }>();
+function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const hit = memo.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.value as Promise<T>;
+  const value = load();
+  memo.set(key, { at: Date.now(), value });
+  value.catch(() => memo.delete(key));
+  return value;
+}
+
+/** Forget cached brain reads, e.g. after Authoring writes a file. */
+export function clearBrainCache() {
+  memo.clear();
+}
+
 /**
  * Read marketplace.json from the brain repo.
  */
-export async function fetchMarketplace(): Promise<Marketplace> {
+export function fetchMarketplace(): Promise<Marketplace> {
+  return cached("marketplace", loadMarketplace);
+}
+
+async function loadMarketplace(): Promise<Marketplace> {
   const file = await readFile(
     BRAIN_OWNER,
     BRAIN_REPO,
@@ -56,7 +78,11 @@ export async function fetchMarketplace(): Promise<Marketplace> {
 /**
  * Build a detailed inventory of a single plugin: its skills, agents, commands.
  */
-export async function fetchPluginDetail(slug: string): Promise<PluginDetail> {
+export function fetchPluginDetail(slug: string): Promise<PluginDetail> {
+  return cached(`plugin:${slug}`, () => loadPluginDetail(slug));
+}
+
+async function loadPluginDetail(slug: string): Promise<PluginDetail> {
   const manifest = await readFile(
     BRAIN_OWNER,
     BRAIN_REPO,
@@ -103,41 +129,22 @@ async function listMarkdownInDir(
   nested: boolean
 ): Promise<Array<{ name: string; description: string; path: string }>> {
   const entries = await readDir(BRAIN_OWNER, BRAIN_REPO, `${slug}/${subdir}`);
-  const out: Array<{ name: string; description: string; path: string }> = [];
-
-  for (const entry of entries) {
-    if (nested) {
-      if (entry.type !== "dir") continue;
-      const file = await readFile(
-        BRAIN_OWNER,
-        BRAIN_REPO,
-        `${entry.path}/SKILL.md`
-      );
-      if (!file) continue;
+  const items = await Promise.all(
+    entries.map(async (entry) => {
+      if (nested ? entry.type !== "dir" : entry.type !== "file" || !entry.name.endsWith(".md")) return null;
+      const path = nested ? `${entry.path}/SKILL.md` : entry.path;
+      const file = await readFile(BRAIN_OWNER, BRAIN_REPO, path);
+      if (!file) return null;
       const fm = matter(file.content).data as {
         name?: string;
         description?: string;
       };
-      out.push({
-        name: fm.name || entry.name,
+      return {
+        name: fm.name || (nested ? entry.name : entry.name.replace(/\.md$/, "")),
         description: fm.description || "",
-        path: `${entry.path}/SKILL.md`,
-      });
-    } else {
-      if (entry.type !== "file" || !entry.name.endsWith(".md")) continue;
-      const file = await readFile(BRAIN_OWNER, BRAIN_REPO, entry.path);
-      if (!file) continue;
-      const fm = matter(file.content).data as {
-        name?: string;
-        description?: string;
+        path,
       };
-      out.push({
-        name: fm.name || entry.name.replace(/\.md$/, ""),
-        description: fm.description || "",
-        path: entry.path,
-      });
-    }
-  }
-
-  return out;
+    })
+  );
+  return items.filter((x): x is { name: string; description: string; path: string } => x !== null);
 }

@@ -16,8 +16,12 @@ export default function LivingCanvas() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    // Soft gradients look the same at 1x, and the orbs drift so slowly that
+    // 15fps is indistinguishable from 60. Both keep the main thread free for clicks.
+    const dpr = 1;
+    const FRAME_MS = 66;
     let raf = 0;
+    let last = -Infinity;
     let time = 0;
     let w = 0;
     let h = 0;
@@ -32,8 +36,11 @@ export default function LivingCanvas() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
-    const draw = () => {
-      time += 0.0018;
+    const draw = (now = 0) => {
+      raf = requestAnimationFrame(draw);
+      if (document.hidden || now - last < FRAME_MS) return;
+      time += 0.0018 * Math.min(4, (now - last) / 16.7 || 1);
+      last = now;
       ctx.clearRect(0, 0, w, h);
 
       // Three slow-drifting warm orbs at different depths.
@@ -47,8 +54,6 @@ export default function LivingCanvas() {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
       }
-
-      raf = requestAnimationFrame(draw);
     };
 
     const reduceMotion = window.matchMedia(

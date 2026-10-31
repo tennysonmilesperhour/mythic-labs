@@ -209,3 +209,20 @@ export function labelFor(url: string): string {
     return url;
   }
 }
+
+// ─────────── shared destinations ───────────
+
+/** Projects list filtered to one agent, tool or tag (the Projects page facet). */
+export function facetHref(kind: "agent" | "tool" | "tag", value: string): string {
+  return `/projects?view=list&facet=${encodeURIComponent(`${kind}:${value}`)}`;
+}
+
+export const projectHref = (id: string, tab?: string, entry?: string) =>
+  `/projects/${id}${tab ? `?tab=${tab}${entry ? `&entry=${entry}` : ""}` : ""}`;
+
+export const githubRepoUrl = (owner: string, repo: string, path = "") =>
+  `https://github.com/${owner}/${repo}${path}`;
+
+/** A file in a repo on its default branch. */
+export const githubBlobUrl = (owner: string, repo: string, file: string) =>
+  `https://github.com/${owner}/${repo}/blob/HEAD/${file.replace(/^\//, "")}`;

@@ -1,3 +1,4 @@
+import { clearBrainCache } from "@/lib/brain";
 import { NextResponse } from "next/server";
 import { readFile, writeFile, BRAIN_OWNER, BRAIN_REPO } from "@/lib/github";
 
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
       JSON.stringify(mcpJson, null, 2) + "\n",
       `chore(${body.plugin_slug}): register MCP server "${body.server_name}"`
     );
+    clearBrainCache();
 
     return NextResponse.json({ ok: true, commit_sha: result.commitSha, path });
   } catch (err: unknown) {

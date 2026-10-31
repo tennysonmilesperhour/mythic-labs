@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { promises as fs } from "node:fs";
@@ -121,17 +122,17 @@ function githubBackend(): Backend {
     describe: () => `github:${owner}/${repo}@${branch}`,
 
     async read() {
-      await verifyPrivateRepository();
-      let head: string;
-      try {
-        const ref = await gh().git.getRef({ owner, repo, ref: `heads/${branch}` });
-        head = ref.data.object.sha;
-      } catch (err: unknown) {
-        if ((err as { status?: number }).status === 404) {
-          throw new Error(`Configured project data branch ${owner}/${repo}@${branch} is missing; refusing to treat it as empty.`);
-        }
-        throw err;
-      }
+      // The privacy check runs alongside the ref lookup; nothing is returned until both pass.
+      const [, ref] = await Promise.all([
+        verifyPrivateRepository(),
+        gh().git.getRef({ owner, repo, ref: `heads/${branch}` }).catch((err: unknown) => {
+          if ((err as { status?: number }).status === 404) {
+            throw new Error(`Configured project data branch ${owner}/${repo}@${branch} is missing; refusing to treat it as empty.`);
+          }
+          throw err;
+        }),
+      ]);
+      const head = ref.data.object.sha;
       if (last?.head === head) return last;
 
       const commit = await gh().git.getCommit({ owner, repo, commit_sha: head });
@@ -309,9 +310,18 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
   return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, legacyMetadataMigration };
 }
 
-export async function readSnapshot(): Promise<Snapshot> {
+async function readFresh(): Promise<Snapshot> {
   const { head, files } = await store().read();
   return parse(head, files);
+}
+
+// One page render often reads the store several times (hub, repos, detail).
+// React's cache shares that read within a single server render only, so every
+// request still re-checks privacy and the branch. Callers get their own copy.
+const readForRender = cache(readFresh);
+
+export function readSnapshot(): Promise<Snapshot> {
+  return readForRender().then((s) => structuredClone(s));
 }
 
 /** Stable, diff-friendly JSON: children in creation order, two-space indent. */
@@ -337,7 +347,7 @@ export async function mutate<T>(
   fn: (draft: Snapshot) => T
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    const base = await readSnapshot();
+    const base = await readFresh();
     const operation = requestOperation.getStore();
     const prior = operation && base.operations[operation.id];
     if (prior) {
