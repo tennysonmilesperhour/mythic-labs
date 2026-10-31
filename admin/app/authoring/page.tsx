@@ -31,7 +31,7 @@ export default async function AuthoringPage() {
         <Link href="/brain" className="text-fg underline underline-offset-2 hover:text-accent">
           Brain
         </Link>{" "}
-        page shows what already exists. This page is where you add to it — without opening an editor,
+        page shows what already exists. This page is where you add to it, without opening an editor,
         cloning the repo, or remembering frontmatter conventions. Every action
         here commits straight to{" "}
         <a href={`https://github.com/${brainRepo}`} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-accent">
@@ -51,7 +51,7 @@ export default async function AuthoringPage() {
           glyph={<GlyphCommand size={20} className="text-accent" />}
           title="Create command"
           subtitle="Make a new slash command"
-          body="Slash commands are pre-built workflows you can invoke in any consuming session. /brand-systems:diagnose is one. Author another here — it's available as /<plugin>:<name> the next time you type /."
+          body="Slash commands are pre-built workflows you can invoke in any consuming session. /brand-systems:diagnose is one. Author another here and it's available as /<plugin>:<name> the next time you type /."
           link={{ href: `https://github.com/${brainRepo}/blob/HEAD/brand-systems/commands/diagnose.md`, label: "See /brand-systems:diagnose ↗" }}
         />
         <Explainer

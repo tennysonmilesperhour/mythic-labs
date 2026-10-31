@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Capability Diagnostic — Mythic Labs × Claude Code</title>
+<title>Capability Diagnostic · Mythic Labs × Claude Code</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -377,7 +377,7 @@ footer .accent { color: var(--accent); }
   </h1>
   <p class="hero-body">
     A diagnostic readout of the tools, agents, skills, and external integrations
-    available to this Claude Code session — running inside the
+    available to this Claude Code session, running inside the
     <strong style="color:var(--fg);font-weight:500;">mythic-labs</strong> repository,
     powered by Opus 4.7 with a one-million-token context window.
   </p>
@@ -415,7 +415,7 @@ footer .accent { color: var(--accent); }
   <div class="sec-label">I · Native Toolset</div>
   <h2 class="sec-title">The hands the agent <span class="accent">already has.</span></h2>
   <p class="sec-lede">
-    These are first-party tools — file system access, a shell, multi-tool parallelism, and the
+    These are first-party tools: file system access, a shell, multi-tool parallelism, and the
     ability to spawn specialized sub-agents. Nothing fancy, but the substrate everything else
     is built on.
   </p>
@@ -424,7 +424,7 @@ footer .accent { color: var(--accent); }
     <div class="tool-card">
       <div class="tag">01 · Read</div>
       <div class="name-mono">Read</div>
-      <p>Reads any local file — including PDFs (page ranges), Jupyter notebooks (cells + outputs), and images rendered visually.</p>
+      <p>Reads any local file, including PDFs (page ranges), Jupyter notebooks (cells + outputs), and images rendered visually.</p>
       <div class="pills"><span class="pill">text</span><span class="pill">pdf</span><span class="pill">image</span><span class="pill">ipynb</span></div>
     </div>
     <div class="tool-card">
@@ -436,7 +436,7 @@ footer .accent { color: var(--accent); }
     <div class="tool-card">
       <div class="tag">03 · Edit</div>
       <div class="name-mono">Edit</div>
-      <p>Surgical string replacement in existing files. Preferred over rewrites — only the diff travels over the wire.</p>
+      <p>Surgical string replacement in existing files. Preferred over rewrites, because only the diff travels over the wire.</p>
       <div class="pills"><span class="pill">diff</span><span class="pill">replace_all</span></div>
     </div>
     <div class="tool-card">
@@ -448,7 +448,7 @@ footer .accent { color: var(--accent); }
     <div class="tool-card">
       <div class="tag">05 · Delegate</div>
       <div class="name-mono">Agent</div>
-      <p>Spawn specialized sub-agents (Explore, Plan, general-purpose, etc.) with isolated context — optionally in their own git worktree.</p>
+      <p>Spawn specialized sub-agents (Explore, Plan, general-purpose, etc.) with isolated context, optionally in their own git worktree.</p>
       <div class="pills"><span class="pill">subagent</span><span class="pill">worktree</span><span class="pill">parallel</span></div>
     </div>
     <div class="tool-card">
@@ -466,7 +466,7 @@ footer .accent { color: var(--accent); }
     <div class="tool-card">
       <div class="tag">08 · Discover</div>
       <div class="name-mono">ToolSearch</div>
-      <p>Lazy-loads deferred tool schemas by name or keyword query — keeps the prompt lean until a capability is needed.</p>
+      <p>Lazy-loads deferred tool schemas by name or keyword query, which keeps the prompt lean until a capability is needed.</p>
       <div class="pills"><span class="pill">deferred</span><span class="pill">search</span></div>
     </div>
     <div class="tool-card">
@@ -502,7 +502,7 @@ footer .accent { color: var(--accent); }
   <h2 class="sec-title">Different agents for <span class="accent">different shapes</span> of thinking.</h2>
   <p class="sec-lede">
     Each sub-agent has its own tool allowlist and prompt. The main session delegates to them
-    in parallel when work is independent — keeping the primary context window clear of raw search output.
+    in parallel when work is independent. That keeps the primary context window clear of raw search output.
   </p>
 
   <div class="tool-grid">
@@ -524,7 +524,7 @@ footer .accent { color: var(--accent); }
     <div class="tool-card">
       <div class="tag">Q&A</div>
       <h4>claude-code-guide</h4>
-      <p>Answers questions about Claude Code CLI, the Claude Agent SDK, and the Claude API — hooks, MCP servers, SDK usage, etc.</p>
+      <p>Answers questions about Claude Code CLI, the Claude Agent SDK, and the Claude API: hooks, MCP servers, SDK usage and more.</p>
     </div>
     <div class="tool-card">
       <div class="tag">Config</div>
@@ -539,7 +539,7 @@ footer .accent { color: var(--accent); }
   <div class="sec-label">III · Skills Library</div>
   <h2 class="sec-title">Pre-loaded playbooks <span class="accent">for recurring work.</span></h2>
   <p class="sec-lede">
-    Skills are packaged procedures — bigger than a prompt, smaller than an agent. They trigger
+    Skills are packaged procedures, bigger than a prompt and smaller than an agent. They trigger
     automatically when their pattern matches, or on a slash command like <code style="font-family:var(--font-mono);background:rgba(26,24,20,0.04);padding:2px 8px;border-radius:2px;font-size:0.9em;">/review</code>.
   </p>
 
@@ -551,7 +551,7 @@ footer .accent { color: var(--accent); }
     </div>
     <div class="skill-row">
       <div class="skill-name">review</div>
-      <div class="skill-desc">Run a structured code review on a pull request — diff analysis, risk surfacing, suggested questions.</div>
+      <div class="skill-desc">Run a structured code review on a pull request: diff analysis, risk surfacing, suggested questions.</div>
       <div class="skill-trigger">/review</div>
     </div>
     <div class="skill-row">
@@ -571,12 +571,12 @@ footer .accent { color: var(--accent); }
     </div>
     <div class="skill-row">
       <div class="skill-name">update-config</div>
-      <div class="skill-desc">Edit <code>settings.json</code> — permissions, env vars, hooks, automated behaviors ("from now on when X…"). The harness, not memory, executes hooks.</div>
+      <div class="skill-desc">Edit <code>settings.json</code>: permissions, env vars, hooks, automated behaviors ("from now on when X…"). Hooks are run by the harness.</div>
       <div class="skill-trigger">auto · settings</div>
     </div>
     <div class="skill-row">
       <div class="skill-name">keybindings-help</div>
-      <div class="skill-desc">Customize <code>~/.claude/keybindings.json</code> — rebind keys, add chord shortcuts, change submit behavior.</div>
+      <div class="skill-desc">Customize <code>~/.claude/keybindings.json</code>: rebind keys, add chord shortcuts, change submit behavior.</div>
       <div class="skill-trigger">auto · keys</div>
     </div>
     <div class="skill-row">
@@ -602,7 +602,7 @@ footer .accent { color: var(--accent); }
   <div class="sec-label">IV · MCP Integrations</div>
   <h2 class="sec-title">External systems, <span class="accent">native to the loop.</span></h2>
   <p class="sec-lede">
-    Twelve Model Context Protocol servers expose hundreds of tools — GitHub, Supabase, Vercel,
+    Twelve Model Context Protocol servers expose hundreds of tools: GitHub, Supabase, Vercel,
     Canva, Wix, Gmail, Google Calendar, Google Drive, scholarly search, and a persistent thought
     store. Schemas are deferred and loaded on demand via <code style="font-family:var(--font-mono);background:rgba(26,24,20,0.04);padding:2px 8px;border-radius:2px;font-size:0.9em;">ToolSearch</code>.
   </p>
@@ -703,7 +703,7 @@ footer .accent { color: var(--accent); }
       <div class="icon">memory</div>
       <h4>Thought Store</h4>
       <div class="role">Long-term Memory</div>
-      <p>Capture thoughts, search the thought corpus, list recent entries, view aggregate statistics — a persistent memory layer across sessions.</p>
+      <p>Capture thoughts, search the thought corpus, list recent entries, view aggregate statistics. It works as a persistent memory layer across sessions.</p>
       <div class="ops">capture_thought · search_thoughts<br>list_thoughts · thought_stats</div>
     </div>
 
@@ -712,7 +712,7 @@ footer .accent { color: var(--accent); }
       <div class="icon">auth · α</div>
       <h4>OAuth Service A</h4>
       <div class="role">Authentication Bridge</div>
-      <p>Begin and complete an authentication handshake — bridge for a downstream service that needs delegated credentials.</p>
+      <p>Begin and complete an authentication handshake, a bridge for a downstream service that needs delegated credentials.</p>
       <div class="ops">authenticate<br>complete_authentication</div>
     </div>
 
@@ -721,7 +721,7 @@ footer .accent { color: var(--accent); }
       <div class="icon">auth · β</div>
       <h4>OAuth Service B</h4>
       <div class="role">Authentication Bridge</div>
-      <p>Second authentication flow available to this session — same pattern, different target service.</p>
+      <p>Second authentication flow available to this session, using the same pattern for a different target service.</p>
       <div class="ops">authenticate<br>complete_authentication</div>
     </div>
 
@@ -760,7 +760,7 @@ footer .accent { color: var(--accent); }
     </div>
 
     <div class="demo-panel" data-panel="readme">
-      <p class="caption">First lines of <code>README.md</code> — read with the <code>Read</code> tool, used to match the showcase's voice and palette to the existing brand.</p>
+      <p class="caption">First lines of <code>README.md</code>, read with the <code>Read</code> tool, used to match the showcase's voice and palette to the existing brand.</p>
 <pre><span class="k"># Mythic Labs</span>
 
 <span class="s">**Archetypal Architecture for Brands &amp; Products**</span>
@@ -775,7 +775,7 @@ Mythic Labs uses Jungian psychology and architectural dynamics to
 discover the deep structural identity of products, brands, and
 audiences. We build everything from that foundation up.
 
-<span class="s">We do not build brands. We uncover their archetypal foundations.</span></pre>
+<span class="s">We uncover the archetypal foundation a brand already has, then build from it.</span></pre>
     </div>
 
     <div class="demo-panel" data-panel="build">
@@ -788,8 +788,8 @@ audiences. We build everything from that foundation up.
 <span class="f">Read</span>(<span class="s">"/home/user/mythic-labs/README.md"</span>)
   <span class="c">→ absorbed the Mythic Labs voice &amp; threefold-path structure</span>
 
-<span class="f">Read</span>(<span class="s">"mythic_labs_landing.html"</span>, lines <span class="k">1–100</span>)
-<span class="f">Read</span>(<span class="s">"mythic_labs_landing.html"</span>, lines <span class="k">100–300</span>)
+<span class="f">Read</span>(<span class="s">"mythic_labs_landing.html"</span>, lines <span class="k">1-100</span>)
+<span class="f">Read</span>(<span class="s">"mythic_labs_landing.html"</span>, lines <span class="k">100-300</span>)
   <span class="c">→ extracted CSS variables, type scale, section rhythm</span>
 
 <span class="f">Write</span>(<span class="s">"/home/user/mythic-labs/showcase.html"</span>)
@@ -814,9 +814,9 @@ audiences. We build everything from that foundation up.
     <div class="prov-col">
       <h5>Files Touched</h5>
       <ul>
-        <li><span class="step">→</span><span><code>README.md</code> — read once, to anchor copy in the brand's actual voice (Jungian / archetypal / diagnostic).</span></li>
-        <li><span class="step">→</span><span><code>mythic_labs_landing.html</code> — read twice, to inherit the design system (typography stack, color tokens, section pacing).</span></li>
-        <li><span class="step">→</span><span><code>showcase.html</code> — written once. The file you are looking at.</span></li>
+        <li><span class="step">→</span><span><code>README.md</code>: read once, to anchor copy in the brand's actual voice (Jungian / archetypal / diagnostic).</span></li>
+        <li><span class="step">→</span><span><code>mythic_labs_landing.html</code>: read twice, to inherit the design system (typography stack, color tokens, section pacing).</span></li>
+        <li><span class="step">→</span><span><code>showcase.html</code>: written once. The file you are looking at.</span></li>
       </ul>
     </div>
     <div class="prov-col">
@@ -825,7 +825,7 @@ audiences. We build everything from that foundation up.
         <li><span class="step">01</span><span><code>Bash</code> for repo introspection (<code>ls</code>, <code>git status</code>, <code>git branch -a</code>).</span></li>
         <li><span class="step">02</span><span><code>Read</code> for <code>README.md</code> and two ranges of the existing landing HTML.</span></li>
         <li><span class="step">03</span><span><code>Write</code> for this single-file output. No build step, no dependencies.</span></li>
-        <li><span class="step">04</span><span><code>ToolSearch</code> deferred — schemas for GitHub, Supabase, Vercel, etc. were enumerated by name but not invoked.</span></li>
+        <li><span class="step">04</span><span><code>ToolSearch</code> deferred: schemas for GitHub, Supabase, Vercel, etc. were enumerated by name but not invoked.</span></li>
       </ul>
     </div>
   </div>

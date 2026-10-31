@@ -123,7 +123,7 @@ function PluginDetailView({
       kind: "hook",
       name: "hooks.json",
       description:
-        "Harness-level event handlers — run as shell commands, never enter the agent's context. Zero token cost.",
+        "Harness-level event handlers. They run as shell commands and never enter the agent's context, so they cost zero tokens.",
       path: `${plugin.slug}/hooks/hooks.json`,
     });
   }
@@ -132,7 +132,7 @@ function PluginDetailView({
       kind: "mcp",
       name: ".mcp.json",
       description:
-        "MCP server declarations bundled with this plugin — consuming repos inherit them when the plugin is enabled.",
+        "MCP server declarations bundled with this plugin. Consuming repos inherit them when the plugin is enabled.",
       path: `${plugin.slug}/.mcp.json`,
     });
   }

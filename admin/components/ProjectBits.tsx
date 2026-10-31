@@ -252,7 +252,7 @@ export function InlineText({
   value,
   onSave,
   className = "",
-  placeholder = "—",
+  placeholder = "not set",
   multiline = false,
 }: {
   value: string;

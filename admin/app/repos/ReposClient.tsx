@@ -240,7 +240,7 @@ export default function ReposClient({
       {repos.length === 0 ? (
         <EmptyState
           title="No exceptions tracked yet"
-          body="Most repos need nothing here — they inherit your user or organization default. Add a repo only when it needs a different plugin set."
+          body="Most repos need nothing here because they inherit your user or organization default. Add a repo only when it needs a different plugin set."
         />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -503,7 +503,7 @@ function RepoCard({
           <button
             onClick={onCopy}
             disabled={!marketplace}
-            title="Copy a .claude/settings.json for this repo — commit it yourself"
+            title="Copy a .claude/settings.json for this repo to commit yourself"
             className="lift-on-hover font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-1.5 bg-fg text-bg disabled:opacity-40"
           >
             Copy JSON

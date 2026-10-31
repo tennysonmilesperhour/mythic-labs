@@ -493,7 +493,7 @@ function ListView({
               </td>
               <td className="px-4 py-3 text-[0.8rem] text-fg-dim max-w-[16rem]">
                 <Link href={`/projects/${p.id}`} className="hover:text-accent">
-                  {p.next_action || "—"}
+                  {p.next_action || "not set"}
                 </Link>
               </td>
               <td className="px-4 py-3 w-36">
@@ -510,7 +510,7 @@ function ListView({
               </td>
               <td className={`px-4 py-3 font-mono text-[0.62rem] ${isOverdue(p.target_date, false) ? "text-accent" : "text-fg-dim"}`}>
                 <Link href={projectHref(p.id, "plan")} className="hover:text-accent">
-                  {fmtDate(p.target_date) || "—"}
+                  {fmtDate(p.target_date) || "not set"}
                 </Link>
               </td>
               <td className="px-4 py-3 font-mono text-[0.6rem] text-fg-ghost">{relTime(p.stats.lastActivity)}</td>

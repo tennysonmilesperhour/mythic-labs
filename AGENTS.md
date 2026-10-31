@@ -2,6 +2,10 @@
 
 Instructions for coding agents (Codex, Claude Code, Cursor, and others) working in this repo. `CLAUDE.md` is the full guide to the plugin marketplace; read it first. This file adds what you need for the dashboard in `admin/`.
 
+## Writing style
+
+Every word that ships (site copy, dashboard UI text, docs, skills, commits, PRs) follows the **Writing style** rules in `CLAUDE.md`. In short: no em or en dashes, no "not X, but Y" framing, no "No X. Just Y." fragments, no filler words like "quietly", "seamlessly" or "delve". Say what the thing is, plainly.
+
 ## The dashboard has no database
 
 `admin/` is a Next.js app on Vercel. All of its data is committed as files to git in a separately configured private repository. Keep `PM_DATA_OWNER`, `PM_DATA_REPO`, and `PM_DATA_BRANCH` independent of the public `BRAIN_OWNER` / `BRAIN_REPO` settings.

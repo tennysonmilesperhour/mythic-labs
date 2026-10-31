@@ -107,8 +107,8 @@ function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRe
           Picks a plugin in the brain repo, opens its{" "}
           <code className="font-mono text-fg text-sm">.mcp.json</code>, and adds
           (or updates) the MCP server you describe below. Every consuming repo
-          that has this plugin enabled inherits the server on its next session —
-          no need to commit anything to those repos.
+          that has this plugin enabled inherits the server on its next session,
+          with nothing to commit in those repos.
         </p>
         <p className="text-fg-ghost text-xs leading-relaxed mt-3 font-mono">
           Example · plugin: comms · name: gmail · command: npx · args:
