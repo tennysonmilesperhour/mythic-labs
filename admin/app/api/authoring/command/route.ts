@@ -1,3 +1,4 @@
+import { clearBrainCache } from "@/lib/brain";
 import { NextResponse } from "next/server";
 import { writeFile, BRAIN_OWNER, BRAIN_REPO } from "@/lib/github";
 
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
       content,
       `feat(${body.plugin_slug}): add /${slug} command`
     );
+    clearBrainCache();
 
     return NextResponse.json({
       ok: true,

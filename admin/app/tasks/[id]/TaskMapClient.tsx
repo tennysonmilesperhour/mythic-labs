@@ -22,7 +22,9 @@ import {
   extractSnippets,
   extractSteps,
   extractUrls,
+  facetHref,
   isMine,
+  projectHref,
   labelFor,
   repoFileLinks,
   repoLinks,
@@ -36,6 +38,7 @@ import {
 } from "@/lib/taskMap";
 import { Chip, InlineText, PRIORITY_MARK, api, btnGhost, btnPrimary, inputCls } from "@/components/ProjectBits";
 import CopyBlock from "@/components/CopyBlock";
+import SubLink from "@/components/SubLink";
 import { GlyphArrow } from "@/components/Glyphs";
 
 type Mine = Task & { project_name: string };
@@ -152,10 +155,14 @@ export default function TaskMapClient({
       </nav>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <Chip tone={task.status === "blocked" ? "solid" : task.status === "doing" ? "accent" : "dim"}>{task.status}</Chip>
-        <Chip tone={task.priority === "critical" ? "solid" : "dim"}>
-          {PRIORITY_MARK[task.priority]} {task.priority}
-        </Chip>
+        <Link href={`/queue#${QUEUE_LANE[task.status]}`} title="Open this lane of the queue" className="hover:opacity-80">
+          <Chip tone={task.status === "blocked" ? "solid" : task.status === "doing" ? "accent" : "dim"}>{task.status}</Chip>
+        </Link>
+        <Link href={`/projects/${project.id}?tab=plan&task=${task.id}`} title="See it in the project plan" className="hover:opacity-80">
+          <Chip tone={task.priority === "critical" ? "solid" : "dim"}>
+            {PRIORITY_MARK[task.priority]} {task.priority}
+          </Chip>
+        </Link>
         {ready ? <Chip tone="accent">ready</Chip> : null}
         {late ? <Chip tone="solid">{dueLabel(task.due_date)}</Chip> : null}
         {milestone ? (
@@ -172,7 +179,13 @@ export default function TaskMapClient({
         {humanOnly
           ? "Only you can do this one. Everything needed to finish it is on this page: what done means, the steps, the links and the text to paste."
           : task.agent
-            ? `Assigned to @${task.agent}. Hand it over with the brief below, or take it yourself.`
+            ? (
+              <>
+                Assigned to{" "}
+                <Link href={facetHref("agent", task.agent)} className="text-accent hover:text-fg">@{task.agent}</Link>. Hand
+                it over with the brief below, or take it yourself.
+              </>
+            )
             : "Nobody owns this yet. Take it, or give it to an agent."}
       </p>
 
@@ -312,7 +325,15 @@ export default function TaskMapClient({
                     <Link href={taskHref(s.id)} className={`flex-1 min-w-0 text-[0.9rem] hover:text-accent ${s.status === "done" ? "line-through text-fg-ghost" : ""}`}>
                       {s.title}
                     </Link>
-                    <span className="font-mono text-[0.58rem] text-fg-ghost">{s.agent ? `@${s.agent} · ` : ""}{s.status}</span>
+                    <span className="font-mono text-[0.58rem] text-fg-ghost">
+                      {s.agent && s.agent !== ME ? (
+                        <>
+                          <Link href={facetHref("agent", s.agent)} className="hover:text-accent">@{s.agent}</Link>
+                          {" · "}
+                        </>
+                      ) : s.agent ? `@${s.agent} · ` : ""}
+                      {s.status}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -393,8 +414,16 @@ export default function TaskMapClient({
                 <Link href={`/projects/${project.id}?task=${task.id}`} className="text-fg hover:text-accent">{project.name} →</Link>
                 {!workable ? <span className="block text-fg-ghost text-[0.75rem]">Project is {project.status}; agents won&apos;t pick this up.</span> : null}
               </Fact>
-              {project.next_action ? <Fact k="Project next action">{project.next_action}</Fact> : null}
-              {project.summary ? <Fact k="About">{project.summary}</Fact> : null}
+              {project.next_action ? (
+                <Fact k="Project next action">
+                  <Link href={projectHref(project.id)} className="hover:text-accent">{project.next_action}</Link>
+                </Fact>
+              ) : null}
+              {project.summary ? (
+                <Fact k="About">
+                  <Link href={`${projectHref(project.id)}?tab=setup`} className="hover:text-accent">{project.summary}</Link>
+                </Fact>
+              ) : null}
               <Fact k="History">
                 Created {fmtDate(task.created_at)} · updated {relTime(task.updated_at)}
                 {task.done_at ? ` · done ${fmtDate(task.done_at)}` : ""}
@@ -420,7 +449,13 @@ export default function TaskMapClient({
             ) : null}
             {progress.length ? (
               <ul className="mt-4 flex flex-col gap-1 font-mono text-[0.62rem] text-fg-dim">
-                {progress.map((e) => <li key={e.id}>{e.entry_date} · {e.title}</li>)}
+                {progress.map((e) => (
+                  <li key={e.id}>
+                    <Link href={projectHref(project.id, "activity")} className="hover:text-accent">
+                      {e.entry_date} · {e.title}
+                    </Link>
+                  </li>
+                ))}
               </ul>
             ) : null}
           </Side>
@@ -432,7 +467,10 @@ export default function TaskMapClient({
                   <li key={t.id}>
                     <Link href={taskHref(t.id)} className="flex items-baseline gap-2 py-1.5 border-b border-line hover:text-accent">
                       <span className="flex-1 min-w-0 truncate text-[0.82rem]">{t.title}</span>
-                      <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0">{t.status === "doing" ? "doing" : dueLabel(t.due_date) || t.project_name}</span>
+                      <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0">
+                        {t.status === "doing" ? "doing " : dueLabel(t.due_date) ? `${dueLabel(t.due_date)} ` : ""}
+                        <SubLink href={projectHref(t.project_id)}>{t.project_name}</SubLink>
+                      </span>
                     </Link>
                   </li>
                 ))}
@@ -585,3 +623,11 @@ function EntryLinks({ projectId, entries, fix }: { projectId: string; entries: E
 }
 
 const statusLabel = (s: TaskStatus) => (s === "doing" ? "in progress" : s);
+
+/** Queue lane anchors (app/queue/page.tsx) for each task status. */
+const QUEUE_LANE: Record<TaskStatus, string> = {
+  todo: "needs-investigation",
+  doing: "in-progress-verify",
+  blocked: "blocked",
+  done: "completed",
+};

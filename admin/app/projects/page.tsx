@@ -1,15 +1,17 @@
+import Link from "next/link";
 import { getHub } from "@/lib/projects";
 import { STATUSES, type Hub, type ProjectStatus } from "@/lib/projectTypes";
 import ProjectsClient from "./ProjectsClient";
+import { fixHref } from "@/lib/taskMap";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; status?: string }>;
+  searchParams: Promise<{ view?: string; status?: string; facet?: string }>;
 }) {
-  const { view, status } = await searchParams;
+  const { view, status, facet } = await searchParams;
   let hub: Hub = { projects: [], timeline: [], attention: [], inProgress: [], upcoming: [], mine: [], recent: [] };
   let initialError: string | null = null;
   try {
@@ -35,11 +37,15 @@ export default async function ProjectsPage({
             Projects are stored as files in a private GitHub repo. Set PM_DATA_REPO
             (owner/repo, must be private) and a GITHUB_TOKEN with Contents read and write on it.
           </p>
+          <Link href={fixHref("source:store")} className="inline-block mt-3 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-accent hover:text-fg">
+            Fix it step by step →
+          </Link>
         </div>
       ) : null}
 
       <ProjectsClient hub={hub} initialView={view === "list" || view === "timeline" ? view : "board"}
         initialStatus={STATUSES.includes(status as ProjectStatus) ? (status as ProjectStatus) : "all"}
+        initialFacet={/^(agent|tool|tag):./.test(facet ?? "") ? facet! : ""}
       />
     </div>
   );

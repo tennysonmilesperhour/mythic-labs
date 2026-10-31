@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { PluginDetail } from "@/lib/brain";
 import { KIND_GLYPHS } from "@/components/Glyphs";
@@ -17,7 +18,16 @@ const KIND_META: Record<
   mcp: { label: "MCP", color: "text-fg-dim" },
 };
 
-export default function BrainClient({ plugins, initial }: { plugins: PluginDetail[]; initial?: string }) {
+export default function BrainClient({
+  plugins,
+  initial,
+  brainRepo,
+}: {
+  plugins: PluginDetail[];
+  initial?: string;
+  /** owner/repo of the brain, for GitHub links to each file. */
+  brainRepo: string;
+}) {
   const [activeSlug, setActiveSlug] = useState<string>(
     plugins.find((p) => p.slug === initial || p.name === initial)?.slug || plugins[0]?.slug || ""
   );
@@ -78,6 +88,7 @@ export default function BrainClient({ plugins, initial }: { plugins: PluginDetai
       {active ? (
         <PluginDetailView
           plugin={active}
+          brainRepo={brainRepo}
           kindFilter={kindFilter}
           setKindFilter={setKindFilter}
         />
@@ -88,10 +99,12 @@ export default function BrainClient({ plugins, initial }: { plugins: PluginDetai
 
 function PluginDetailView({
   plugin,
+  brainRepo,
   kindFilter,
   setKindFilter,
 }: {
   plugin: PluginDetail;
+  brainRepo: string;
   kindFilter: Kind | "all";
   setKindFilter: (k: Kind | "all") => void;
 }) {
@@ -140,8 +153,16 @@ function PluginDetailView({
     <div>
       {/* Plugin description card */}
       <div className="bg-bg-warm/80 border border-line p-7 mb-8">
-        <div className="hairline-accent-sm mb-4">
+        <div className="hairline-accent-sm mb-4 flex items-baseline justify-between gap-4">
           <span className="mono-label">About {plugin.name}</span>
+          <a
+            href={`https://github.com/${brainRepo}/tree/HEAD/${plugin.slug}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[0.6rem] text-fg-dim hover:text-accent"
+          >
+            {plugin.slug}/ · v{plugin.version} on GitHub ↗
+          </a>
         </div>
         <p className="text-fg text-[1.02rem] leading-[1.85] max-w-3xl font-light dropcap">
           {plugin.description}
@@ -180,13 +201,14 @@ function PluginDetailView({
             Nothing of this kind in {plugin.slug}
           </div>
           <p className="text-fg-dim text-sm">
-            Try another tab, or extend this plugin from the Authoring page.
+            Try another tab, or extend this plugin from the{" "}
+            <Link href="/authoring" className="text-accent underline">Authoring page</Link>.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((it) => (
-            <ItemCard key={it.path} item={it} />
+            <ItemCard key={it.path} item={it} href={`https://github.com/${brainRepo}/blob/HEAD/${it.path}`} />
           ))}
         </div>
       )}
@@ -241,7 +263,10 @@ function KindChip({
 
 function ItemCard({
   item,
+  href,
 }: {
+  /** The file on GitHub. */
+  href: string;
   item: {
     kind: Kind;
     name: string;
@@ -252,8 +277,12 @@ function ItemCard({
   const meta = KIND_META[item.kind];
   const Glyph = KIND_GLYPHS[item.kind];
   return (
-    <div
-      className="accent-sweep border border-line bg-bg/80 p-5 h-full flex flex-col ease-mythic"
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title={`Open ${item.path} on GitHub`}
+      className="group accent-sweep border border-line bg-bg/80 p-5 h-full flex flex-col ease-mythic hover:border-accent"
       style={{
         transition: "background-color var(--motion-base) var(--ease-mythic)",
       }}
@@ -284,11 +313,11 @@ function ItemCard({
         )}
       </p>
       <div
-        className="font-mono text-[0.55rem] text-fg-ghost mt-4 truncate tracking-[0.1em]"
+        className="font-mono text-[0.55rem] text-fg-ghost mt-4 truncate tracking-[0.1em] group-hover:text-accent"
         title={item.path}
       >
-        {item.path}
+        {item.path} ↗
       </div>
-    </div>
+    </a>
   );
 }

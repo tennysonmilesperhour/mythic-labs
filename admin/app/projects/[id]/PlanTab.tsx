@@ -374,7 +374,10 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         ) : null}
         {waiting.length ? (
           <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0 max-w-[10rem] truncate" title={waiting.map((w) => w.title).join(", ")}>
-            after {waiting[0].title}
+            after{" "}
+            <Link href={taskHref(waiting[0].id)} className="hover:text-accent">
+              {waiting[0].title}
+            </Link>
             {waiting.length > 1 ? ` +${waiting.length - 1}` : ""}
           </span>
         ) : null}
@@ -546,8 +549,10 @@ function DependsOn({ task, allTasks, patchTask }: { task: Task } & RowProps) {
             tone={dep.status === "done" ? "dim" : "accent"}
             onRemove={() => patchTask(task.id, { depends_on: task.depends_on.filter((x) => x !== id) })}
           >
-            {dep.status === "done" ? "✓ " : ""}
-            {dep.title}
+            <Link href={taskHref(dep.id)} className="hover:text-accent" title="Open its task map">
+              {dep.status === "done" ? "✓ " : ""}
+              {dep.title}
+            </Link>
           </Chip>
         );
       })}

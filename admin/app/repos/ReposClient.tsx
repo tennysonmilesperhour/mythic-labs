@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { githubBlobUrl, githubRepoUrl, projectHref } from "@/lib/taskMap";
 import type { Repo } from "@/lib/db";
 import type { Marketplace } from "@/lib/brain";
 import { renderSettingsJson } from "@/lib/settings";
@@ -34,6 +36,8 @@ type Props = {
   marketplace: Marketplace | null;
   brainRepo: string;
   initialPluginState: Record<string, Record<string, boolean>>;
+  /** Lowercased owner/repo → project id. */
+  projectByRepo?: Record<string, string>;
 };
 
 export default function ReposClient({
@@ -41,6 +45,7 @@ export default function ReposClient({
   marketplace,
   brainRepo,
   initialPluginState,
+  projectByRepo = {},
 }: Props) {
   const [repos, setRepos] = useState<Repo[]>(initialRepos);
   const [pluginState, setPluginState] = useState(initialPluginState);
@@ -251,6 +256,7 @@ export default function ReposClient({
               marketplace={marketplace}
               pluginState={pluginState[r.id] || {}}
               status={status[r.id]}
+              projectId={projectByRepo[`${r.owner}/${r.repo}`.toLowerCase()]}
               onToggle={(slug, enabled) => togglePlugin(r.id, slug, enabled)}
               onCheck={() => checkRepo(r)}
               onCopy={() => copySnippet(r.id)}
@@ -349,12 +355,14 @@ function RepoCard({
   marketplace,
   pluginState,
   status,
+  projectId,
   onToggle,
   onCheck,
   onCopy,
   onRemove,
 }: {
   repo: Repo;
+  projectId?: string;
   marketplace: Marketplace | null;
   pluginState: Record<string, boolean>;
   status: CheckState | undefined;
@@ -382,19 +390,37 @@ function RepoCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="font-mono text-xs text-fg truncate" title={`${repo.owner}/${repo.repo}`}>
+          <a
+            href={githubRepoUrl(repo.owner, repo.repo)}
+            target="_blank"
+            rel="noreferrer"
+            className="block font-mono text-xs text-fg truncate hover:text-accent"
+            title={`Open ${repo.owner}/${repo.repo} on GitHub`}
+          >
             <span className="text-fg-ghost">{repo.owner}/</span>
-            {repo.repo}
-          </div>
+            {repo.repo} ↗
+          </a>
           <div className="flex items-center gap-2 mt-2">
             {repo.is_fork === true ? (
               <span className="font-mono text-[0.55rem] tracking-[0.2em] uppercase text-fg-ghost border border-line px-1.5 py-0.5 flex items-center gap-1">
                 <GlyphFork size={10} /> fork
               </span>
             ) : null}
-            <span className="font-mono text-[0.6rem] text-fg-ghost tracking-[0.1em]">
-              {repo.default_branch}
-            </span>
+            {repo.default_branch ? (
+              <a
+                href={githubRepoUrl(repo.owner, repo.repo, `/tree/${repo.default_branch}`)}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[0.6rem] text-fg-ghost tracking-[0.1em] hover:text-accent"
+              >
+                {repo.default_branch}
+              </a>
+            ) : null}
+            {projectId ? (
+              <Link href={projectHref(projectId)} className="font-mono text-[0.6rem] text-accent hover:text-fg">
+                project →
+              </Link>
+            ) : null}
             {status?.kind === "matches" ? (
               <GlyphApplied size={12} className="text-accent" title="Repo file matches" />
             ) : status?.kind === "drift" ? (
@@ -447,9 +473,12 @@ function RepoCard({
       </div>
 
       <div className="flex items-center justify-between mt-auto pt-3 border-t border-line gap-2">
-        <div
-          className={`font-mono text-[0.6rem] truncate flex-1 min-w-0 tracking-[0.1em] ${statusTone}`}
-          title={statusText}
+        <a
+          href={githubBlobUrl(repo.owner, repo.repo, ".claude/settings.json")}
+          target="_blank"
+          rel="noreferrer"
+          className={`font-mono text-[0.6rem] truncate flex-1 min-w-0 tracking-[0.1em] hover:text-accent ${statusTone}`}
+          title={statusText ? `${statusText} · open .claude/settings.json on GitHub` : "Open this repo's .claude/settings.json on GitHub"}
         >
           {statusText || (
             <>
@@ -457,7 +486,7 @@ function RepoCard({
               <span className="text-fg-ghost"> / {totalPlugins} wanted</span>
             </>
           )}
-        </div>
+        </a>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={onCheck}

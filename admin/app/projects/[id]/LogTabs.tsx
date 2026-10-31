@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   CHANGE_TYPES,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/projectTypes";
 import { Chip, InlineText, api, btnGhost, btnPrimary, inputBase, inputCls } from "@/components/ProjectBits";
 import { GlyphClose } from "@/components/Glyphs";
+import { facetHref, githubRepoUrl, projectHref, taskHref } from "@/lib/taskMap";
 import { Section, type Store } from "./ProjectDetailClient";
 
 function useEntries(store: Store) {
@@ -151,7 +153,19 @@ export function ChangelogTab({ store }: { store: Store }) {
           groups.map(([label, items]) => (
             <section key={label} className="mb-8">
               <div className="hairline-accent-sm mb-3">
-                <span className="mono-label">{label}</span>
+                {label.startsWith("v") && project.owner && project.repo ? (
+                  <a
+                    href={githubRepoUrl(project.owner, project.repo, "/releases")}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mono-label hover:text-fg"
+                    title="Releases on GitHub"
+                  >
+                    {label} ↗
+                  </a>
+                ) : (
+                  <span className="mono-label">{label}</span>
+                )}
               </div>
               <ul className="flex flex-col">
                 {items.map((e) => (
@@ -175,8 +189,8 @@ export function ChangelogTab({ store }: { store: Store }) {
                     </div>
                     <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0">{fmtDate(e.entry_date)}</span>
                     {e.source_url && !e.source_url.startsWith("mythic-import://") ? (
-                      <a href={e.source_url} target="_blank" rel="noreferrer" className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent">
-                        ↗
+                      <a href={e.source_url} target="_blank" rel="noreferrer" className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent" title={e.source_url}>
+                        {e.body && /^(#\d+|[0-9a-f]{7,40})$/.test(e.body.trim()) ? `${e.body.trim().slice(0, 9)} ↗` : "↗"}
                       </a>
                     ) : null}
                     {e.evidence_url ? (
@@ -225,7 +239,13 @@ export function ChangelogTab({ store }: { store: Store }) {
           ) : (
             <div>
               <div className="flex flex-wrap gap-1.5 mb-3">
-                <Chip>{gh.open_issues} open issues/PRs</Chip>
+                {project.owner && project.repo ? (
+                  <a href={githubRepoUrl(project.owner, project.repo, "/issues")} target="_blank" rel="noreferrer">
+                    <Chip>{gh.open_issues} open issues/PRs ↗</Chip>
+                  </a>
+                ) : (
+                  <Chip>{gh.open_issues} open issues/PRs</Chip>
+                )}
                 {gh.latest_release ? (
                   <a href={gh.latest_release.url} target="_blank" rel="noreferrer">
                     <Chip tone="accent">release {gh.latest_release.tag}</Chip>
@@ -281,7 +301,16 @@ function GhList({
         return (
           <label key={r.url} className={`flex items-start gap-2 px-3 py-1.5 text-[0.78rem] ${done ? "opacity-40" : "cursor-pointer hover:bg-[rgba(139,115,85,0.05)]"}`}>
             <input type="checkbox" disabled={done} checked={picked.has(r.url)} onChange={(e) => onPick(r.url, e.target.checked)} className="mt-1" />
-            <span className="flex-1">{r.title}</span>
+            <a
+              href={r.url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1 hover:text-accent"
+              title="Open on GitHub"
+            >
+              {r.title}
+            </a>
             <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0">{fmtDate(r.date)}</span>
           </label>
         );
@@ -298,6 +327,15 @@ const DECISION_TONE: Record<DecisionStatus, "accent" | "dim" | "solid"> = {
   superseded: "dim",
   rejected: "dim",
 };
+
+/** An entry's source (PR, commit, doc); import keys aren't URLs and stay hidden. */
+function SourceLink({ href }: { href: string | null | undefined }) {
+  return href && /^https?:\/\//.test(href) ? (
+    <a href={href} target="_blank" rel="noreferrer" className="inline-block mt-2 mr-4 font-mono text-[0.58rem] text-fg-ghost hover:text-accent">
+      SOURCE ↗
+    </a>
+  ) : null;
+}
 
 function EvidenceSource({ href }: { href: string | null | undefined }) {
   return href ? (
@@ -385,7 +423,13 @@ export function DecisionsTab({ store }: { store: Store }) {
         {ordered.map((e) => (
           <article key={e.id} id={`entry-${e.id}`} className={`scroll-mt-24 group border border-line bg-bg/85 p-5 ${e.decision_status === "superseded" || e.decision_status === "rejected" ? "opacity-60" : ""}`}>
             <div className="flex items-baseline gap-3 mb-3">
-              <span className="font-mono text-[0.58rem] text-fg-ghost">ADR-{String(list.length - list.indexOf(e)).padStart(3, "0")}</span>
+              <Link
+                href={projectHref(store.project.id, "decisions", e.id)}
+                className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent"
+                title="Permalink to this decision"
+              >
+                ADR-{String(list.length - list.indexOf(e)).padStart(3, "0")}
+              </Link>
               <h3 className="serif-display text-[1.4rem] leading-tight flex-1">
                 <InlineText value={e.title} onSave={(title) => title && patch(e.id, { title })} />
               </h3>
@@ -401,7 +445,14 @@ export function DecisionsTab({ store }: { store: Store }) {
                 </select>
               </Chip>
               <span className="font-mono text-[0.58rem] text-fg-ghost">
-                {e.author ? `@${e.author} · ` : ""}
+                {e.author ? (
+                  <>
+                    <Link href={facetHref("agent", e.author)} className="hover:text-accent">
+                      @{e.author}
+                    </Link>
+                    {" · "}
+                  </>
+                ) : null}
                 {fmtDate(e.entry_date)}
               </span>
               <button onClick={() => remove(e.id)} className="text-fg-ghost hover:text-fg opacity-0 group-hover:opacity-100">
@@ -429,6 +480,7 @@ export function DecisionsTab({ store }: { store: Store }) {
                 </div>
               ))}
             </div>
+            <SourceLink href={e.source_url} />
             <EvidenceSource href={e.evidence_url} />
           </article>
         ))}
@@ -460,12 +512,18 @@ export function NotesTab({ store }: { store: Store }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
         {list.length === 0 ? <p className="text-fg-ghost text-sm">Ideas, research, loose ends. Nothing here yet.</p> : null}
         {list.map((e) => (
-          <div key={e.id} className="group border border-line bg-bg/85 p-4">
+          <div key={e.id} id={`entry-${e.id}`} className="group border border-line bg-bg/85 p-4 scroll-mt-24">
             <div className="flex items-baseline gap-2 mb-2">
               <div className="text-fg flex-1">
                 <InlineText value={e.title} onSave={(t) => t && patch(e.id, { title: t })} />
               </div>
-              <span className="font-mono text-[0.55rem] text-fg-ghost">{fmtDate(e.entry_date)}</span>
+              <Link
+                href={projectHref(store.project.id, "notes", e.id)}
+                className="font-mono text-[0.55rem] text-fg-ghost hover:text-accent"
+                title="Permalink to this note"
+              >
+                {fmtDate(e.entry_date)}
+              </Link>
               <button onClick={() => remove(e.id)} className="text-fg-ghost hover:text-fg opacity-0 group-hover:opacity-100">
                 <GlyphClose size={10} />
               </button>
@@ -473,6 +531,7 @@ export function NotesTab({ store }: { store: Store }) {
             <div className="text-[0.82rem] text-fg-dim leading-[1.6]">
               <InlineText multiline value={e.body} placeholder="…" onSave={(b) => patch(e.id, { body: b })} />
             </div>
+            <SourceLink href={e.source_url} />
             <EvidenceSource href={e.evidence_url} />
           </div>
         ))}
@@ -495,21 +554,26 @@ export function NotesTab({ store }: { store: Store }) {
 export function ActivityTab({ store }: { store: Store }) {
   const { entries, tasks, milestones, project } = store;
   const feed = useMemo(() => {
-    const rows: Array<{ at: string; kind: string; text: string }> = [
-      { at: project.created_at, kind: "created", text: "Project created" },
+    // Each row carries where it leads: the entry, the task map or the plan.
+    const tab: Partial<Record<Entry["kind"], string>> = { changelog: "changelog", decision: "decisions", note: "notes" };
+    const rows: Array<{ at: string; kind: string; text: string; who: string | null; href: string | null }> = [
+      { at: project.created_at, kind: "created", text: "Project created", who: null, href: projectHref(project.id, "setup") },
       ...entries.map((e) => ({
         at: e.created_at,
         kind: e.kind,
+        who: e.author,
         text:
-          (e.author ? `@${e.author} · ` : "") +
           (e.kind === "status" ? `Status ${e.title}` : e.title) +
           (e.body && (e.kind === "status" || e.kind === "progress") ? `: ${e.body}` : ""),
+        href: tab[e.kind] ? projectHref(project.id, tab[e.kind], e.id) : null,
       })),
-      ...tasks.filter((t) => t.done_at).map((t) => ({ at: t.done_at!, kind: "done", text: `${t.agent ? `@${t.agent} · ` : ""}${t.title}` })),
-      ...milestones.filter((m) => m.done_at).map((m) => ({ at: m.done_at!, kind: "milestone", text: `Milestone reached: ${m.title}` })),
+      ...tasks.filter((t) => t.done_at).map((t) => ({ at: t.done_at!, kind: "done", text: t.title, who: t.agent, href: taskHref(t.id) })),
+      ...milestones
+        .filter((m) => m.done_at)
+        .map((m) => ({ at: m.done_at!, kind: "milestone", text: `Milestone reached: ${m.title}`, who: null, href: projectHref(project.id, "plan") })),
     ];
     return rows.sort((a, b) => b.at.localeCompare(a.at));
-  }, [entries, tasks, milestones, project.created_at]);
+  }, [entries, tasks, milestones, project.created_at, project.id]);
 
   return (
     <ol className="relative border-l border-line ml-2">
@@ -520,7 +584,23 @@ export function ActivityTab({ store }: { store: Store }) {
             {fmtDate(r.at)}
           </span>
           <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent w-20 shrink-0">{r.kind}</span>
-          <span className="text-[0.88rem] text-fg">{r.text}</span>
+          <span className="text-[0.88rem] text-fg">
+            {r.who ? (
+              <>
+                <Link href={facetHref("agent", r.who)} className="hover:text-accent">
+                  @{r.who}
+                </Link>
+                {" · "}
+              </>
+            ) : null}
+            {r.href ? (
+              <Link href={r.href} className="hover:text-accent">
+                {r.text}
+              </Link>
+            ) : (
+              r.text
+            )}
+          </span>
         </li>
       ))}
     </ol>

@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import { projectHref } from "@/lib/taskMap";
 import { api } from "@/components/ProjectBits";
 import { importEntryIdentity, nameMatchCompatible, projectNameIsAmbiguous, safeImportSourceUrl, sameResolvedOwner, validImportDate, validImportProjectKey } from "@/lib/importIdentity";
 
@@ -185,6 +187,8 @@ function makePlan(text: string, current: ImportProjectState[]): Plan {
 export default function ImportClient({ projects }: { projects: ImportProjectState[] }) {
   const [raw, setRaw] = useState("");
   const [message, setMessage] = useState("");
+  // Projects the last import wrote to, so the result links straight to them.
+  const [touched, setTouched] = useState<Array<{ id: string; name: string }>>([]);
   const [busy, setBusy] = useState(false);
   const plan = useMemo(() => raw.trim() ? makePlan(raw, projects) : null, [raw, projects]);
 
@@ -193,25 +197,30 @@ export default function ImportClient({ projects }: { projects: ImportProjectStat
     setBusy(true); setMessage("");
     const resolved = new Map(plan.matches);
     try {
+      const wrote = new Map<string, string>();
       if (plan.projectsToCreate.length) {
         const result = await api<{ created: Array<{ id: string; name: string; source_key?: string | null; owner: string | null; repo: string | null }>; failed: Array<{ name: string; reason: string }> }>("/api/projects", "POST", { items: plan.projectsToCreate });
         if (result.failed.length) throw new Error(`Some project categories were not created: ${result.failed.map((f) => `${f.name} (${f.reason})`).join("; ")}. Reload and preview again to reconcile.`);
         for (const project of result.created) {
           const source = plan.projectsToCreate.find((p) => p.source_key === project.source_key);
+          wrote.set(project.id, project.name);
           if (source) resolved.set(source.source_key, { id: project.id, name: project.name, owner: project.owner, repo: project.repo, source_key: project.source_key ?? null, status: source.status || "planned", task_source_keys: [], entry_source_urls: [] });
         }
       }
       for (const [projectKey, rows] of plan.tasksToCreate) {
         const project = resolved.get(projectKey) || projects.find((p) => p.source_key === projectKey || `${p.owner}/${p.repo}`.toLowerCase() === projectKey.toLowerCase());
         if (!project) throw new Error(`Project mapping disappeared for ${projectKey}. Reload and preview again.`);
+        wrote.set(project.id, project.name);
         await api(`/api/projects/${project.id}/tasks`, "POST", { items: rows.map(({ project_key: _projectKey, ...task }) => task) });
       }
       for (const [projectKey, rows] of plan.entriesToCreate) {
         const project = resolved.get(projectKey) || projects.find((p) => p.source_key === projectKey || `${p.owner}/${p.repo}`.toLowerCase() === projectKey.toLowerCase());
         if (!project) throw new Error(`Project mapping disappeared for ${projectKey}. Reload and preview again.`);
+        wrote.set(project.id, project.name);
         await api(`/api/projects/${project.id}/entries`, "POST", { items: rows.map((entry) => ({ kind: entry.kind, title: entry.title, body: entry.body, entry_date: entry.entry_date, source_url: importEntryIdentity(entry.source_key), evidence_url: entry.evidence_url ?? null, decision_status: entry.decision_status ?? (entry.kind === "decision" ? "proposed" : null) })) });
       }
       setMessage(`Import completed. Created ${plan.projectsToCreate.length} project categories, attempted ${Array.from(plan.tasksToCreate.values()).reduce((n, x) => n + x.length, 0)} new tasks, and added ${Array.from(plan.entriesToCreate.values()).reduce((n, x) => n + x.length, 0)} log entries. Existing keyed records skipped: ${plan.taskSkipped} tasks, ${plan.entrySkipped} entries. Reload this page before another import to read back current state.`);
+      setTouched(Array.from(wrote, ([id, name]) => ({ id, name })));
       setRaw("");
     } catch (err) {
       setMessage(err instanceof Error ? `Import stopped: ${err.message}` : "Import stopped. Reload and inspect the private dashboard before retrying.");
@@ -239,17 +248,17 @@ export default function ImportClient({ projects }: { projects: ImportProjectStat
         </div>
         <p className="mono-label-dim mb-4">Existing stable-key records skipped: {plan.taskSkipped} tasks, {plan.entrySkipped} entries.</p>
         {plan.errors.length ? <div className="border border-line bg-bg-warm/70 p-4 mb-4"><div className="mono-label mb-2">Resolve before import</div><ul className="list-disc pl-5 space-y-1 text-sm text-fg-dim">{plan.errors.map((error, i) => <li key={`${i}-${error}`}>{error}</li>)}</ul></div> : null}
-        <div className="space-y-2 mb-5">{plan.projectsToCreate.map((project) => <div key={project.source_key} className="text-sm text-fg-dim">New category <strong className="text-fg">{project.name}</strong> · {project.source_key}</div>)}{Array.from(plan.tasksToCreate.entries()).map(([key, tasks]) => <div key={key} className="text-sm text-fg-dim">{key}: {tasks.length} new tasks</div>)}</div>
+        <div className="space-y-2 mb-5">{plan.projectsToCreate.map((project) => <div key={project.source_key} className="text-sm text-fg-dim">New category <strong className="text-fg">{project.name}</strong> · {project.source_key}</div>)}{Array.from(plan.tasksToCreate.entries()).map(([key, tasks]) => { const target = plan.matches.get(key); return <div key={key} className="text-sm text-fg-dim">{target ? <Link href={projectHref(target.id)} className="text-fg hover:text-accent">{key}</Link> : key}: {tasks.length} new tasks</div>; })}</div>
         <div className="border-t border-line pt-4 mt-4">
           <div className="mono-label-dim mb-2">Project mappings</div>
           <div className="space-y-2">{plan.manifest.projects.map((project) => {
             const existing = plan.matches.get(project.source_key);
-            return <div key={project.source_key} className="text-xs text-fg-dim"><span className="text-fg">{project.name}</span> · {project.source_key} → {existing ? `${existing.name} (${existing.id})` : "create in private store"}</div>;
+            return <div key={project.source_key} className="text-xs text-fg-dim"><span className="text-fg">{project.name}</span> · {project.source_key} → {existing ? <Link href={projectHref(existing.id)} className="text-fg hover:text-accent underline-offset-2 hover:underline">{existing.name} ({existing.id}) →</Link> : "create in private store"}</div>;
           })}</div>
         </div>
         <button type="button" disabled={busy || !!plan.errors.length || !(plan.projectsToCreate.length || plan.tasksToCreate.size || plan.entriesToCreate.size)} onClick={importNow} className="border border-accent px-5 py-3 font-mono text-xs uppercase tracking-[0.18em] text-accent disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent/10">{busy ? "Importing…" : "Import reviewed manifest"}</button>
       </section> : null}
-      {message ? <div role="status" className="border border-line bg-bg-warm/70 p-4 text-sm leading-relaxed text-fg-dim">{message}</div> : null}
+      {message ? <div role="status" className="border border-line bg-bg-warm/70 p-4 text-sm leading-relaxed text-fg-dim">{message}{touched.length ? <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{touched.map((p) => <Link key={p.id} href={projectHref(p.id)} className="font-mono text-xs text-accent hover:text-fg">{p.name} →</Link>)}</div> : null}</div> : null}
     </div>
   );
 }
