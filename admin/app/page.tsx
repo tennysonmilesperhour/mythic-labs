@@ -143,7 +143,7 @@ export default async function Overview() {
         <Section
           title="Only you can do"
           count={mine.length + calls}
-          what={`Tasks assigned to @${ME} plus decisions and fixes waiting on you. Each opens a task map with the steps, links and text to paste.`}
+          what={`Tasks assigned to @${ME} or noted as an owner step, plus decisions and fixes waiting on you. Each opens a task map with the steps, links and text to paste.`}
           action={{ href: "/tasks", label: "Open my tasks" }}
         >
           {mine.length ? (
