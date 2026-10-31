@@ -12,7 +12,7 @@ const REDEPLOY: Step = {
 };
 
 export default function SourceFix({ source, brain }: { source: string; brain: string }) {
-  const map: Record<string, { title: string; why: string; done: string; steps: Step[]; links: Array<[string, string]> }> = {
+  const map: Record<string, { title: string; why: React.ReactNode; done: string; steps: Step[]; links: Array<[string, string]> }> = {
     store: {
       title: "Connect the project store",
       why: "Projects, tasks and logs live as files in a private GitHub repo. Without it, every project section is empty.",
@@ -38,7 +38,13 @@ export default function SourceFix({ source, brain }: { source: string; brain: st
     },
     market: {
       title: "Connect the plugin marketplace",
-      why: `The dashboard reads .claude-plugin/marketplace.json from ${brain}. Plugins, Brain and Authoring depend on it.`,
+      why: (
+        <>
+          The dashboard reads .claude-plugin/marketplace.json from{" "}
+          <a href={`https://github.com/${brain}`} target="_blank" rel="noreferrer" className="text-accent hover:text-fg">{brain} ↗</a>.
+          Plugins, Brain and Authoring depend on it.
+        </>
+      ),
       done: "Overview shows Plugin marketplace ● Connected with the plugin count.",
       steps: [
         { text: `Check the file exists on the default branch of ${brain}.`, url: `https://github.com/${brain}/blob/main/.claude-plugin/marketplace.json` },

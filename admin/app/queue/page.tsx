@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { loadAll } from "@/lib/projects";
 import type { ProjectDetail, Task } from "@/lib/projectTypes";
-import { taskHref } from "@/lib/taskMap";
+import { extractUrls, repoFileLinks, taskHref } from "@/lib/taskMap";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +49,41 @@ function TaskCard({ project, task }: { project: ProjectDetail; task: Task }) {
           {task.title} →
         </Link>
       </h3>
-      {task.notes ? <p className="text-fg-dim text-sm leading-relaxed mt-2 whitespace-pre-wrap">{task.notes}</p> : null}
+      {task.notes ? (
+        <p className="text-fg-dim text-sm leading-relaxed mt-2 whitespace-pre-wrap break-words">
+          <Linked text={task.notes} project={project} />
+        </p>
+      ) : null}
       {task.due_date ? <p className="mono-label-dim mt-3">Due {task.due_date}</p> : null}
       <p className="text-fg-ghost text-xs leading-relaxed mt-3">{laneNotes[lane]}</p>
     </article>
+  );
+}
+
+/** Notes with their URLs and repo file paths turned into links. */
+function Linked({ text, project }: { text: string; project: ProjectDetail }) {
+  const targets = new Map<string, string>();
+  for (const url of extractUrls(text)) targets.set(url, url);
+  for (const l of repoFileLinks(project.project, text)) {
+    if (l.label.startsWith("Run ")) continue;
+    const key = l.label.startsWith(".github/workflows/") ? l.label.slice(".github/workflows/".length) : l.label;
+    targets.set(key, l.url);
+  }
+  if (!targets.size) return <>{text}</>;
+  const keys = Array.from(targets.keys()).sort((a, b) => b.length - a.length);
+  const re = new RegExp(`(${keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+  return (
+    <>
+      {text.split(re).map((part, i) =>
+        targets.has(part) ? (
+          <a key={i} href={targets.get(part)} target="_blank" rel="noreferrer" className="text-accent hover:text-fg">
+            {part}
+          </a>
+        ) : (
+          part
+        )
+      )}
+    </>
   );
 }
 
@@ -84,8 +115,8 @@ export default async function QueuePage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line mb-10">
-            <div className="bg-bg p-4"><div className="mono-label-dim">Recorded tasks</div><div className="serif-display text-2xl mt-2">{rows.length}</div></div>
-            <div className="bg-bg p-4"><div className="mono-label-dim">Open, not paused</div><div className="serif-display text-2xl mt-2">{activeCount}</div></div>
+            <Link href="/projects?view=list" className="bg-bg p-4 hover:bg-bg-warm"><div className="mono-label-dim">Recorded tasks</div><div className="serif-display text-2xl mt-2">{rows.length}</div></Link>
+            <Link href="#needs-investigation" className="bg-bg p-4 hover:bg-bg-warm"><div className="mono-label-dim">Open, not paused</div><div className="serif-display text-2xl mt-2">{activeCount}</div></Link>
             <div className="bg-bg p-4"><div className="mono-label-dim">Runnable now</div><div className="serif-display text-2xl mt-2">0</div></div>
             <div className="bg-bg p-4"><div className="mono-label-dim">Approval controls</div><div className="font-mono text-sm mt-3 text-fg-dim">Not enabled</div></div>
           </div>

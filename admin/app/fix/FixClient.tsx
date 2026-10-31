@@ -16,7 +16,8 @@ import {
   type ProjectDetail,
   type Task,
 } from "@/lib/projectTypes";
-import { repoLinks, taskHref, toolLinks } from "@/lib/taskMap";
+import { ME, facetHref, projectHref, repoLinks, taskHref, toolLinks } from "@/lib/taskMap";
+import SubLink from "@/components/SubLink";
 import { api, btnGhost, btnPrimary, inputCls } from "@/components/ProjectBits";
 import CopyBlock from "@/components/CopyBlock";
 import { INSTRUCTIONS_TEMPLATE } from "../projects/[id]/ProjectDetailClient";
@@ -142,6 +143,7 @@ export default function FixClient({
         return (
           <DateFix
             label="Project target"
+            labelHref={projectHref(project.id)}
             current={project.target_date}
             saving={saving}
             onSave={(target_date) => patchProject({ target_date })}
@@ -155,6 +157,7 @@ export default function FixClient({
         return (
           <DateFix
             label={`Milestone: ${m.title}`}
+            labelHref={planHref}
             current={m.target_date}
             saving={saving}
             onSave={(target_date) => patchMilestone(m.id, { target_date })}
@@ -198,10 +201,17 @@ export default function FixClient({
         <section>
           <div className="hairline-accent-sm mb-3"><span className="mono-label">Project</span></div>
           <dl className="flex flex-col gap-2 text-[0.82rem] text-fg-dim">
-            <div>Status: <span className="text-fg">{project.status}</span> · {project.priority}</div>
+            <div>
+              Status:{" "}
+              <Link href={`/projects?view=list&status=${project.status}`} className="text-fg hover:text-accent">{project.status}</Link>
+              {" · "}
+              {project.priority}
+            </div>
             {project.next_action ? <div>Next action: <span className="text-fg">{project.next_action}</span></div> : null}
             {project.summary ? <div>{project.summary}</div> : null}
-            <div>{open.length} open tasks · {ready.length} ready</div>
+            <div>
+              <Link href={planHref} className="hover:text-accent">{open.length} open tasks · {ready.length} ready</Link>
+            </div>
           </dl>
           <div className="flex flex-col mt-3">
             <Link href={planHref} className="py-1 text-[0.85rem] text-fg hover:text-accent">Plan →</Link>
@@ -266,7 +276,13 @@ function Decision({
   return (
     <div className="flex flex-col gap-5">
       <div className="font-mono text-[0.6rem] text-fg-ghost">
-        {e.author ? `Proposed by @${e.author} · ` : ""}{fmtDate(e.entry_date)} · status <span className="text-fg">{e.decision_status}</span>
+        {e.author ? (
+          <>
+            Proposed by{" "}
+            {e.author === ME ? `@${e.author}` : <Link href={facetHref("agent", e.author)} className="hover:text-accent">@{e.author}</Link>}
+            {" · "}
+          </>
+        ) : null}{fmtDate(e.entry_date)} · status <span className="text-fg">{e.decision_status}</span>
         {e.source_url ? <a href={e.source_url} target="_blank" rel="noreferrer" className="ml-3 text-accent">source ↗</a> : null}
       </div>
       {fields.filter(([, v]) => v).map(([k, v]) => (
@@ -316,7 +332,15 @@ function Instructions({ project, saving, onSave }: { project: Project; saving: b
   const [v, setV] = useState(project.agent_instructions || INSTRUCTIONS_TEMPLATE);
   return (
     <div className="flex flex-col gap-3">
-      <div className="font-mono text-[0.6rem] text-fg-ghost">Agents on this project: {project.agents.map((a) => `@${a}`).join(", ")}</div>
+      <div className="font-mono text-[0.6rem] text-fg-ghost">
+        Agents on this project:{" "}
+        {project.agents.map((a, i) => (
+          <span key={a}>
+            {i ? ", " : ""}
+            {a === ME ? `@${a}` : <Link href={facetHref("agent", a)} className="hover:text-accent">@{a}</Link>}
+          </span>
+        ))}
+      </div>
       <p className="text-fg-dim text-sm">Started from the template. Edit the commands and rules to match the repo, then save.</p>
       <textarea value={v} onChange={(e) => setV(e.target.value)} rows={9} className={`${inputCls} leading-relaxed`} />
       {project.owner && project.repo ? (
@@ -377,6 +401,7 @@ function StillGoing({
 
 function DateFix({
   label,
+  labelHref,
   current,
   saving,
   onSave,
@@ -384,6 +409,8 @@ function DateFix({
   extra,
 }: {
   label: string;
+  /** Where the thing being re-dated lives. */
+  labelHref: string;
   current: string | null;
   saving: boolean;
   onSave: (d: string | null) => void;
@@ -393,7 +420,9 @@ function DateFix({
   const [v, setV] = useState(current ?? "");
   return (
     <div className="flex flex-col gap-4">
-      <div className="mono-label-dim">{label}: was {fmtDate(current)} ({dueLabel(current)})</div>
+      <div className="mono-label-dim">
+        <Link href={labelHref} className="hover:text-accent">{label}</Link>: was {fmtDate(current)} ({dueLabel(current)})
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <input type="date" value={v} onChange={(e) => setV(e.target.value)} className="bg-transparent font-mono text-xs text-fg border border-line px-3 py-2" />
         <button className={btnPrimary} disabled={saving || !v || v === current} onClick={() => onSave(v)}>Move date</button>
@@ -448,7 +477,14 @@ function TaskList({ tasks, all, title }: { tasks: Task[]; all: Task[]; title?: s
             <li key={t.id}>
               <Link href={taskHref(t.id, t.status === "blocked" ? "blocked" : undefined)} className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent">
                 <span className="flex-1 min-w-0 truncate text-[0.88rem]">{t.title}</span>
-                <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0 max-w-[14rem] truncate">{t.agent ? `@${t.agent} · ` : ""}{why}</span>
+                <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0 max-w-[14rem] truncate">{t.agent && t.agent !== ME ? (
+                    <>
+                      <SubLink href={facetHref("agent", t.agent)}>@{t.agent}</SubLink>
+                      {" · "}
+                    </>
+                  ) : t.agent ? `@${t.agent} · ` : ""}
+                  {why}
+                </span>
               </Link>
             </li>
           );

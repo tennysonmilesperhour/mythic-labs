@@ -5,7 +5,8 @@ import { fetchMarketplace } from "@/lib/brain";
 import { AttentionList, TaskRefList } from "@/components/Glance";
 import { Freshness } from "@/components/OverviewBits";
 import { StatusDot } from "@/components/ProjectBits";
-import { ME, fixHref } from "@/lib/taskMap";
+import { ME, facetHref, fixHref, projectHref } from "@/lib/taskMap";
+import SubLink from "@/components/SubLink";
 import {
   STALE_DAYS,
   STALLED_CLAIM_DAYS,
@@ -276,7 +277,10 @@ export default async function Overview() {
                           </span>
                           <span className="flex-1 min-w-0 truncate text-[0.85rem]">
                             {m.title}
-                            <span className="font-mono text-[0.58rem] text-fg-ghost"> · {m.project_name}</span>
+                            <span className="font-mono text-[0.58rem] text-fg-ghost">
+                              {" · "}
+                              <SubLink href={projectHref(m.project_id)}>{m.project_name}</SubLink>
+                            </span>
                           </span>
                           <span className="font-mono text-[0.58rem] text-fg-ghost tnum shrink-0">
                             {m.tasks_done}/{m.tasks_total} · {dueLabel(m.target_date)}
@@ -417,9 +421,14 @@ export default async function Overview() {
                   <span className="flex-1 min-w-0 truncate text-[0.85rem]">
                     {e.title}
                     <span className="font-mono text-[0.58rem] text-fg-ghost">
-                      {" "}· {e.project_name}
+                      {" "}· <SubLink href={projectHref(e.project_id)}>{e.project_name}</SubLink>
                       {e.version ? ` · v${e.version}` : ""}
-                      {e.author ? ` · @${e.author}` : ""}
+                      {e.author ? (
+                        <>
+                          {" · "}
+                          {e.author === ME ? `@${e.author}` : <SubLink href={facetHref("agent", e.author)}>@{e.author}</SubLink>}
+                        </>
+                      ) : null}
                     </span>
                   </span>
                   <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0 tnum">{fmtDate(e.entry_date)}</span>
@@ -456,7 +465,13 @@ function Section({
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 mb-1">
         <h2 className="text-[1.05rem] font-medium text-fg">
           {title}
-          {count !== undefined ? <span className="ml-2 font-mono text-[0.75rem] text-fg-ghost tnum">{count}</span> : null}
+          {count === undefined ? null : action ? (
+            <Link href={action.href} className="ml-2 font-mono text-[0.75rem] text-fg-ghost tnum hover:text-accent">
+              {count}
+            </Link>
+          ) : (
+            <span className="ml-2 font-mono text-[0.75rem] text-fg-ghost tnum">{count}</span>
+          )}
         </h2>
         {action ? (
           <Link

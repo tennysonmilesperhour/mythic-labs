@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { getHub, loadAll } from "@/lib/projects";
 import { dueLabel, isOverdue, isReady, waitingOn, type Task } from "@/lib/projectTypes";
-import { ME, attentionHref, fixHref, isMine, taskHref } from "@/lib/taskMap";
+import { ME, attentionHref, facetHref, fixHref, isMine, projectHref, taskHref } from "@/lib/taskMap";
+import SubLink from "@/components/SubLink";
 
 export const dynamic = "force-dynamic";
 
-type Row = Task & { project_name: string; note: string };
+/** `waits` are the open tasks this one is waiting on, linked from the row. */
+type Row = Task & { project_name: string; note: string; waits: Task[] };
 
 export default async function MyTasksPage() {
   let error: string | null = null;
@@ -20,7 +22,9 @@ export default async function MyTasksPage() {
   const live = all.filter((d) => d.project.status !== "paused");
   const rows = (pick: (t: Task, ts: Task[]) => boolean, note: (t: Task, ts: Task[]) => string): Row[] =>
     live.flatMap((d) =>
-      d.tasks.filter((t) => pick(t, d.tasks)).map((t) => ({ ...t, project_name: d.project.name, note: note(t, d.tasks) }))
+      d.tasks
+        .filter((t) => pick(t, d.tasks))
+        .map((t) => ({ ...t, project_name: d.project.name, note: note(t, d.tasks), waits: t.status === "todo" ? waitingOn(t, d.tasks) : [] }))
     );
   const open = (t: Task) => t.status !== "done";
   const due = (t: Task) => (t.due_date ? ` · ${dueLabel(t.due_date)}` : "");
@@ -31,9 +35,9 @@ export default async function MyTasksPage() {
   );
   const waiting = rows(
     (t, ts) => isMine(t) && open(t) && t.status !== "doing" && !isReady(t, ts),
-    (t, ts) => (t.status === "blocked" ? "blocked" : `after ${waitingOn(t, ts).map((w) => w.title).join(", ") || "subtasks"}`)
+    (t, ts) => (t.status === "blocked" ? "blocked" : waitingOn(t, ts).length ? "after" : "after subtasks")
   );
-  const blockedOthers = rows((t) => !isMine(t) && t.status === "blocked", (t) => (t.agent ? `@${t.agent} is stuck` : "blocked, unassigned"));
+  const blockedOthers = rows((t) => !isMine(t) && t.status === "blocked", (t) => (t.agent ? "is stuck" : "blocked, unassigned"));
   const unowned = rows((t) => open(t) && !t.agent && !isMine(t) && (t.priority === "critical" || isOverdue(t.due_date, false)), (t) => `${t.priority}${due(t)}, nobody assigned`);
   const calls = (hub?.attention ?? []).filter((a) => !a.task_id);
 
@@ -67,7 +71,13 @@ export default async function MyTasksPage() {
                       <span className="flex-1 min-w-0">
                         <span className="text-[0.88rem] text-fg">{a.title}</span>
                         <span className="block font-mono text-[0.58rem] text-fg-ghost truncate">
-                          {a.project_name ? `${a.project_name} · ` : ""}{a.detail}
+                          {a.project_name && a.project_id ? (
+                            <>
+                              <SubLink href={projectHref(a.project_id)}>{a.project_name}</SubLink>
+                              {" · "}
+                            </>
+                          ) : null}
+                          {a.detail}
                         </span>
                       </span>
                       <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent shrink-0">Open map →</span>
@@ -108,7 +118,22 @@ function Group({ title, rows, empty }: { title: string; rows: Row[]; empty: stri
               <Link href={taskHref(t.id, t.status === "blocked" ? "blocked" : undefined)} className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">
                 <span className="flex-1 min-w-0">
                   <span className="text-[0.88rem] text-fg">{t.title}</span>
-                  <span className="block font-mono text-[0.58rem] text-fg-ghost truncate">{t.project_name} · {t.note}</span>
+                  <span className="block font-mono text-[0.58rem] text-fg-ghost truncate">
+                    <SubLink href={projectHref(t.project_id)}>{t.project_name}</SubLink>
+                    {" · "}
+                    {t.status === "blocked" && t.agent && t.agent !== ME ? (
+                      <>
+                        <SubLink href={facetHref("agent", t.agent)}>@{t.agent}</SubLink>{" "}
+                      </>
+                    ) : null}
+                    {t.note}
+                    {t.waits.map((w, i) => (
+                      <span key={w.id}>
+                        {i ? ", " : " "}
+                        <SubLink href={taskHref(w.id)}>{w.title}</SubLink>
+                      </span>
+                    ))}
+                  </span>
                 </span>
                 <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent shrink-0">Open map →</span>
               </Link>

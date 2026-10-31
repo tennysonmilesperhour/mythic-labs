@@ -11,7 +11,8 @@ import {
   type TaskRef,
 } from "@/lib/projectTypes";
 import { StatusDot } from "./ProjectBits";
-import { attentionHref, taskHref } from "@/lib/taskMap";
+import { ME, attentionHref, facetHref, projectHref, taskHref } from "@/lib/taskMap";
+import SubLink from "./SubLink";
 
 const SEVERITY_MARK: Record<Severity, { mark: string; cls: string; label: string }> = {
   high: { mark: "■", cls: "text-fg", label: "needs you" },
@@ -53,7 +54,12 @@ export function AttentionList({
                 <span className="flex-1 min-w-0">
                   <span className="text-[0.88rem] text-fg">{a.title}</span>
                   <span className="block font-mono text-[0.58rem] text-fg-ghost truncate">
-                    {hideProject || !a.project_name ? "" : `${a.project_name} · `}
+                    {hideProject || !a.project_name || !a.project_id ? null : (
+                      <>
+                        <SubLink href={projectHref(a.project_id)}>{a.project_name}</SubLink>
+                        {" · "}
+                      </>
+                    )}
                     {a.detail}
                   </span>
                 </span>
@@ -106,9 +112,16 @@ export function TaskRefList({
               <StatusDot status={t.project_status} />
               <span className="flex-1 min-w-0 truncate text-[0.85rem]">
                 {t.title}
-                <span className="font-mono text-[0.58rem] text-fg-ghost"> · {t.project_name}</span>
+                <span className="font-mono text-[0.58rem] text-fg-ghost">
+                  {" · "}
+                  <SubLink href={projectHref(t.project_id)}>{t.project_name}</SubLink>
+                </span>
               </span>
-              {t.agent ? <span className="font-mono text-[0.58rem] text-accent shrink-0">@{t.agent}</span> : null}
+              {t.agent ? (
+                <span className="font-mono text-[0.58rem] text-accent shrink-0">
+                  {t.agent === ME ? `@${t.agent}` : <SubLink href={facetHref("agent", t.agent)}>@{t.agent}</SubLink>}
+                </span>
+              ) : null}
               <span className={`font-mono text-[0.58rem] shrink-0 w-16 text-right ${late ? "text-fg" : "text-fg-ghost"}`}>
                 {show === "due" ? dueLabel(t.due_date) : relTime(t.claimed_at ?? t.updated_at)}
               </span>
