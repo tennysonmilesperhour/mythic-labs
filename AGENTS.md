@@ -64,7 +64,7 @@ Colors are CSS variables (`app/globals.css`) consumed through Tailwind's config;
 cd admin
 npm run typecheck && npm test && npx next build
 node scripts/fake-github.mjs &   # fake GitHub Git Data API on :4010
-GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_DATA_OWNER=o PM_DATA_REPO=r PM_DATA_BRANCH=main \
+GITHUB_TOKEN=fake PM_GITHUB_API_URL=http://localhost:4010 PM_DATA_OWNER=o PM_DATA_REPO=r PM_DATA_BRANCH=main \
   PM_AGENT_API_ENABLED=true PM_AGENT_TOKEN=smoke-token npx next start &
 npm run smoke                    # agent loop, claim race, parallel writes, recurrence, inbox, undo, history
 ```

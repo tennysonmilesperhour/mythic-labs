@@ -1,6 +1,7 @@
 // End-to-end smoke test for the git-backed store and the agent API.
 // Start the fake (node scripts/fake-github.mjs), then the app with
-//   GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_AGENT_API_ENABLED=true PM_AGENT_TOKEN=smoke-token npm run build && npm start
+//   GITHUB_TOKEN=fake PM_GITHUB_API_URL=http://localhost:4010 PM_DATA_OWNER=o PM_DATA_REPO=r PM_DATA_BRANCH=main \
+//   PM_AGENT_API_ENABLED=true PM_AGENT_TOKEN=smoke-token npm run build && npm start
 // and run: node scripts/smoke.mjs [http://localhost:3000]
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';

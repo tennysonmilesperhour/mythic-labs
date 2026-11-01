@@ -8,8 +8,10 @@ export function gh(): Octokit {
   if (!token) {
     throw new Error("GITHUB_TOKEN env var missing.");
   }
-  // GITHUB_API_URL: GitHub Enterprise, or a local fake in tests.
-  cached = new Octokit({ auth: token, baseUrl: process.env.GITHUB_API_URL || undefined });
+  // PM_GITHUB_API_URL points at the fake GitHub in the smoke test; it wins over
+  // GITHUB_API_URL (GitHub Enterprise), which GitHub Actions sets to api.github.com
+  // on every job and does not let a workflow override.
+  cached = new Octokit({ auth: token, baseUrl: process.env.PM_GITHUB_API_URL || process.env.GITHUB_API_URL || undefined });
   return cached;
 }
 

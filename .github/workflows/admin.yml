@@ -52,9 +52,11 @@ jobs:
         run: npm run build
 
       - name: Smoke test against a fake GitHub
+        # GITHUB_API_URL is reserved by Actions (always api.github.com), so the
+        # app reads PM_GITHUB_API_URL first.
         env:
           GITHUB_TOKEN: fake
-          GITHUB_API_URL: http://localhost:4010
+          PM_GITHUB_API_URL: http://localhost:4010
           PM_DATA_OWNER: smoke
           PM_DATA_REPO: smoke-data
           PM_DATA_BRANCH: main

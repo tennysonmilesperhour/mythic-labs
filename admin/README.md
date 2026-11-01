@@ -104,7 +104,7 @@ Set these in the Vercel project (Settings, Environment Variables). `admin/.env.l
 | `PM_AGENT_API_ENABLED` | Production | `false` until you decide to let agents use the roadmap API; `true` turns it on. Anything other than the exact string `true` keeps it off. |
 | `PM_AGENT_TOKEN` | Production | A long random string, e.g. the output of `openssl rand -hex 32`. Required only when the agent API is enabled; agents send it as their `MYTHIC_PM_TOKEN`. |
 
-Do not set these on Vercel: `PM_DATA_DIR` (local development only; a Vercel deployment with it set refuses to start) and `GITHUB_API_URL` (only for the fake GitHub in the smoke test). `VERCEL_ENV` is set by Vercel itself.
+Do not set these on Vercel: `PM_DATA_DIR` (local development only; a Vercel deployment with it set refuses to start) and `PM_GITHUB_API_URL` (only for the fake GitHub in the smoke test; `GITHUB_API_URL` is the GitHub Enterprise override). `VERCEL_ENV` is set by Vercel itself.
 
 The dashboard has no login of its own, so keep Vercel Deployment Protection on (Settings, Deployment Protection). If agents call the API, create a Protection Bypass for Automation secret there and give it to them as `MYTHIC_PM_BYPASS`.
 
@@ -185,12 +185,12 @@ npm run build
 
 ```bash
 node scripts/fake-github.mjs &        # port 4010
-GITHUB_TOKEN=fake GITHUB_API_URL=http://localhost:4010 PM_DATA_OWNER=o PM_DATA_REPO=r PM_DATA_BRANCH=main \
+GITHUB_TOKEN=fake PM_GITHUB_API_URL=http://localhost:4010 PM_DATA_OWNER=o PM_DATA_REPO=r PM_DATA_BRANCH=main \
   PM_AGENT_API_ENABLED=true PM_AGENT_TOKEN=smoke-token sh -c 'npm run build && npm start' &
 npm run smoke                         # expects: all checks passed
 ```
 
-`.github/workflows/admin.yml` runs the same four steps on every pull request that touches `admin/`.
+`.github/workflows/admin.yml` runs the same four steps on every pull request that touches `admin/`. The smoke step sets `PM_GITHUB_API_URL` rather than `GITHUB_API_URL`, which GitHub Actions reserves.
 
 ---
 
