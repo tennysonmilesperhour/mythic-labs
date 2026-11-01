@@ -625,7 +625,12 @@ export function ActivityTab({ store }: { store: Store }) {
 
   return (
     <>
-    <UpdateForm store={store} />
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+      <UpdateForm store={store} />
+      <Link href={`/history?project=${project.id}`} className="font-mono text-[0.6rem] tracking-[0.18em] uppercase text-accent hover:text-fg mb-6" title="Every commit that touched this project, with preview and restore">
+        Versions and restore →
+      </Link>
+    </div>
     <ol className="relative border-l border-line ml-2">
       {feed.map((r, i) => (
         <li key={i} className="pl-6 py-2 relative flex items-baseline gap-4">
