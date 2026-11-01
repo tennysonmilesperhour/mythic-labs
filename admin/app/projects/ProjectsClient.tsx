@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  HEALTH_LEVELS,
+  HEALTH_META,
   PRIORITY_RANK,
   SOON_DAYS,
   STATUSES,
@@ -18,6 +20,7 @@ import {
   type Project,
   type ProjectStatus,
   type ProjectSummary,
+  type HealthLevel,
   type TimelineItem,
 } from "@/lib/projectTypes";
 import { AttentionList, TaskRefList } from "@/components/Glance";
@@ -34,9 +37,12 @@ import {
 } from "@/components/ProjectBits";
 import { GlyphPlus } from "@/components/Glyphs";
 import SubLink from "@/components/SubLink";
+import CalendarView from "@/components/CalendarView";
+import { HealthChip } from "@/components/HealthChip";
+import { PLAN_TEMPLATES } from "@/lib/templates";
 import { attentionHref, facetHref, githubRepoUrl, projectHref, toolLinks } from "@/lib/taskMap";
 
-type View = "board" | "list" | "timeline";
+type View = "board" | "list" | "timeline" | "calendar";
 type GhRepo = {
   owner: string;
   repo: string;
@@ -52,12 +58,18 @@ export default function ProjectsClient({
   initialView = "board",
   initialStatus = "all",
   initialFacet = "",
+  initialHealth = "",
+  initialPanel = "none",
 }: {
   hub: Hub;
   initialView?: View;
   initialStatus?: ProjectStatus | "all";
   /** "agent:x", "tool:x" or "tag:x" from ?facet=, so chips elsewhere can link here. */
   initialFacet?: string;
+  /** ?health= filter from the overview's health counts. */
+  initialHealth?: HealthLevel | "";
+  /** ?new=1 opens the new-project form (the command palette uses it). */
+  initialPanel?: "none" | "new" | "import";
 }) {
   const router = useRouter();
   const { timeline } = hub;
@@ -70,7 +82,10 @@ export default function ProjectsClient({
   const [facet, setFacet] = useState(initialFacet);
   useEffect(() => setFacet(initialFacet), [initialFacet]);
   useEffect(() => setStatusFilter(initialStatus), [initialStatus]);
-  const [panel, setPanel] = useState<"none" | "new" | "import">("none");
+  const [healthFilter, setHealthFilter] = useState<HealthLevel | "">(initialHealth);
+  useEffect(() => setHealthFilter(initialHealth), [initialHealth]);
+  const [panel, setPanel] = useState<"none" | "new" | "import">(initialPanel);
+  useEffect(() => setPanel(initialPanel), [initialPanel]);
   const [flash, setFlash] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
@@ -88,6 +103,7 @@ export default function ProjectsClient({
     const q = search.trim().toLowerCase();
     return projects
       .filter((p) => statusFilter === "all" || p.status === statusFilter)
+      .filter((p) => !healthFilter || p.health.level === healthFilter)
       .filter((p) => {
         if (!facet) return true;
         const [kind, val] = [facet.slice(0, facet.indexOf(":")), facet.slice(facet.indexOf(":") + 1)];
@@ -104,7 +120,7 @@ export default function ProjectsClient({
             .includes(q)
       )
       .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || a.sort_order - b.sort_order);
-  }, [projects, statusFilter, facet, search]);
+  }, [projects, statusFilter, healthFilter, facet, search]);
 
   const live = projects.filter((p) => p.status !== "paused");
 
@@ -178,8 +194,8 @@ export default function ProjectsClient({
           <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line mb-8">
             <Pulse label="Needs you" value={needsYou} warn={needsYou > 0} sub={`${hub.attention.length} flags total`} href="/tasks" />
             <Pulse label="In motion" value={counts.active + counts.building} sub="active + building" href="/projects?view=list&status=active" />
-            <Pulse label="In progress" value={hub.inProgress.length} sub="tasks being worked" href="/queue#in-progress-verify" />
-            <Pulse label="Ready" value={ready} sub="unblocked, can start now" href="/queue#needs-investigation" />
+            <Pulse label="In progress" value={hub.inProgress.length} sub="tasks being worked" href="/queue?status=doing" />
+            <Pulse label="Ready" value={ready} sub="unblocked, can start now" href="/queue?ready=1" />
             <Pulse label={`Due · ${SOON_DAYS}d`} value={hub.upcoming.length + msSoon.length} sub={`${msSoon.length} milestones`} href="#due-soon" />
           </div>
 
@@ -230,6 +246,19 @@ export default function ProjectsClient({
           />
         </div>
         <select
+          value={healthFilter}
+          onChange={(e) => setHealthFilter(e.target.value as HealthLevel | "")}
+          className="bg-bg/70 font-mono text-[0.62rem] text-fg-dim px-3 outline-none"
+          aria-label="Health"
+        >
+          <option value="">any health</option>
+          {HEALTH_LEVELS.map((h) => (
+            <option key={h} value={h}>
+              {HEALTH_META[h].label.toLowerCase()}
+            </option>
+          ))}
+        </select>
+        <select
           value={facet}
           onChange={(e) => setFacet(e.target.value)}
           className="bg-bg/70 font-mono text-[0.62rem] text-fg-dim px-3 outline-none"
@@ -245,7 +274,7 @@ export default function ProjectsClient({
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div className="inline-flex gap-px bg-line border border-line">
-          {(["board", "list", "timeline"] as const).map((v) => (
+          {(["board", "list", "timeline", "calendar"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -327,6 +356,8 @@ export default function ProjectsClient({
         </div>
       ) : view === "list" ? (
         <ListView projects={visible} onStatus={setStatus} />
+      ) : view === "calendar" ? (
+        <CalendarView dated={hub.dated} timeline={timeline} projects={visible} />
       ) : (
         <TimelineView
           items={timeline.filter((m) => visible.some((p) => p.id === m.project_id))}
@@ -404,6 +435,7 @@ function ProjectCard({
       ) : null}
       <Progress done={p.stats.done} total={p.stats.total} />
       <div className="flex flex-wrap gap-1 mt-3">
+        {p.status !== "paused" && p.status !== "planned" ? <HealthChip health={p.health} /> : null}
         {flags.high ? (
           <Chip tone="solid" title={p.attention.map((a) => a.title).join("\n")}>
             <SubLink href={attentionHref(p.attention.find((a) => a.severity === "high")!)}>{flags.high} need you</SubLink>
@@ -467,7 +499,7 @@ function ListView({
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-line">
-            {["Project", "Status", "Next action", "Progress", "Agents", "Target", "Updated"].map((h) => (
+            {["Project", "Status", "Health", "Next action", "Progress", "Agents", "Target", "Updated"].map((h) => (
               <th key={h} className="mono-label-dim font-normal px-4 py-3">
                 {h}
               </th>
@@ -490,6 +522,9 @@ function ListView({
               </td>
               <td className="px-4 py-3">
                 <StatusToggle value={p.status} onChange={(s) => onStatus(p.id, s)} size="sm" />
+              </td>
+              <td className="px-4 py-3">
+                <HealthChip health={p.health} />
               </td>
               <td className="px-4 py-3 text-[0.8rem] text-fg-dim max-w-[16rem]">
                 <Link href={`/projects/${p.id}`} className="hover:text-accent">
@@ -600,6 +635,7 @@ function NewProjectForm({
   const [repo, setRepo] = useState("");
   const [summary, setSummary] = useState("");
   const [status, setStatus] = useState<ProjectStatus>("planned");
+  const [template, setTemplate] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -616,7 +652,10 @@ function NewProjectForm({
         { name: name.trim() || r, owner: owner || null, repo: r || null, summary, status }
       );
       if (!res.created.length) setErr(res.failed[0]?.reason || "Not created");
-      else onDone(res.created, res.failed);
+      else {
+        if (template) await api(`/api/projects/${res.created[0].id}/template`, "POST", { template });
+        onDone(res.created, res.failed);
+      }
     } catch (e: unknown) {
       setErr((e as Error).message);
     } finally {
@@ -637,6 +676,16 @@ function NewProjectForm({
       </Field>
       <Field label="Status">
         <StatusToggle value={status} onChange={setStatus} />
+      </Field>
+      <Field label="Start the plan from a template (optional)">
+        <select value={template} onChange={(e) => setTemplate(e.target.value)} className={inputCls}>
+          <option value="">Empty plan</option>
+          {PLAN_TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}: {t.milestones.length} milestones, {t.milestones.reduce((n, m) => n + m.tasks.length, 0)} tasks
+            </option>
+          ))}
+        </select>
       </Field>
       <div className="md:col-span-2 flex items-center justify-between">
         <span className="font-mono text-[0.6rem] text-fg-ghost">
@@ -746,7 +795,7 @@ function ImportPanel({
               {busy ? "Importing…" : `Import ${picked.size}`}
             </button>
           </div>
-          <div className="max-h-80 overflow-y-auto border border-line bg-bg/70 divide-y divide-[rgba(26,24,20,0.06)]">
+          <div className="max-h-80 overflow-y-auto border border-line bg-bg/70 divide-y divide-line-soft">
             {list.map((r) => {
               const k = key(r);
               const already = have.has(k.toLowerCase());

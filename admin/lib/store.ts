@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { gh } from "./github";
-import { renderProjectMarkdown, type ProjectDetail } from "./projectTypes";
+import { normalizeDetail, renderProjectMarkdown, type InboxFile, type ProjectDetail } from "./projectTypes";
 
 /**
  * The dashboard's data lives as files in git, not a database.
@@ -12,6 +12,8 @@ import { renderProjectMarkdown, type ProjectDetail } from "./projectTypes";
  *   projects/<id>.json   one project: its plan, log and settings
  *   projects/<id>.md     the same project rendered for humans and agents
  *   repos.json           the Repos page's tracked exceptions
+ *   operations.json      idempotency receipts
+ *   inbox.json           quick captures waiting to be sorted (optional; written on first capture)
  *
  * The destination is a separately configured, already-private repository.
  * Every change is one commit; the history is the audit log.
@@ -46,9 +48,13 @@ export type Snapshot = {
   projects: Map<string, ProjectDetail>;
   repos: ReposFile;
   operations: Record<string, OperationReceipt>;
+  inbox: InboxFile;
   /** A validated pre-versioned snapshot; metadata is written on its first mutation. */
   legacyMetadataMigration: boolean;
 };
+
+/** One commit in the data repository's history. */
+export type HistoryEntry = { sha: string; message: string; date: string | null };
 
 type Change = { path: string; content: string | null };
 
@@ -73,10 +79,15 @@ interface Backend {
   read(): Promise<{ head: string | null; files: Map<string, string> }>;
   /** Commit on top of `head`; throws StaleHead if the branch moved. */
   write(head: string | null, changes: Change[], message: string): Promise<string>;
+  /** Newest commits first, optionally only those touching `path`. Empty when the backend keeps no history. */
+  log(limit: number, path?: string): Promise<HistoryEntry[]>;
+  /** A file's content as of a commit, or null when it did not exist then. */
+  readAt(sha: string, path: string): Promise<string | null>;
   describe(): string;
 }
 
-const wanted = (p: string) => p === "repos.json" || p === "operations.json" || /^projects\/[\w-]+\.json$/.test(p);
+const wanted = (p: string) =>
+  p === "repos.json" || p === "operations.json" || p === "inbox.json" || /^projects\/[\w-]+\.json$/.test(p);
 
 /** Git's blob id for a text, so the cache can match tree entries without refetching. */
 const blobSha = (text: string) => {
@@ -189,6 +200,28 @@ function githubBackend(): Backend {
       last = null;
       return commit.data.sha;
     },
+
+    async log(limit, path) {
+      const res = await gh().repos.listCommits({ owner, repo, sha: branch, per_page: Math.min(100, Math.max(1, limit)), path });
+      return res.data.map((c) => ({
+        sha: c.sha,
+        message: c.commit.message,
+        date: c.commit.committer?.date ?? c.commit.author?.date ?? null,
+      }));
+    },
+
+    async readAt(sha, path) {
+      if (!/^[0-9a-f]{7,40}$/.test(sha)) throw new Error("Invalid commit id.");
+      try {
+        const res = await gh().repos.getContent({ owner, repo, path, ref: sha });
+        const data = res.data as { type?: string; content?: string; encoding?: string };
+        if (data.type !== "file" || typeof data.content !== "string") return null;
+        return Buffer.from(data.content, "base64").toString("utf8");
+      } catch (err: unknown) {
+        if ((err as { status?: number }).status === 404) return null;
+        throw err;
+      }
+    },
   };
 }
 
@@ -222,6 +255,13 @@ function diskBackend(dir: string): Backend {
       }
       return "disk";
     },
+    // Plain files keep no history; the GitHub store is the audit log.
+    async log() {
+      return [];
+    },
+    async readAt() {
+      return null;
+    },
   };
 }
 
@@ -238,6 +278,22 @@ function store(): Backend {
 
 export function storeLocation(): string {
   return store().describe();
+}
+
+/** True when the backend can show history and restore earlier versions. */
+export function storeHasHistory(): boolean {
+  return !store().describe().startsWith("disk:");
+}
+
+/** Recent commits to the data repository, newest first; `path` narrows to one file. */
+export function listHistory(limit = 50, path?: string): Promise<HistoryEntry[]> {
+  return store().log(limit, path);
+}
+
+/** A data file as it was at a commit. */
+export function readFileAt(sha: string, path: string): Promise<string | null> {
+  if (!wanted(path)) throw new Error("Only project data files can be read from history.");
+  return store().readAt(sha, path);
 }
 
 // ─────────── snapshot ───────────
@@ -278,7 +334,7 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
         }
       }
     }
-    projects.set(d.project.id, d);
+    projects.set(d.project.id, normalizeDetail(d));
   });
   const hasRepos = files.has("repos.json");
   const hasOperations = files.has("operations.json");
@@ -307,7 +363,24 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
       throw new Error("Project data file operations.json contains an invalid operation receipt.");
     }
   }
-  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, legacyMetadataMigration };
+  // The inbox arrived after the first release, so a missing file is an empty inbox.
+  // A present file must still be well formed.
+  let inbox: InboxFile = { schemaVersion: 1, items: [] };
+  if (files.has("inbox.json")) {
+    const parsedInbox = JSON.parse(files.get("inbox.json")!) as Partial<InboxFile>;
+    if (!parsedInbox || parsedInbox.schemaVersion !== 1 || !Array.isArray(parsedInbox.items)) {
+      throw new Error("Project data file inbox.json has an incompatible inbox collection.");
+    }
+    for (const item of parsedInbox.items) {
+      if (!item || typeof item.id !== "string" || typeof item.title !== "string") {
+        throw new Error("Project data file inbox.json contains an invalid capture.");
+      }
+      if (seenIds.has(item.id)) throw new Error(`Duplicate record id ${item.id} in project data snapshot.`);
+      seenIds.add(item.id);
+    }
+    inbox = parsedInbox as InboxFile;
+  }
+  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, inbox, legacyMetadataMigration };
 }
 
 async function readFresh(): Promise<Snapshot> {
@@ -388,6 +461,9 @@ export async function mutate<T>(
     }
     if (base.legacyMetadataMigration && !changes.some((change) => change.path === "operations.json")) {
       changes.push({ path: "operations.json", content: JSON.stringify({ schemaVersion: 1, items: draft.operations }, null, 2) + "\n" });
+    }
+    if (JSON.stringify(draft.inbox) !== JSON.stringify(base.inbox)) {
+      changes.push({ path: "inbox.json", content: JSON.stringify(draft.inbox, null, 2) + "\n" });
     }
     if (!changes.length) return result;
     if (!base.head) {

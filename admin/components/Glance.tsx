@@ -39,7 +39,7 @@ export function AttentionList({
   const shown = all ? items : items.slice(0, limit);
   return (
     <div className="border border-line bg-bg/85">
-      <ul className="divide-y divide-[rgba(26,24,20,0.06)]">
+      <ul className="divide-y divide-line-soft">
         {shown.map((a) => {
           const sev = SEVERITY_MARK[a.severity];
           return (

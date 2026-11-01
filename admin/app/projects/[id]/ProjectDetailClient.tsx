@@ -8,8 +8,11 @@ import {
   PRIORITIES,
   STATUS_META,
   TOOL_PRESETS,
+  HEALTH_META,
   computeAttention,
   computeStats,
+  latestUpdate,
+  projectHealth,
   rankReady,
   taskPath,
   fmtDate,
@@ -35,6 +38,8 @@ import {
   inputCls,
 } from "@/components/ProjectBits";
 import CopyBlock from "@/components/CopyBlock";
+import { EditableMarkdown } from "@/components/Markdown";
+import { HealthChip } from "@/components/HealthChip";
 import { facetHref, taskHref, toolLinks } from "@/lib/taskMap";
 import { AttentionList } from "@/components/Glance";
 import { GlyphArrow, GlyphClose } from "@/components/Glyphs";
@@ -128,6 +133,8 @@ export default function ProjectDetailClient({
 
   const stats = computeStats(tasks, milestones, [...entries.map((e) => e.created_at), project.updated_at]);
   const attention = computeAttention({ project, milestones, tasks, entries }, stats.lastActivity);
+  const health = projectHealth({ project, milestones, tasks, entries }, stats, attention);
+  const update = latestUpdate(entries);
   const counts: Partial<Record<Tab, number>> = {
     plan: stats.total - stats.done,
     changelog: entries.filter((e) => e.kind === "changelog").length,
@@ -172,11 +179,22 @@ export default function ProjectDetailClient({
         </div>
         <div className="flex flex-col items-end gap-2">
           <StatusToggle value={project.status} onChange={(status) => patchProject({ status })} />
-          <Link href="?tab=activity" className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent" title="Status history in Activity">
-            {STATUS_META[project.status].label} since {relTime(project.status_changed_at)}
-          </Link>
+          <div className="flex items-center gap-3">
+            <HealthChip health={health} />
+            <Link href="?tab=activity" className="font-mono text-[0.58rem] text-fg-ghost hover:text-accent" title="Status history in Activity">
+              {STATUS_META[project.status].label} since {relTime(project.status_changed_at)}
+            </Link>
+          </div>
         </div>
       </div>
+      {update ? (
+        <Link href={`?tab=activity`} className="block mb-4 text-[0.85rem] text-fg-dim hover:text-accent">
+          <span className="font-mono text-[0.58rem] uppercase tracking-[0.15em] text-fg-ghost mr-2">
+            Update {relTime(update.created_at)}{update.health ? ` · ${HEALTH_META[update.health].label}` : ""}
+          </span>
+          {update.body.split("\n")[0]}
+        </Link>
+      ) : null}
 
       <p className="text-fg-dim text-[1rem] leading-[1.7] max-w-3xl mb-6">
         <InlineText
@@ -435,10 +453,9 @@ function SetupTab({
       </Section>
       <Section title="Overview" hint="Longer description: scope, audience, constraints. Click to edit.">
         <div className="text-[0.9rem] leading-[1.7] text-fg-dim border border-line bg-bg/70 p-3 min-h-[6rem]">
-          <InlineText
-            multiline
+          <EditableMarkdown
             value={project.description}
-            placeholder="Describe the project…"
+            placeholder="Describe the project… (Markdown)"
             onSave={(description) => patchProject({ description })}
           />
         </div>

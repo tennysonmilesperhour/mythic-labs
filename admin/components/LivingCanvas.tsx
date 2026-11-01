@@ -43,13 +43,16 @@ export default function LivingCanvas() {
       last = now;
       ctx.clearRect(0, 0, w, h);
 
+      // The orb color follows the theme (globals.css sets --canvas-orb per theme).
+      const orb = getComputedStyle(document.documentElement).getPropertyValue("--canvas-orb").trim() || "rgba(196, 168, 130, 0.045)";
+
       // Three slow-drifting warm orbs at different depths.
       for (let i = 0; i < 3; i++) {
         const cx = w * (0.2 + i * 0.3 + Math.sin(time + i) * 0.1);
         const cy = h * (0.3 + Math.cos(time * 0.7 + i * 2) * 0.2);
         const r = 320 + Math.sin(time + i) * 110;
         const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        grad.addColorStop(0, "rgba(196, 168, 130, 0.045)");
+        grad.addColorStop(0, orb);
         grad.addColorStop(1, "rgba(196, 168, 130, 0)");
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
