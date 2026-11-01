@@ -27,7 +27,7 @@ A Next.js app for the Mythic Labs central brain (this repo's plugin marketplace)
 
 ### Keyboard and capture
 
-`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g i` Inbox, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `x` selects, `↵` opens, `d` finishes, `s` starts, `b` blocks, `t` plans for today, `e` edits. Shortcuts stay quiet while you type in a field.
+`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g i` Inbox, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `↵` opens, `d` finishes, `s` starts, and `t` plans a task for today or takes it off today. On Today, `n` moves a task to tomorrow. On All tasks, `x` selects, `b` blocks, `e` edits in place and `p` toggles the details panel. In the Inbox, `↵` adds the item as a task and `⌫` drops it. Shortcuts are off while you type in a field, and the second key of a `g` chord never reaches a list.
 
 Quick capture reads one line the way Todoist and Things do, and shows every recognized token before saving:
 
@@ -127,8 +127,8 @@ The dashboard doubles as the roadmap agents work from. The API is disabled unles
 | `GET /api/agent/tasks/:id` | One task with its thread (reports and the owner's replies, oldest first), subtasks and what it waits on |
 | `POST /api/agent/tasks/:id/claim` | Mark doing and assign. 409 if another agent holds it or it isn't ready |
 | `PATCH /api/agent/tasks/:id` | `{status, note}`; blocked needs a note; done is refused while subtasks are open |
-| `POST /api/agent/tasks/:id/comments` | `{body}`: a question or checkpoint on the thread without changing status |
-| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up (title, parent_id, acceptance, estimate, labels, depends_on) |
+| `POST /api/agent/tasks/:id/comments` | `{body}`: a question or checkpoint on the thread without changing status. Checked against the project like every agent write |
+| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up (title, parent_id, acceptance, estimate, labels, due_date, depends_on) |
 | `POST /api/agent/projects/:id/entries` | Changelog, progress, note, or decision (always lands as *proposed*) |
 | `POST /api/agent/inbox` | Propose work into the owner's inbox; touches no plan |
 | `PATCH /api/agent/projects/:id` | `{next_action}` only |
@@ -145,6 +145,7 @@ The dashboard's own pages and `/api/*` routes are no-auth (single-admin mode), s
 |---|---|
 | `PATCH /api/tasks` | `{items: [{id, ...patch}]}`: edit many tasks, any projects, in one commit. `DELETE` with `{ids}` removes many and returns them for undo |
 | `POST /api/tasks/restore` | `{tasks}`: put deleted tasks back with their original ids |
+| `POST /api/tasks/:id/reopen` | `{status?, recurrence?, planned_for?, spawned_id?}`: undo a finish in one commit; with `spawned_id` the occurrence that finishing a recurring task spawned is removed, unless someone has started it |
 | `POST /api/tasks/:id/comments` | `{body, status?}`: your reply on a task's thread; with `status` (for example `todo` to unblock) the reply and the change are one commit |
 | `POST /api/projects/:id/reorder` | `{order: [{id, milestone_id?, parent_id?}]}`: the plan's new task order |
 | `POST /api/projects/:id/template` | `{template, start?}`: lay a plan template's milestones and tasks onto the project (`POST /api/projects` also takes `template`, so a new project and its plan are one commit) |

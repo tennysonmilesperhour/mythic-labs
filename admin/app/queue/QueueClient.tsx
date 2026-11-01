@@ -121,7 +121,22 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
   const [rows, setRows] = useState(initialRows);
   useEffect(() => setRows(initialRows), [initialRows]);
   const [f, setF] = useState<Filters>(() => fromParams(initial));
+  // A client-side navigation to another /queue?… link re-renders with new params; follow them.
+  const initialKey = toParams(fromParams(initial));
+  useEffect(() => {
+    setF(fromParams(initial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // A selection only holds tasks that are still listed.
+  useEffect(() => {
+    setSelected((s) => {
+      if (!s.size) return s;
+      const ids = new Set(rows.map((r) => r.id));
+      const kept = new Set(Array.from(s).filter((id) => ids.has(id)));
+      return kept.size === s.size ? s : kept;
+    });
+  }, [rows]);
   const [peek, setPeek] = useState(true);
   const [busy, setBusy] = useState(false);
   const day = today();
@@ -494,7 +509,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
         {peek ? (
           <aside className="hidden lg:block">
             <div className="sticky top-6">
-              {current ? <Peek t={current} agents={agents} projects={projects} onPatch={(p, note) => patchOne(current, p, note)} /> : <p className="text-fg-ghost text-sm">Move the cursor onto a task to see its details.</p>}
+              {current ? <Peek key={current.id} t={current} agents={agents} projects={projects} onPatch={(p, note) => patchOne(current, p, note)} /> : <p className="text-fg-ghost text-sm">Move the cursor onto a task to see its details.</p>}
             </div>
           </aside>
         ) : null}

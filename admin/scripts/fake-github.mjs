@@ -32,6 +32,7 @@ http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x'); const p = decodeURIComponent(u.pathname); const j = body ? JSON.parse(body) : {};
     if (p === '/__stats') return send(res, 200, { calls, refs, log, commits: Object.keys(commits).length });
     if (p === '/__test/files') { const c = commits[refs.main]; return send(res, 200, { paths: Object.keys(trees[c.tree.sha]) }); }
+    if (p === '/__test/file') { const c = commits[refs.main]; const sha = trees[c.tree.sha][u.searchParams.get('path')]; return send(res, 200, { content: sha ? blobs[sha] : null }); }
     if (p === '/__test/legacy') { refs.main = legacyCommit; return send(res, 200, { ok: true }); }
     if (p === '/__test/public') { repoPrivate = false; return send(res, 200, { ok: true }); }
     if (p === '/__test/private') { repoPrivate = true; return send(res, 200, { ok: true }); }

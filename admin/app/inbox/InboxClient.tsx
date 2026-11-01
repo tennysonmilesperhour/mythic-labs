@@ -48,7 +48,8 @@ export default function InboxClient({ initial, projects, agents }: { initial: In
         agent: c.agent || null,
         priority: c.priority,
         due_date: c.due_date || null,
-        planned_for: c.planned_for ? today() : null,
+        // Only an explicit "today" overrides the plan date the capture carried.
+        ...(c.planned_for ? { planned_for: today() } : {}),
       });
       setItems((xs) => xs.filter((x) => x.id !== i.id));
       const name = projects.find((p) => p.id === c.project_id)?.name ?? "project";
@@ -78,6 +79,8 @@ export default function InboxClient({ initial, projects, agents }: { initial: In
               agent: i.agent,
               priority: i.priority,
               due_date: i.due_date,
+              planned_for: i.planned_for,
+              recurrence: i.recurrence,
               estimate: i.estimate,
               labels: i.labels,
               source: i.source,

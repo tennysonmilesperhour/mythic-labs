@@ -16,8 +16,17 @@
 
 import { PRIORITIES, RECURRENCES, addDays, today, type Priority, type Recurrence } from "./projectTypes";
 
-const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-const WEEKDAY_SHORT = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+// Only these spellings are weekdays, so "friend" and "monitor" stay words.
+const WEEKDAY_FORMS: Record<string, number> = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tues: 2, tuesday: 2,
+  wed: 3, weds: 3, wednesday: 3,
+  thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+};
+const WEEKDAY_WORD = "(?:mon(?:day)?|tue(?:s|sday)?|wed(?:s|nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)";
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /**
@@ -46,14 +55,11 @@ export function parseDate(raw: string, from = today()): string | null {
     return monthsFrom(from, n);
   }
   m = s.match(/^(next\s+)?([a-z]+)$/);
-  if (m) {
-    const idx = WEEKDAYS.indexOf(m[2]) >= 0 ? WEEKDAYS.indexOf(m[2]) : WEEKDAY_SHORT.indexOf(m[2].slice(0, 3));
-    if (idx >= 0 && (WEEKDAYS[idx].startsWith(m[2]) || WEEKDAY_SHORT[idx] === m[2].slice(0, 3)) && m[2].length >= 3) {
-      let ahead = (idx - dow(from) + 7) % 7;
-      if (ahead === 0) ahead = 7;
-      if (m[1]) ahead += 7;
-      return addDays(from, ahead);
-    }
+  if (m && m[2] in WEEKDAY_FORMS) {
+    let ahead = (WEEKDAY_FORMS[m[2]] - dow(from) + 7) % 7;
+    if (ahead === 0) ahead = 7;
+    if (m[1]) ahead += 7;
+    return addDays(from, ahead);
   }
   // "nov 5", "5 nov", "november 5th", "11/5"
   m = s.match(/^([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?$/) || s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})$/);
@@ -148,7 +154,9 @@ const RECURRENCE_WORDS: Array<[RegExp, Recurrence]> = [
   [/^(every\s+year|yearly|annually)$/, "yearly"],
 ];
 
-const BARE_DATE = /(?:^|\s)(today|tomorrow|tmrw?|next\s+week|next\s+month|eom|eow|in\s+\d{1,3}\s*(?:d|days?|w|wks?|weeks?)|(?:next\s+)?(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*)(?=\s|$)/i;
+const BARE_DATE = new RegExp(`(?:^|\\s)(today|tomorrow|tmrw?|next\\s+week|next\\s+month|eom|eow|in\\s+\\d{1,3}\\s*(?:d|days?|w|wks?|weeks?)|(?:next\\s+)?${WEEKDAY_WORD})(?=\\s|$)`, "i");
+// A date after due: or plan: may run to three words: "due:nov 5", "plan:next fri", "due:in 3 days".
+const DATE_WORDS = 3;
 
 /** Parse one capture. Nothing here touches the network. */
 export function parseQuick(text: string, projects: ProjectOption[], from = today()): Parsed {
@@ -169,12 +177,28 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
     recurrence: null,
     tokens,
   };
-  const take = (re: RegExp, fn: (m: RegExpMatchArray) => void) => {
+  // Each recognized token is cut out of the line; a handler may hand back words it did not use.
+  const take = (re: RegExp, fn: (m: RegExpMatchArray) => string | void) => {
     let m: RegExpMatchArray | null;
-    while ((m = line.match(re))) {
-      fn(m);
-      line = line.replace(m[0], " ");
+    let guard = 0;
+    while ((m = line.match(re)) && guard++ < 50) {
+      const leftover = fn(m);
+      line = line.replace(m[0], ` ${leftover ?? ""} `);
     }
+  };
+  // "due:nov 5" or "plan:next fri": the longest phrase that reads as a date wins, and the rest stays in the title.
+  const dateToken = (kind: "due" | "plan", m: RegExpMatchArray, set: (d: string) => void): string => {
+    const words = [m[1], ...m[2].trim().split(/\s+/).filter(Boolean)];
+    for (let n = words.length; n >= 1; n--) {
+      const d = parseDate(words.slice(0, n).join(" "), from);
+      if (d) {
+        set(d);
+        tokens.push({ kind, text: `${kind} ${d}` });
+        return words.slice(n).join(" ");
+      }
+    }
+    tokens.push({ kind: `${kind}?`, text: `can't read date "${m[1]}"` });
+    return words.slice(1).join(" ");
   };
 
   take(/\s#"([^"]+)"|\s#([\w.-]+)/, (m) => {
@@ -204,20 +228,8 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
     out.priority = PRIORITIES[Number(m[1]) - 1];
     tokens.push({ kind: "priority", text: out.priority });
   });
-  take(/\s(?:due|by):(\S+(?:\s+\d{1,2}(?:st|nd|rd|th)?)?)/i, (m) => {
-    const d = parseDate(m[1], from);
-    if (d) {
-      out.due_date = d;
-      tokens.push({ kind: "due", text: `due ${d}` });
-    } else tokens.push({ kind: "due?", text: `can't read date "${m[1]}"` });
-  });
-  take(/\s(?:plan|do|on):(\S+)/i, (m) => {
-    const d = parseDate(m[1], from);
-    if (d) {
-      out.planned_for = d;
-      tokens.push({ kind: "plan", text: `plan ${d}` });
-    } else tokens.push({ kind: "plan?", text: `can't read date "${m[1]}"` });
-  });
+  take(new RegExp(`\\s(?:due|by):(\\S+)((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("due", m, (d) => (out.due_date = d)));
+  take(new RegExp(`\\s(?:plan|do|on):(\\S+)((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("plan", m, (d) => (out.planned_for = d)));
   take(/\s(?:~(\d{1,3})|(\d{1,3})\s?pts?)(?=\s)/i, (m) => {
     out.estimate = Number(m[1] ?? m[2]);
     tokens.push({ kind: "estimate", text: `${out.estimate} pt` });

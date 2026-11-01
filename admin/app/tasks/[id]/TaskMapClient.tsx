@@ -443,7 +443,8 @@ export default function TaskMapClient({
                 value={reply}
                 onChange={(e) => setReply(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(task.status === "blocked");
+                  // The shortcut posts the reply; unblocking is the explicit button, so a quick answer cannot reopen work by accident.
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(false);
                 }}
                 rows={2}
                 placeholder={task.status === "blocked" ? "Answer the blocker…" : "Add a note or reply… (Markdown, ⌘↵ to send)"}

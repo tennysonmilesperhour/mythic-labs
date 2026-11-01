@@ -138,7 +138,7 @@ t('two overdue tasks take a project off track', () => {
   const late = '2020-01-01';
   assert.equal(health([task({ due_date: late }), task({ due_date: late })]).level, 'off_track');
 });
-t('paused and planned projects report their state, not a verdict', () => {
+t('paused and planned projects report their state instead of a verdict', () => {
   assert.equal(health([task({})], { ...base, status: 'paused' }).level, 'paused');
   assert.equal(health([task({})], { ...base, status: 'planned' }).level, 'idle');
 });
@@ -283,6 +283,78 @@ t('the personal calendar feed uses the same "mine" rule as Today and My tasks', 
     entries: [],
   };
   assert.deepEqual(calendarEvents([detail], 'https://x.test', { mine: true }).map((e) => e.uid), ['task-o1']);
+});
+
+// ── fixes from the second review ──
+const { nextOccurrenceAfter, endOfMonth } = types.mod;
+const { esc } = ical.mod;
+const templates = await load('../lib/templates.ts', { './projectTypes': types.url });
+const { PLAN_TEMPLATES } = templates.mod;
+t('month-based recurrence keeps month ends and catches up after a late finish', () => {
+  assert.equal(endOfMonth('2026-02-10'), '2026-02-28');
+  assert.equal(nextOccurrence('monthly', '2026-02-28'), '2026-03-31'); // a month-end chore stays on month ends
+  assert.equal(nextOccurrence('monthly', '2026-02-27'), '2026-03-27');
+  assert.equal(nextOccurrence('monthly', '2026-02-28', 30), '2026-03-30'); // an explicit anchor survives a short month
+  assert.equal(nextOccurrenceAfter('monthly', '2026-01-31', '2026-03-15'), '2026-03-31');
+  assert.equal(nextOccurrenceAfter('weekly', '2026-10-01', '2026-11-01'), '2026-11-05'); // a month late: skip the missed weeks
+  assert.equal(nextOccurrenceAfter('daily', '2026-11-01', '2026-11-01'), '2026-11-02');
+  assert.equal(nextOccurrenceAfter('weekly', '', '2026-11-01'), '2026-11-08'); // no due date: count from today
+  assert.equal(nextOccurrenceAfter('weekly', '2026-11-20', '2026-11-01'), '2026-11-27'); // finished early: one period on
+});
+t('parseDate reads only real weekday spellings', () => {
+  assert.equal(parseDate('friend', from), null);
+  assert.equal(parseDate('monitor', from), null);
+  assert.equal(parseDate('sunk', from), null);
+  assert.equal(parseDate('thurs', from), '2026-11-12');
+  assert.equal(parseDate('tues', from), '2026-11-10');
+  assert.equal(parseDate('next monday', from), '2026-11-16');
+});
+t('parseQuick reads dates of up to three words after due: and plan: and keeps the leftover words', () => {
+  const a = parseQuick('Send invoice due:nov 20 #brand', projects, from);
+  assert.equal(a.due_date, '2026-11-20');
+  assert.equal(a.title, 'Send invoice');
+  assert.equal(a.project?.id, 'p2');
+  const b = parseQuick('Prep deck plan:next fri for the board', projects, from);
+  assert.equal(b.planned_for, '2026-11-13');
+  assert.equal(b.title, 'Prep deck for the board');
+  const c = parseQuick('Renew cert due:in 3 days +ops', projects, from);
+  assert.equal(c.due_date, '2026-11-08');
+  assert.deepEqual(c.labels, ['ops']);
+  assert.equal(c.title, 'Renew cert');
+  const d = parseQuick('Call Bob due:fri 3 times', projects, from);
+  assert.equal(d.due_date, '2026-11-06');
+  assert.equal(d.title, 'Call Bob 3 times');
+  const e = parseQuick('Meet my friend tomorrow', projects, from);
+  assert.equal(e.planned_for, '2026-11-06');
+  assert.equal(e.title, 'Meet my friend');
+  const f = parseQuick('Fix the monitor', projects, from);
+  assert.equal(f.planned_for, null);
+  assert.equal(f.title, 'Fix the monitor');
+  const g = parseQuick('Pay rent due:whenever it suits', projects, from);
+  assert.equal(g.due_date, null);
+  assert.ok(g.tokens.some((x) => x.kind === 'due?'));
+  assert.equal(g.title, 'Pay rent it suits');
+});
+t('snoozed tasks are not counted as overdue or blocked', () => {
+  const s = computeStats([task({ status: 'blocked', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01' })], []);
+  assert.equal(s.blocked, 0);
+  assert.equal(s.overdue, 1);
+});
+t('calendar text escaping drops control characters and writes every line break as \\n', () => {
+  assert.equal(esc('a\rb\u0007c'), 'a\\nbc');
+  assert.equal(esc('one\r\ntwo\nthree'), 'one\\ntwo\\nthree');
+  assert.equal(esc('x, y; z\\'), 'x\\, y\\; z\\\\');
+});
+t('plan templates are well formed', () => {
+  assert.ok(PLAN_TEMPLATES.length >= 3);
+  assert.equal(new Set(PLAN_TEMPLATES.map((x) => x.id)).size, PLAN_TEMPLATES.length);
+  for (const tpl of PLAN_TEMPLATES) {
+    assert.ok(/^[a-z0-9-]+$/.test(tpl.id) && tpl.name && tpl.summary && tpl.milestones.length, tpl.id);
+    for (const m of tpl.milestones) {
+      assert.ok(m.title && m.weeks > 0 && m.tasks.length, `${tpl.id}: ${m.title}`);
+      for (const task of m.tasks) assert.ok(typeof task.title === 'string' && task.title.trim() && (task.estimate === undefined || task.estimate > 0), `${tpl.id}: ${task.title}`);
+    }
+  }
 });
 
 console.log(`unit checks passed (${n})`);

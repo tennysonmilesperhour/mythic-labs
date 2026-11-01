@@ -1,7 +1,7 @@
 import { BadRequest, agentName, body, handle, requireAgent } from "@/lib/api";
 import { createAgentTask } from "@/lib/projects";
 
-// POST { title, parent_id?, milestone_id?, notes?, acceptance?, depends_on?, priority?, assign_self? }
+// POST { title, parent_id?, milestone_id?, notes?, acceptance?, depends_on?, priority?, estimate?, labels?, due_date?, assign_self? }
 // Agents add subtasks or follow-ups they discover. Logged as progress.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,6 +18,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       acceptance: b.acceptance ?? "",
       depends_on: Array.isArray(b.depends_on) ? b.depends_on : [],
       priority: b.priority ?? "medium",
+      ...(b.estimate !== undefined ? { estimate: b.estimate } : {}),
+      ...(b.labels !== undefined ? { labels: b.labels } : {}),
+      ...(b.due_date !== undefined ? { due_date: b.due_date } : {}),
       agent: b.assign_self ? agent : null,
     });
     return { task };

@@ -17,7 +17,7 @@ Needs `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN`. The server also requires an explici
 | `MYTHIC_PM_TOKEN` | The dashboard's `PM_AGENT_TOKEN` |
 | `MYTHIC_PM_BYPASS` | Optional. Vercel protection bypass secret, if the deployment is protected |
 
-`PM_AGENT_API_ENABLED=true` is a server-side dashboard setting, separate from the token. An owner must deliberately enable it after reviewing the shared-token access model. Agent labels are caller-supplied names, not per-agent identity; do not enable this API for private everything-dashboard data without specific approval.
+`PM_AGENT_API_ENABLED=true` is a server-side dashboard setting, separate from the token. An owner must deliberately enable it after reviewing the shared-token access model. Agent labels are caller-supplied names and carry no per-agent identity; do not enable this API for private everything-dashboard data without specific approval.
 
 Use your agent name (e.g. `claude-code`) as `AGENT` in every call. Shell helper:
 
@@ -41,8 +41,8 @@ pm() { # pm METHOD PATH [JSON]
 | `GET /api/agent/tasks/<id>` | One task with its thread (your reports, the owner's replies), subtasks and what it waits on |
 | `POST /api/agent/tasks/<id>/claim` | Mark it doing and assign it to you. 409 means someone else has it or it isn't ready |
 | `PATCH /api/agent/tasks/<id>` | `{"status":"doing"\|"blocked"\|"done"\|"todo","note":"…"}` |
-| `POST /api/agent/tasks/<id>/comments` | `{"body":"…"}`: a question or checkpoint on the task's thread, without changing status |
-| `POST /api/agent/projects/<id>/tasks` | Add a subtask or follow-up: `{"title","parent_id?","acceptance?","estimate?","labels?","depends_on?":[ids]}` |
+| `POST /api/agent/tasks/<id>/comments` | `{"body":"…"}`: a question or checkpoint on the task's thread, without changing status. 409 if the project is paused or you are not enabled on it |
+| `POST /api/agent/projects/<id>/tasks` | Add a subtask or follow-up: `{"title","parent_id?","acceptance?","estimate?","labels?","due_date?","depends_on?":[ids]}` |
 | `POST /api/agent/projects/<id>/entries` | `{"kind":"changelog"\|"decision"\|"progress"\|"note","title","body?"}` |
 | `POST /api/agent/inbox` | `{"title","notes?","project_id?","priority?","labels?"}`: propose work the owner sorts later; touches no plan |
 | `PATCH /api/agent/projects/<id>` | `{"next_action":"…"}` only |

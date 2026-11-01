@@ -12,6 +12,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (typeof b.body !== "string" || !b.body.trim()) throw new BadRequest("body required");
     const status = b.status === undefined ? undefined : String(b.status);
     if (status && !(TASK_STATUSES as readonly string[]).includes(status)) throw new BadRequest(`status must be one of ${TASK_STATUSES.join(", ")}`);
-    return commentOnTask(id, ME, b.body, status as TaskStatus | undefined);
+    return commentOnTask(id, ME, b.body, { status: status as TaskStatus | undefined });
   }, req);
 }

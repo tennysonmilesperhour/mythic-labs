@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtDate, relTime, type ProjectDetail } from "@/lib/projectTypes";
 import { projectHref } from "@/lib/taskMap";
 import { Chip, api, btnGhost, btnPrimary, inputBase } from "@/components/ProjectBits";
@@ -10,7 +10,7 @@ import { useToast } from "@/components/Toast";
 
 export type Commit = { sha: string; message: string; date: string | null };
 
-type Preview = { sha: string; detail: ProjectDetail };
+type Preview = { sha: string; projectId: string; detail: ProjectDetail };
 
 export default function HistoryClient({ commits, projects, projectId }: { commits: Commit[]; projects: Array<{ id: string; name: string }>; projectId: string }) {
   const router = useRouter();
@@ -18,13 +18,15 @@ export default function HistoryClient({ commits, projects, projectId }: { commit
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const project = projects.find((p) => p.id === projectId);
+  // A preview shows one project's version; switching projects closes it.
+  useEffect(() => setPreview((p) => (p && p.projectId !== projectId ? null : p)), [projectId]);
 
   const open = async (sha: string) => {
     if (!projectId) return;
     setBusy(sha);
     try {
       const detail = await api<ProjectDetail>(`/api/projects/${projectId}/history/${sha}`, "GET");
-      setPreview({ sha, detail });
+      setPreview({ sha, projectId, detail });
     } catch (e) {
       toast({ message: (e as Error).message, tone: "error" });
     } finally {

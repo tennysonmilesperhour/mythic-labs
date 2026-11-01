@@ -10,8 +10,8 @@ export const STATUS_META: Record<
   { label: string; hint: string; dot: string }
 > = {
   active: { label: "Active", hint: "Live and being worked on", dot: "#8b7355" },
-  building: { label: "Building", hint: "Under construction, not live yet", dot: "#c4a882" },
-  planned: { label: "Planned", hint: "Scoped, not started", dot: "#a09a94" },
+  building: { label: "Building", hint: "Under construction", dot: "#c4a882" },
+  planned: { label: "Planned", hint: "Scoped and waiting to start", dot: "#a09a94" },
   paused: { label: "Paused", hint: "On hold", dot: "#d8d2c8" },
 };
 
@@ -227,7 +227,7 @@ export const HEALTH_META: Record<HealthLevel, { label: string; hint: string }> =
   on_track: { label: "On track", hint: "Work is moving and nothing is late or stuck" },
   at_risk: { label: "At risk", hint: "Something is late, blocked, stalled or quiet" },
   off_track: { label: "Off track", hint: "Dates have passed or several tasks are stuck" },
-  idle: { label: "Idle", hint: "Planned, not started" },
+  idle: { label: "Idle", hint: "Planned and waiting to start" },
   paused: { label: "Paused", hint: "On hold by choice" },
 };
 
@@ -381,15 +381,31 @@ export function weekStart(date: string): string {
   return addDays(date, -shift);
 }
 
-/** The next date a recurring task is due, counted from its current due date (or today). */
-export function nextOccurrence(rule: Recurrence, from: string): string {
+/** The last day of the month that holds the date. */
+export function endOfMonth(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 12)).toISOString().slice(0, 10);
+}
+
+/** The day of the month a month-based rule aims for: 31 (month end) when the date is the last day of its month. */
+function anchorDayOf(date: string): number {
+  return date === endOfMonth(date) ? 31 : new Date(`${date}T12:00:00Z`).getUTCDate();
+}
+
+/**
+ * The next date a recurring task is due, counted from its current due date (or today).
+ * Month-based rules keep the day of the month (`anchorDay`, by default the day of `from`)
+ * and clamp it in shorter months. A date on the last day of its month stays on month
+ * ends, so a chore due Jan 31 is next due Feb 28 and then Mar 31.
+ */
+export function nextOccurrence(rule: Recurrence, from: string, anchorDay?: number): string {
   const base = from || today();
   const d = new Date(`${base}T12:00:00Z`);
+  const anchor = anchorDay ?? anchorDayOf(base);
   const months = (n: number) => {
-    const day = d.getUTCDate();
     const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1, 12));
     const last = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 0, 12)).getUTCDate();
-    m.setUTCDate(Math.min(day, last));
+    m.setUTCDate(Math.min(anchor, last));
     return m.toISOString().slice(0, 10);
   };
   switch (rule) {
@@ -411,6 +427,19 @@ export function nextOccurrence(rule: Recurrence, from: string): string {
     case "yearly":
       return months(12);
   }
+}
+
+/**
+ * The first occurrence after `day` (today by default). A chore finished more than one
+ * period late skips the occurrences already missed instead of spawning one in the past,
+ * and a monthly chore keeps its day of the month across the skipped months.
+ */
+export function nextOccurrenceAfter(rule: Recurrence, from: string, day = today()): string {
+  const base = from || day;
+  const anchor = anchorDayOf(base);
+  let next = nextOccurrence(rule, base, anchor);
+  while (next <= day) next = nextOccurrence(rule, next, anchor);
+  return next;
 }
 
 export function isUpcoming(dueDate: string | null, status: TaskStatus, through: string, from = today()): boolean {
@@ -540,9 +569,10 @@ export function computeStats(
     total: tasks.length,
     done: tasks.filter((t) => t.status === "done").length,
     doing: tasks.filter((t) => t.status === "doing").length,
-    blocked: tasks.filter((t) => t.status === "blocked").length,
+    // Snoozed tasks are deferred on purpose: like the attention engine, the counts leave them out until their day.
+    blocked: tasks.filter((t) => t.status === "blocked" && !isSnoozed(t)).length,
     ready: tasks.filter((t) => isReady(t, tasks)).length,
-    overdue: tasks.filter((t) => isOverdue(t.due_date, t.status === "done")).length,
+    overdue: tasks.filter((t) => !isSnoozed(t) && isOverdue(t.due_date, t.status === "done")).length,
     points: {
       done: tasks.filter((t) => t.status === "done").reduce((n, t) => n + pointsOf(t), 0),
       total: tasks.reduce((n, t) => n + pointsOf(t), 0),

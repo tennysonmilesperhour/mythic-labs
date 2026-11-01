@@ -32,7 +32,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const dismiss = useCallback((id: number) => setItems((xs) => xs.filter((x) => x.id !== id)), []);
   const toast = useCallback((input: ToastInput | string) => {
     const t: Toast = { id: ++seq.current, tone: "info", ...(typeof input === "string" ? { message: input } : input) };
-    setItems((xs) => [...xs.slice(-3), t]);
+    // Room for a bulk result and its undo next to whatever else just happened.
+    setItems((xs) => [...xs.slice(-5), t]);
   }, []);
   const api = useMemo(() => ({ toast, dismiss }), [toast, dismiss]);
   return (

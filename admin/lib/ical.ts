@@ -6,7 +6,15 @@ import { isMine } from "./taskMap";
 
 type Event = { uid: string; date: string; summary: string; description?: string; url?: string };
 
-const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/[,;]/g, (m) => `\\${m}`);
+// Text values: escape backslashes, commas and semicolons, write newlines as \n, and drop other
+// control characters (a lone CR would start a new content line).
+const esc = (s: string) =>
+  s
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n|\r|\n/g, "\\n")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/[,;]/g, (m) => `\\${m}`);
+export { esc };
 
 /**
  * RFC 5545 folds content lines at 75 octets, continuing with a single space.

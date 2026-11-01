@@ -40,15 +40,18 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
   const { toast } = useToast();
   const [list, setList] = useState(rows);
   useEffect(() => setList(rows), [rows]);
-  const [i, setI] = useState(() => Math.max(0, rows.findIndex((r) => r.project.id === startId)));
+  // The current project is tracked by id: a refresh may reorder the list (reviewed projects sink), and the card must not jump.
+  const [curId, setCurId] = useState<string | null>(() => (rows.some((r) => r.project.id === startId) ? startId : rows[0]?.project.id ?? null));
   const [nextAction, setNextAction] = useState("");
   const [showUpdate, setShowUpdate] = useState(false);
   const [health, setHealth] = useState<HealthLevel>("on_track");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
-  const cur = list[i];
+  const i = list.findIndex((r) => r.project.id === curId);
+  const cur = i >= 0 ? list[i] : undefined;
   const reviewedThisWeek = list.filter((r) => !r.due).length;
 
+  // Reset the form when the card changes project, and only then: a refresh mid-edit keeps what was typed.
   useEffect(() => {
     if (!cur) return;
     setNextAction(cur.project.next_action);
@@ -56,9 +59,11 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
     setHealth(cur.health.level === "paused" || cur.health.level === "idle" ? "on_track" : cur.health.level);
     const s = cur.sinceReview;
     setBody(`Since the last review (${s.days}d): ${s.done} task${s.done === 1 ? "" : "s"} done, ${s.changes} change${s.changes === 1 ? "" : "s"} logged, ${s.decisions} decision${s.decisions === 1 ? "" : "s"}.${cur.project.next_action ? ` Next: ${cur.project.next_action}.` : ""}`);
-  }, [cur]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur?.project.id]);
 
-  const advance = () => setI((x) => Math.min(list.length, x + 1));
+  const advance = () => setCurId(i >= 0 ? list[i + 1]?.project.id ?? null : null);
+  const goTo = (idx: number) => setCurId(list[idx]?.project.id ?? null);
 
   const markReviewed = async () => {
     if (!cur) return;
@@ -69,7 +74,7 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
         ...(nextAction.trim() !== cur.project.next_action ? { next_action: nextAction.trim() } : {}),
         ...(showUpdate && body.trim() ? { update: { health, body: body.trim() } } : {}),
       });
-      setList((xs) => xs.map((r, idx) => (idx === i ? { ...r, due: false, project: { ...r.project, next_action: nextAction.trim(), last_reviewed_at: new Date().toISOString() } } : r)));
+      setList((xs) => xs.map((r) => (r.project.id === cur.project.id ? { ...r, due: false, project: { ...r.project, next_action: nextAction.trim(), last_reviewed_at: new Date().toISOString() } } : r)));
       toast({ message: `${cur.project.name} reviewed.`, tone: "success" });
       advance();
       router.refresh();
@@ -86,7 +91,7 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
     try {
       await api(`/api/projects/${cur.project.id}/review`, "POST", { status, status_note: "Changed during review" });
       toast({ message: `${cur.project.name} is now ${STATUS_META[status].label.toLowerCase()}.`, tone: "success" });
-      setList((xs) => xs.map((r, idx) => (idx === i ? { ...r, due: false, project: { ...r.project, status } } : r)));
+      setList((xs) => xs.map((r) => (r.project.id === cur.project.id ? { ...r, due: false, project: { ...r.project, status } } : r)));
       advance();
       router.refresh();
     } catch (e) {
@@ -112,13 +117,13 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
       <div>
         <div className="flex items-baseline justify-between mb-4">
           <span className="mono-label-dim">
-            {Math.min(i + 1, list.length)} of {list.length} · {reviewedThisWeek} reviewed this week
+            {cur ? i + 1 : list.length} of {list.length} · {reviewedThisWeek} reviewed this week
           </span>
           <div className="flex gap-1">
             {list.map((r, idx) => (
               <button
                 key={r.project.id}
-                onClick={() => setI(idx)}
+                onClick={() => goTo(idx)}
                 title={r.project.name}
                 className={`h-1.5 w-4 ${idx === i ? "bg-accent" : r.due ? "bg-line" : "bg-accent-light"}`}
               />
@@ -130,7 +135,7 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
           <div className="border border-accent bg-[rgba(139,115,85,0.06)] p-8 glow-anchor">
             <div className="serif-display text-[1.8rem] mb-2">Review complete</div>
             <p className="text-fg-dim text-sm mb-4">Every project has a fresh next action and a reviewed stamp. Plan the week from <Link href="/today" className="text-accent hover:text-fg">Today →</Link></p>
-            <button onClick={() => setI(0)} className={btnGhost}>Start over</button>
+            <button onClick={() => goTo(0)} className={btnGhost}>Start over</button>
           </div>
         ) : (
           <article className="border border-line bg-bg/85 p-6">
@@ -276,7 +281,7 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
           <ul className="flex flex-col">
             {list.map((r, idx) => (
               <li key={r.project.id}>
-                <button onClick={() => setI(idx)} className={`w-full flex items-baseline gap-2 py-1 text-left text-[0.82rem] hover:text-accent ${idx === i ? "text-fg" : "text-fg-dim"}`}>
+                <button onClick={() => goTo(idx)} className={`w-full flex items-baseline gap-2 py-1 text-left text-[0.82rem] hover:text-accent ${idx === i ? "text-fg" : "text-fg-dim"}`}>
                   <span className={`font-mono text-[0.55rem] ${r.due ? "text-fg-ghost" : "text-accent"}`}>{r.due ? "○" : "✓"}</span>
                   <span className="flex-1 min-w-0 truncate">{r.project.name}</span>
                   {r.project.status === "paused" ? <Chip>paused</Chip> : null}
