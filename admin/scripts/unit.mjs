@@ -172,4 +172,76 @@ t('calendar feed holds tasks, milestones and project targets as all-day events',
   assert.equal(calendarEvents([detail], 'https://x.test', { mine: true }).length, 1);
 });
 
+
+// ── insights ──
+const insights = await load('../lib/insights.ts', { './projectTypes': types.url });
+const { throughputByWeek, cycleTimes, median, percentile, velocity, forecastMilestones, byAgent, byProject, aging, estimateCoverage } = insights.mod;
+const dayI = '2026-11-05'; // a Thursday; the current week starts 2026-11-02
+const iso = (d, h = 12) => `${d}T${String(h).padStart(2, '0')}:00:00.000Z`;
+const doneTask = (over) => task({ status: 'done', ...over });
+const proj = (over, tasks, milestones = []) => ({ project: { ...base, id: over.id ?? 'p', name: over.name ?? 'P', status: over.status ?? 'active' }, tasks, milestones, entries: [] });
+const details = [
+  proj({ id: 'a', name: 'Alpha' }, [
+    doneTask({ id: 'a1', estimate: 3, done_at: iso('2026-11-03'), claimed_at: iso('2026-11-01') }), // this week, 2 days
+    doneTask({ id: 'a2', estimate: 5, done_at: iso('2026-10-28'), claimed_at: iso('2026-10-20') }), // last week, 8 days
+    doneTask({ id: 'a3', estimate: 2, done_at: iso('2026-10-14'), claimed_at: iso('2026-10-13') }), // 3 weeks back, 1 day
+    task({ id: 'a4', estimate: 8, milestone_id: 'm1' }),
+    task({ id: 'a5', estimate: 5, milestone_id: 'm1', status: 'doing', claimed_at: iso('2026-10-30'), agent: 'claude-code' }),
+  ], [{ id: 'm1', project_id: 'a', title: 'Beta', target_date: '2026-11-20', done: false, sort_order: 0, description: '', start_date: null, done_at: null, created_at: iso('2026-10-01') }]),
+  proj({ id: 'b', name: 'Bravo' }, [
+    task({ id: 'b1', estimate: 3, milestone_id: 'm2' }),
+  ], [{ id: 'm2', project_id: 'b', title: 'Launch', target_date: '2026-12-01', done: false, sort_order: 0, description: '', start_date: null, done_at: null, created_at: iso('2026-10-01') }]),
+  proj({ id: 'c', name: 'Charlie', status: 'paused' }, [task({ id: 'c1', status: 'doing', claimed_at: iso('2026-09-01') })]),
+];
+t('throughput buckets by ISO week and marks the current one', () => {
+  const w = throughputByWeek(details, 4, dayI);
+  assert.deepEqual(w.map((b) => b.week), ['2026-10-12', '2026-10-19', '2026-10-26', '2026-11-02']);
+  assert.deepEqual(w.map((b) => b.points), [2, 0, 5, 3]);
+  assert.equal(w[3].current, true);
+});
+t('cycle times run from claim to done', () => {
+  const c = cycleTimes(details, 90, dayI);
+  assert.deepEqual(c.map((x) => x.days), [1, 2, 8]);
+  assert.equal(median(c.map((x) => x.days)), 2);
+  assert.equal(percentile([1, 2, 8], 85), 8);
+  assert.equal(median([]), null);
+});
+t('velocity excludes the partial current week', () => {
+  // Last 4 full weeks before 2026-11-02: 5 (Oct 28) + 2 (Oct 14) = 7 points over 4 weeks.
+  assert.equal(velocity(details[0].tasks, 4, dayI), 1.75);
+});
+t('forecast uses the project rate, falls back to the portfolio rate, and flags slips', () => {
+  const f = forecastMilestones(details, dayI, 4);
+  const beta = f.find((x) => x.milestone.title === 'Beta');
+  assert.equal(beta.remaining_points, 13);
+  assert.equal(beta.rate_source, 'project');
+  assert.equal(beta.rate, 1.8); // 1.75 rounded to one decimal
+  assert.equal(beta.weeks_left, 7.4);
+  assert.equal(beta.status, 'late');
+  assert.ok(beta.slip_days > 0);
+  const launch = f.find((x) => x.milestone.title === 'Launch');
+  assert.equal(launch.rate_source, 'portfolio');
+  assert.equal(launch.status, 'on_time');
+  assert.ok(!f.some((x) => x.project_name === 'Charlie'), 'paused projects are not forecast');
+});
+t('per-agent and per-project rollups count the window and the current load', () => {
+  const agents = byAgent(details, 30, dayI);
+  const cc = agents.find((a) => a.agent === 'claude-code');
+  assert.equal(cc.doing_now, 1);
+  const un = agents.find((a) => a.agent === 'unassigned');
+  assert.equal(un.done, 3); // a1, a2 and a3 (22 days back) all fall inside the 30-day window
+  const projects = byProject(details, 30, dayI);
+  assert.equal(projects[0].project_name, 'Alpha');
+  assert.equal(projects[0].open_points, 13);
+  assert.ok(!projects.some((p) => p.project_name === 'Charlie'));
+});
+t('aging lists claimed open work oldest first and skips paused projects', () => {
+  const rows = aging(details, new Date(iso('2026-11-05')).getTime());
+  assert.deepEqual(rows.map((r) => r.id), ['a5']);
+  assert.equal(rows[0].days, 6);
+});
+t('estimate coverage reports what the forecast assumes', () => {
+  assert.deepEqual(estimateCoverage(details), { open: 3, estimated: 3, assumed_points: 0 });
+});
+
 console.log(`unit checks passed (${n})`);
