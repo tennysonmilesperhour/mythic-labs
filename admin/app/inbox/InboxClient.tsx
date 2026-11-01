@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { PRIORITIES, relTime, today, type InboxItem, type Priority, type ProjectStatus, type Task } from "@/lib/projectTypes";
+import { PRIORITIES, RECURRENCE_META, fmtDate, relTime, today, type InboxItem, type Priority, type ProjectStatus, type Task } from "@/lib/projectTypes";
 import { ME, facetHref, projectHref, taskHref } from "@/lib/taskMap";
 import { Chip, InlineText, StatusDot, api, btnGhost, btnPrimary, inputBase } from "@/components/ProjectBits";
 import { useToast } from "@/components/Toast";
@@ -159,6 +159,8 @@ export default function InboxClient({ initial, projects, agents }: { initial: In
                 <Chip key={l}>+{l}</Chip>
               ))}
               {i.estimate ? <Chip>{i.estimate} pt</Chip> : null}
+              {i.planned_for ? <Chip>plan {fmtDate(i.planned_for)}</Chip> : null}
+              {i.recurrence ? <Chip>↻ {RECURRENCE_META[i.recurrence].short}</Chip> : null}
               {i.project_id && projects.find((p) => p.id === i.project_id) ? (
                 <Chip tone="accent">
                   <Link href={projectHref(i.project_id)}>{projects.find((p) => p.id === i.project_id)!.name}</Link>

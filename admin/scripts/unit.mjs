@@ -17,7 +17,8 @@ const types = await load('../lib/projectTypes.ts');
 const { addDays, nextOccurrence, projectHealth, computeStats, computeAttention, weekStart, daysBetween, renderDigestMarkdown, EMPTY_HUB } = types.mod;
 const quick = await load('../lib/quick.ts', { './projectTypes': types.url });
 const { parseDate, parseQuick, matchProject, fuzzyScore } = quick.mod;
-const ical = await load('../lib/ical.ts', { './projectTypes': types.url });
+const taskMap = await load('../lib/taskMap.ts', { './projectTypes': types.url });
+const ical = await load('../lib/ical.ts', { './projectTypes': types.url, './taskMap': taskMap.url });
 const { calendarEvents, renderIcs } = ical.mod;
 
 let n = 0;
@@ -242,6 +243,46 @@ t('aging lists claimed open work oldest first and skips paused projects', () => 
 });
 t('estimate coverage reports what the forecast assumes', () => {
   assert.deepEqual(estimateCoverage(details), { open: 3, estimated: 3, assumed_points: 0 });
+});
+
+
+// ── fixes from the review ──
+const { isReady, isSnoozed } = types.mod;
+const { fold } = ical.mod;
+t('a snoozed task is not ready, so agents leave it alone until its day', () => {
+  const a = task({ id: 'r1', snoozed_until: '2999-01-01' });
+  assert.equal(isSnoozed(a), true);
+  assert.equal(isReady(a, [a]), false);
+  assert.equal(isReady(task({ id: 'r2', snoozed_until: '2000-01-01' }), []), true);
+});
+t('a project whose open work is all deferred is not flagged stuck', () => {
+  const d = { project: base, tasks: [task({ snoozed_until: '2999-01-01' })], milestones: [], entries: [] };
+  const kinds = computeAttention(d, new Date().toISOString()).map((a) => a.key.split(':')[1]);
+  assert.ok(!kinds.includes('stuck') && !kinds.includes('empty'), kinds.join(','));
+});
+t('calendar folding counts octets and never splits a character', () => {
+  const line = 'SUMMARY:' + 'é'.repeat(60); // 2 bytes each: 128 octets
+  const folded = fold(line);
+  const parts = folded.split('\r\n');
+  assert.ok(parts.length >= 2);
+  for (const part of parts) assert.ok(Buffer.byteLength(part, 'utf8') <= 75, `${Buffer.byteLength(part, 'utf8')} octets`);
+  assert.equal(parts.slice(1).every((x) => x.startsWith(' ')), true);
+  assert.equal(parts.map((x, i) => (i ? x.slice(1) : x)).join(''), line);
+  const emoji = 'SUMMARY:' + '🙂'.repeat(30);
+  assert.equal(fold(emoji).split('\r\n').map((x, i) => (i ? x.slice(1) : x)).join(''), emoji);
+  assert.equal(fold('short'), 'short');
+});
+t('the personal calendar feed uses the same "mine" rule as Today and My tasks', () => {
+  const detail = {
+    project: { ...base, id: 'p', name: 'P', status: 'active', target_date: null, summary: '' },
+    tasks: [
+      task({ id: 'o1', title: 'Owner step by note', due_date: '2026-11-20', agent: null, notes: 'Owner step: paste the key' }),
+      task({ id: 'a1', title: 'Agent work', due_date: '2026-11-21', agent: 'claude-code' }),
+    ],
+    milestones: [],
+    entries: [],
+  };
+  assert.deepEqual(calendarEvents([detail], 'https://x.test', { mine: true }).map((e) => e.uid), ['task-o1']);
 });
 
 console.log(`unit checks passed (${n})`);

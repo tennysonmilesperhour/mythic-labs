@@ -50,6 +50,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 function ToastView({ t, onDone }: { t: Toast; onDone: () => void }) {
   const ttl = t.ttl ?? (t.action ? 8000 : t.tone === "error" ? 7000 : 3500);
   const [busy, setBusy] = useState(false);
+  const api = useContext(Ctx);
   useEffect(() => {
     const h = setTimeout(onDone, ttl);
     return () => clearTimeout(h);
@@ -71,6 +72,9 @@ function ToastView({ t, onDone }: { t: Toast; onDone: () => void }) {
             setBusy(true);
             try {
               await t.action!.onClick();
+            } catch (e) {
+              // A failed undo must not look like it worked.
+              api?.toast({ message: `${t.action!.label} failed: ${(e as Error).message}`, tone: "error" });
             } finally {
               onDone();
             }

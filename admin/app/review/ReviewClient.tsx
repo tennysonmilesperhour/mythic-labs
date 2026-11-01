@@ -64,12 +64,11 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
     if (!cur) return;
     setBusy(true);
     try {
-      const patch: Record<string, unknown> = { last_reviewed_at: new Date().toISOString() };
-      if (nextAction.trim() !== cur.project.next_action) patch.next_action = nextAction.trim();
-      await api(`/api/projects/${cur.project.id}`, "PATCH", patch);
-      if (showUpdate && body.trim()) {
-        await api(`/api/projects/${cur.project.id}/entries`, "POST", { kind: "update", title: `Review ${today()}`, body: body.trim(), health, entry_date: today() });
-      }
+      // One request, one commit: the reviewed stamp, the next action and the update land together or not at all.
+      await api(`/api/projects/${cur.project.id}/review`, "POST", {
+        ...(nextAction.trim() !== cur.project.next_action ? { next_action: nextAction.trim() } : {}),
+        ...(showUpdate && body.trim() ? { update: { health, body: body.trim() } } : {}),
+      });
       setList((xs) => xs.map((r, idx) => (idx === i ? { ...r, due: false, project: { ...r.project, next_action: nextAction.trim(), last_reviewed_at: new Date().toISOString() } } : r)));
       toast({ message: `${cur.project.name} reviewed.`, tone: "success" });
       advance();
@@ -85,7 +84,7 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
     if (!cur) return;
     setBusy(true);
     try {
-      await api(`/api/projects/${cur.project.id}`, "PATCH", { status, last_reviewed_at: new Date().toISOString(), status_note: "Changed during review" });
+      await api(`/api/projects/${cur.project.id}/review`, "POST", { status, status_note: "Changed during review" });
       toast({ message: `${cur.project.name} is now ${STATUS_META[status].label.toLowerCase()}.`, tone: "success" });
       setList((xs) => xs.map((r, idx) => (idx === i ? { ...r, due: false, project: { ...r.project, status } } : r)));
       advance();

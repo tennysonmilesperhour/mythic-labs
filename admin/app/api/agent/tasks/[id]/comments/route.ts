@@ -10,6 +10,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     requireAgent(req);
     const agent = agentName(req, b);
     if (typeof b.body !== "string" || !b.body.trim()) throw new BadRequest("body required");
-    return { entry: await commentOnTask(id, agent, b.body) };
+    const { entry } = await commentOnTask(id, agent, b.body);
+    return { entry };
   }, req);
 }

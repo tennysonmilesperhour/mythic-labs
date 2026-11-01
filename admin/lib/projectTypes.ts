@@ -211,6 +211,8 @@ export type InboxItem = {
   agent: string | null;
   priority: Priority | null;
   due_date: string | null;
+  planned_for: string | null;
+  recurrence: Recurrence | null;
   estimate: number | null;
   labels: string[];
   created_at: string;
@@ -460,7 +462,8 @@ export function dueLabel(date: string | null): string {
  * are the work; the parent becomes ready for wrap-up once they're finished).
  */
 export function isReady(t: Task, all: Task[]): boolean {
-  if (t.status !== "todo") return false;
+  // A snoozed (deferred) task is not available to anyone until its day.
+  if (t.status !== "todo" || isSnoozed(t)) return false;
   const byId = new Map(all.map((x) => [x.id, x]));
   if (t.depends_on.some((id) => byId.get(id) && byId.get(id)!.status !== "done")) return false;
   return openDescendants(t, all).length === 0;
@@ -592,8 +595,10 @@ export function computeAttention(d: ProjectDetail, lastActivity: string | null):
   }
   if (workable) {
     const open = tasks.filter((t) => t.status !== "done");
+    // Deferred work (snoozed, or a recurring task waiting for its next date) is not stuck; it is waiting on purpose.
+    const awake = open.filter((t) => !isSnoozed(t));
     if (!open.length) add("medium", "empty", "No open tasks", "plan the next milestone or change status");
-    else if (!tasks.some((t) => isReady(t, tasks)) && !tasks.some((t) => t.status === "doing"))
+    else if (awake.length && !tasks.some((t) => isReady(t, tasks)) && !tasks.some((t) => t.status === "doing"))
       add("medium", "stuck", "Nothing is ready to work on", "every open task is blocked or waiting on a dependency");
     if (!p.next_action.trim()) add("low", "next", "No next action set", "one line keeps you and the agents pointed");
     if (daysSince(lastActivity) >= STALE_DAYS)

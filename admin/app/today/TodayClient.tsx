@@ -88,10 +88,23 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
       if (p.status === "done") {
         setPlan((xs) => xs.filter((x) => x.id !== t.id));
         setDone((xs) => [updated, ...xs]);
+        const spawned = res.spawned;
         toast({
-          message: res.spawned ? `Done. Next occurrence due ${fmtDate(res.spawned.due_date)}.` : `Done: ${t.title}`,
+          message: spawned ? `Done. Next occurrence due ${fmtDate(spawned.due_date)}.` : `Done: ${t.title}`,
           tone: "success",
-          action: { label: "Undo", onClick: () => patch(updated, { status: t.status }) },
+          action: {
+            label: "Undo",
+            // The inverse of finishing a recurring task is removing the occurrence it spawned and giving the rule back.
+            onClick: async () => {
+              if (spawned) await api(`/api/tasks/${spawned.id}`, "DELETE");
+              const back = await api<{ task: Task }>(`/api/tasks/${t.id}`, "PATCH", { status: t.status, recurrence: t.recurrence });
+              const restored = { ...updated, ...back.task };
+              setDone((xs) => xs.filter((x) => x.id !== t.id));
+              setPlan((xs) => (xs.some((x) => x.id === t.id) ? xs.map((x) => (x.id === t.id ? restored : x)) : [...xs, restored]));
+              invalidateIndex();
+              router.refresh();
+            },
+          },
         });
       } else if ("planned_for" in p && p.planned_for !== day) {
         setPlan((xs) => xs.filter((x) => x.id !== t.id));

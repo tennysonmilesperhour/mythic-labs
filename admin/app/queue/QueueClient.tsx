@@ -203,10 +203,12 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
 
   const applyLocal = (ids: string[], patch: Partial<Task>) =>
     setRows((xs) => xs.map((t) => (ids.includes(t.id) ? { ...t, ...patch, updated_at: new Date().toISOString() } : t)));
+  // On failure, put back only the rows this request touched; edits made meanwhile to other rows stay.
+  const revert = (before: Row[]) => setRows((xs) => xs.map((x) => before.find((b) => b.id === x.id) ?? x));
 
   const patchOne = useCallback(
     async (t: Row, patch: Partial<Task>, note?: string) => {
-      const prev = rows;
+      const before = rows.filter((r) => r.id === t.id);
       applyLocal([t.id], patch);
       try {
         const res = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${t.id}`, "PATCH", patch);
@@ -216,7 +218,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
         invalidateIndex();
         router.refresh();
       } catch (e) {
-        setRows(prev);
+        revert(before);
         toast({ message: (e as Error).message, tone: "error" });
       }
     },
@@ -227,16 +229,17 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
     const ids = Array.from(selected);
     if (!ids.length) return;
     setBusy(true);
-    const prev = rows;
+    const before = rows.filter((r) => ids.includes(r.id));
     applyLocal(ids, patch);
     try {
-      await api("/api/tasks", "PATCH", { items: ids.map((id) => ({ id, ...patch })) });
+      const res = await api<{ tasks: Task[] }>("/api/tasks", "PATCH", { items: ids.map((id) => ({ id, ...patch })) });
+      setRows((xs) => xs.map((x) => ({ ...x, ...(res.tasks.find((u) => u.id === x.id) ?? {}) })));
       toast({ message: `${label} on ${ids.length} task${ids.length > 1 ? "s" : ""}.`, tone: "success" });
       setSelected(new Set());
       invalidateIndex();
       router.refresh();
     } catch (e) {
-      setRows(prev);
+      revert(before);
       toast({ message: (e as Error).message, tone: "error" });
     } finally {
       setBusy(false);

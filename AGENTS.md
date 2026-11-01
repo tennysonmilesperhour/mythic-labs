@@ -31,10 +31,10 @@ Rules for changing it:
 
 `lib/projectTypes.ts` holds the types and the rules the UI and the agent API share. It must stay importable from client components (no Node APIs):
 
-- **Readiness:** todo, every `depends_on` task done, every descendant done. Subtasks inherit their ancestors' priority for ordering.
+- **Readiness:** todo, not snoozed, every `depends_on` task done, every descendant done. Subtasks inherit their ancestors' priority for ordering. A snoozed task is deferred: hidden from Today, My tasks and attention, and not ready for agents, until its day.
 - **The attention engine,** which drives the "Needs attention" lists. Snoozed tasks raise nothing until their day.
 - **Health:** `projectHealth()` turns stats and attention into on track, at risk, off track, idle or paused, with reasons.
-- **Recurrence:** `nextOccurrence()`; the server spawns the next occurrence when a recurring task is finished and clears the rule on the finished copy.
+- **Recurrence:** `nextOccurrence()`; the server spawns the next occurrence when a recurring task is finished (without the import `source_key`, snoozed until it is due) and clears the rule on the finished copy.
 - **The Markdown renderers** for `PROJECT.md`, the roadmap and the daily digest.
 
 The same rule applies to `lib/insights.ts` (throughput, cycle time, velocity, forecasts), `lib/quick.ts` (natural-language dates and the capture grammar), `lib/templates.ts` and `lib/ical.ts`. `scripts/unit.mjs` tests them by transpiling the TypeScript in place; add a check there when you change a rule.
@@ -54,7 +54,8 @@ Colors are CSS variables (`app/globals.css`) consumed through Tailwind's config;
 - `blocked` requires a note.
 - `done` is refused while subtasks are open.
 - Claims 409 if another agent holds the task or the task isn't ready.
-- Agent comments attach to the task's thread (`task_id`) and never change status; proposals through `/api/agent/inbox` land in the inbox and touch no plan.
+- Agent comments attach to the task's thread (`task_id`) and never change status; proposals through `/api/agent/inbox` land in the inbox and touch no plan. The owner's comment route may carry a `status` so a reply and an unblock are one commit.
+- Anything the store would refuse to read back (duplicate record ids, duplicate task `source_key`s) must be refused on write: restores and spawned occurrences check the whole snapshot, not just the target project.
 
 `dev-workflows/skills/roadmap/SKILL.md` teaches agents this loop. If you change the API, update the skill and `admin/README.md` with it, and bump the plugin version.
 

@@ -2,21 +2,36 @@
 // Apple Calendar next to meetings. Pure: no store access, client-safe.
 
 import type { ProjectDetail } from "./projectTypes";
+import { isMine } from "./taskMap";
 
 type Event = { uid: string; date: string; summary: string; description?: string; url?: string };
 
-const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, (m) => `\\${m}`);
-const fold = (line: string) => {
-  // RFC 5545 folds lines at 75 octets; a conservative split by characters is fine for ASCII-heavy text.
+const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/[,;]/g, (m) => `\\${m}`);
+
+/**
+ * RFC 5545 folds content lines at 75 octets, continuing with a single space.
+ * Count UTF-8 bytes per code point, so a multi-byte character or an emoji is
+ * never split in the middle.
+ */
+const encoder = new TextEncoder();
+export function fold(line: string): string {
   const out: string[] = [];
-  let rest = line;
-  while (rest.length > 73) {
-    out.push(rest.slice(0, 73));
-    rest = ` ${rest.slice(73)}`;
+  let cur = "";
+  let bytes = 0;
+  for (const ch of line) {
+    const n = encoder.encode(ch).length;
+    if (bytes + n > 75) {
+      out.push(cur);
+      cur = " ";
+      bytes = 1;
+    }
+    cur += ch;
+    bytes += n;
   }
-  out.push(rest);
+  out.push(cur);
   return out.join("\r\n");
-};
+}
+
 const dateOnly = (d: string) => d.replace(/-/g, "");
 const nextDay = (d: string) => new Date(new Date(`${d}T12:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
 
@@ -29,7 +44,8 @@ export function calendarEvents(details: ProjectDetail[], origin: string, opts: {
     if (p.status === "paused") continue;
     for (const t of d.tasks) {
       if (t.status === "done" || !t.due_date) continue;
-      if (opts.mine && t.agent !== "me") continue;
+      // "Mine" means the same thing here as on Today and My tasks: assigned to me, or an owner step.
+      if (opts.mine && !isMine(t)) continue;
       events.push({
         uid: `task-${t.id}`,
         date: t.due_date,
@@ -71,7 +87,7 @@ export function renderIcs(events: Event[], name: string, stamp = new Date()): st
       `DTEND;VALUE=DATE:${dateOnly(nextDay(e.date))}`,
       `SUMMARY:${esc(e.summary)}`,
       ...(e.description ? [`DESCRIPTION:${esc(e.description)}`] : []),
-      ...(e.url ? [`URL:${e.url}`] : []),
+      ...(e.url ? [`URL:${esc(e.url)}`] : []),
       "TRANSP:TRANSPARENT",
       "END:VEVENT"
     );

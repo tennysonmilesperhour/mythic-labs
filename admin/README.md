@@ -133,7 +133,7 @@ The dashboard doubles as the roadmap agents work from. The API is disabled unles
 | `POST /api/agent/inbox` | Propose work into the owner's inbox; touches no plan |
 | `PATCH /api/agent/projects/:id` | `{next_action}` only |
 
-**Ready** means: todo, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence.
+**Ready** means: todo, not snoozed, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence, snoozed until it is due, so the same chore is not picked up again at once.
 
 The `roadmap` skill in `dev-workflows` teaches any agent this loop. Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
 
@@ -145,9 +145,10 @@ The dashboard's own pages and `/api/*` routes are no-auth (single-admin mode), s
 |---|---|
 | `PATCH /api/tasks` | `{items: [{id, ...patch}]}`: edit many tasks, any projects, in one commit. `DELETE` with `{ids}` removes many and returns them for undo |
 | `POST /api/tasks/restore` | `{tasks}`: put deleted tasks back with their original ids |
-| `POST /api/tasks/:id/comments` | `{body}`: your reply on a task's thread |
+| `POST /api/tasks/:id/comments` | `{body, status?}`: your reply on a task's thread; with `status` (for example `todo` to unblock) the reply and the change are one commit |
 | `POST /api/projects/:id/reorder` | `{order: [{id, milestone_id?, parent_id?}]}`: the plan's new task order |
-| `POST /api/projects/:id/template` | `{template, start?}`: lay a plan template's milestones and tasks onto the project |
+| `POST /api/projects/:id/template` | `{template, start?}`: lay a plan template's milestones and tasks onto the project (`POST /api/projects` also takes `template`, so a new project and its plan are one commit) |
+| `POST /api/projects/:id/review` | `{next_action?, status?, status_note?, update?: {health, body}}`: one review pass in one commit |
 | `GET /api/projects/:id/history/:sha` | The project as it was at a commit; `POST` restores it |
 | `GET /api/history[?project=]` | Recent commits to the data store |
 | `GET` `POST /api/inbox`, `PATCH` `DELETE /api/inbox/:id`, `POST /api/inbox/:id/triage` | Captures and turning one into a task |

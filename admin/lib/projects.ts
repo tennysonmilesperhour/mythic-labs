@@ -1,5 +1,5 @@
 import { ME, isMine } from "./taskMap";
-import { PLAN_TEMPLATES } from "./templates";
+import { PLAN_TEMPLATES, type PlanTemplate } from "./templates";
 import {
   listHistory,
   mutate,
@@ -68,7 +68,7 @@ const ENTRY_FIELDS = [
   "kind", "task_id", "title", "body", "entry_date", "author", "version", "change_type", "source_url", "evidence_url",
   "decision_status", "health", "context", "alternatives", "consequences",
 ] as const;
-const INBOX_FIELDS = ["title", "notes", "source", "project_id", "agent", "priority", "due_date", "estimate", "labels"] as const;
+const INBOX_FIELDS = ["title", "notes", "source", "project_id", "agent", "priority", "due_date", "planned_for", "recurrence", "estimate", "labels"] as const;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -390,6 +390,12 @@ export async function createProjects(
           failed.push({ name: pname, reason: `status must be one of ${STATUSES.join(", ")}` });
           continue;
         }
+        // A plan template is laid down in the same commit, so a failure cannot leave a half-made project.
+        const template = typeof row.template === "string" && row.template ? PLAN_TEMPLATES.find((t) => t.id === row.template) : undefined;
+        if (typeof row.template === "string" && row.template && !template) {
+          failed.push({ name: pname, reason: `no template ${row.template}` });
+          continue;
+        }
         const k = key(clean.owner, clean.repo);
         const sourceKey = normalizeSourceKey(clean.source_key);
         if (sourceKey && sourceKeys.has(sourceKey)) {
@@ -429,7 +435,9 @@ export async function createProjects(
           updated_at: t,
         };
         project.name = pname;
-        s.projects.set(project.id, { project, milestones: [], tasks: [], entries: [] });
+        const detail: ProjectDetail = { project, milestones: [], tasks: [], entries: [] };
+        s.projects.set(project.id, detail);
+        if (template) layTemplate(detail, template, today());
         created.push(project);
       }
       return { created, failed };
@@ -496,44 +504,46 @@ export async function applyTemplate(projectId: string, templateId: string, start
   const from = start && DATE_RE.test(start) ? start : today();
   return mutate(
     (_r, s) => `${pfx(s, projectId)}start from the ${template.name} template`,
-    (s) => {
-      const d = projectIn(s, projectId);
-      const made: { milestones: Milestone[]; tasks: Task[] } = { milestones: [], tasks: [] };
-      let cursor = from;
-      for (const tm of template.milestones) {
-        cursor = addDays(cursor, tm.weeks * 7);
-        const m: Milestone = {
-          id: newId(),
-          project_id: projectId,
-          title: tm.title,
-          description: tm.description ?? "",
-          start_date: null,
-          target_date: cursor,
-          done: false,
-          done_at: null,
-          sort_order: d.milestones.length,
-          created_at: now(),
-        };
-        d.milestones.push(m);
-        made.milestones.push(m);
-        for (const tt of tm.tasks) {
-          made.tasks.push(
-            newTask(d, {
-              title: tt.title,
-              acceptance: tt.acceptance ?? "",
-              labels: tt.labels ?? [],
-              estimate: tt.estimate ?? null,
-              priority: tt.priority ?? "medium",
-              agent: tt.agent ?? null,
-              milestone_id: m.id,
-            })
-          );
-        }
-      }
-      touch(d);
-      return made;
-    }
+    (s) => layTemplate(projectIn(s, projectId), template, from)
   );
+}
+
+/** Draft helper: add a template's milestones and tasks to a project. Runs inside mutate(). */
+function layTemplate(d: ProjectDetail, template: PlanTemplate, from: string): { milestones: Milestone[]; tasks: Task[] } {
+  const made: { milestones: Milestone[]; tasks: Task[] } = { milestones: [], tasks: [] };
+  let cursor = from;
+  for (const tm of template.milestones) {
+    cursor = addDays(cursor, tm.weeks * 7);
+    const m: Milestone = {
+      id: newId(),
+      project_id: d.project.id,
+      title: tm.title,
+      description: tm.description ?? "",
+      start_date: null,
+      target_date: cursor,
+      done: false,
+      done_at: null,
+      sort_order: d.milestones.length,
+      created_at: now(),
+    };
+    d.milestones.push(m);
+    made.milestones.push(m);
+    for (const tt of tm.tasks) {
+      made.tasks.push(
+        newTask(d, {
+          title: tt.title,
+          acceptance: tt.acceptance ?? "",
+          labels: tt.labels ?? [],
+          estimate: tt.estimate ?? null,
+          priority: tt.priority ?? "medium",
+          agent: tt.agent ?? null,
+          milestone_id: m.id,
+        })
+      );
+    }
+  }
+  touch(d);
+  return made;
 }
 
 export async function createMilestone(projectId: string, input: Record<string, unknown>): Promise<Milestone> {
@@ -661,7 +671,8 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
     if (clean.parent_id === task.id) throw new Invalid("a task cannot be its own parent");
     const parent = d.tasks.find((t) => t.id === clean.parent_id);
     if (!parent) throw new NotFound("parent task not found in this project");
-    if (openDescendants(task, d.tasks).some((x) => x.id === parent.id) || d.tasks.some((x) => x.parent_id === task.id && x.id === parent.id)) {
+    // Every descendant counts, finished ones too; a cycle through a done subtask is still a cycle.
+    if (subtree(d, [task.id]).has(parent.id)) {
       throw new Invalid("a task cannot be moved under its own subtask");
     }
   }
@@ -672,12 +683,17 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
     if (clean.status === "done" && task.recurrence) {
       const rule = task.recurrence as Recurrence;
       const t = now();
+      const nextDue = nextOccurrence(rule, task.due_date ?? today());
       spawned = normalizeTask({
         ...task,
         id: newId(),
+        // An import identity belongs to one task; the store refuses duplicates.
+        source_key: null,
         status: "todo",
-        due_date: nextOccurrence(rule, task.due_date ?? today()),
+        due_date: nextDue,
         planned_for: null,
+        // Deferred until it is due, so an agent does not pick the same chore up again right away.
+        snoozed_until: nextDue > today() ? nextDue : null,
         claimed_at: null,
         done_at: null,
         sort_order: d.tasks.length,
@@ -806,13 +822,25 @@ export async function reorderTasks(
         const patch: Record<string, unknown> = { sort_order: i };
         if (o.milestone_id !== undefined) patch.milestone_id = o.milestone_id;
         if (o.parent_id !== undefined) patch.parent_id = o.parent_id;
+        // Moving a task is not progress on it: keep updated_at, which drives the stalled and aging signals.
+        const stamp = t.updated_at;
         applyTaskPatch(d, t, patch);
+        t.updated_at = stamp;
       });
-      // Subtasks follow their parent's milestone.
+      // Subtasks at any depth follow the milestone of their root task.
+      const rootOf = (t: Task): Task => {
+        let cur = t;
+        const seen = new Set<string>();
+        while (cur.parent_id && byId.has(cur.parent_id) && !seen.has(cur.id)) {
+          seen.add(cur.id);
+          cur = byId.get(cur.parent_id)!;
+        }
+        return cur;
+      };
       for (const t of d.tasks) {
         if (!t.parent_id) continue;
-        const parent = byId.get(t.parent_id);
-        if (parent && t.milestone_id !== parent.milestone_id) t.milestone_id = parent.milestone_id;
+        const root = rootOf(t);
+        if (root.id !== t.id && t.milestone_id !== root.milestone_id) t.milestone_id = root.milestone_id;
       }
       return d.tasks;
     }
@@ -877,17 +905,29 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
     (s) => {
       const restored: Task[] = [];
       const incoming = new Set(tasks.map((t) => t.id));
+      // Every id and import key in the store, so a stale or crafted payload cannot write a snapshot parse() refuses.
+      const everyId = new Set<string>(s.inbox.items.map((i) => i.id));
+      const everyKey = new Map<string, string>();
+      for (const [pid, other] of Array.from(s.projects.entries())) {
+        for (const x of [...other.tasks, ...other.milestones, ...other.entries]) everyId.add(x.id);
+        for (const t of other.tasks) if (normalizeSourceKey(t.source_key)) everyKey.set(normalizeSourceKey(t.source_key), pid);
+      }
       for (const raw of tasks) {
         if (!raw || typeof raw.id !== "string" || typeof raw.project_id !== "string" || typeof raw.title !== "string") {
           throw new Invalid("each task needs id, project_id and title");
         }
         const d = projectIn(s, raw.project_id);
         if (d.tasks.some((t) => t.id === raw.id)) continue;
+        if (everyId.has(raw.id)) throw new Conflict(`record id ${raw.id} already exists elsewhere`);
         const clean = pick(raw as unknown as Record<string, unknown>, TASK_FIELDS.filter((f) => f !== "source_key"));
         validateTaskFields(clean);
         const ids = new Set([...d.tasks.map((t) => t.id), ...incoming]);
+        // Keep the import identity unless another task has taken it meanwhile.
+        const key = normalizeSourceKey(raw.source_key);
+        const keepKey = key && !everyKey.has(key);
         const task = normalizeTask({
           ...(clean as Partial<Task>),
+          ...(keepKey ? { source_key: key } : {}),
           id: raw.id,
           project_id: d.project.id,
           title: raw.title,
@@ -913,6 +953,8 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
         });
         d.tasks.push(task);
         restored.push(task);
+        everyId.add(task.id);
+        if (keepKey) everyKey.set(key, d.project.id);
         touch(d);
       }
       return { restored };
@@ -970,18 +1012,58 @@ export async function createAgentTask(projectId: string, agent: string, input: R
   );
 }
 
-/** A comment or progress note on one task, from you or an agent. */
-export async function commentOnTask(taskId: string, author: string, body: string): Promise<Entry> {
+/**
+ * A comment or progress note on one task, from you or an agent. With `status`
+ * the reply and the status change (for example unblocking) land in one commit.
+ */
+export async function commentOnTask(taskId: string, author: string, body: string, status?: TaskStatus): Promise<{ entry: Entry; task: Task; spawned: Task | null }> {
   if (!body.trim()) throw new Invalid("say something");
+  if (status && !(TASK_STATUSES as readonly string[]).includes(status)) throw new Invalid(`status must be one of ${TASK_STATUSES.join(", ")}`);
   return mutate(
-    (e, s) => `${pfx(s, e.project_id)}comment on ${clip(s.projects.get(e.project_id)?.tasks.find((t) => t.id === taskId)?.title ?? "task")}${by(author)}`,
+    (r, s) => `${pfx(s, r.task.project_id)}${status && status !== r.task.status ? "reply and set " + status + " on" : "comment on"} ${clip(r.task.title)}${by(author)}`,
     (s) => {
       const { d, item } = findIn(s, "tasks", taskId);
       const task = item as Task;
       const entry = addEntry(d, { kind: "progress", task_id: task.id, title: body.trim().split("\n")[0].slice(0, 140), body: body.trim(), author });
+      const { spawned } = status && status !== task.status ? applyTaskPatch(d, task, { status }) : { spawned: null };
       task.updated_at = now();
       touch(d);
-      return entry;
+      return { entry, task, spawned };
+    }
+  );
+}
+
+/**
+ * One review pass over a project in one commit: stamp it reviewed, and
+ * optionally set the next action, change status, and post a status update.
+ */
+export async function reviewProject(
+  id: string,
+  input: { next_action?: string; status?: ProjectStatus; status_note?: string; update?: { health: string; body: string } }
+): Promise<{ project: Project; entries: Entry[] }> {
+  if (input.status && !STATUSES.includes(input.status)) throw new Invalid(`status must be one of ${STATUSES.join(", ")}`);
+  if (input.update && (!(HEALTH_LEVELS as readonly string[]).includes(input.update.health) || !String(input.update.body ?? "").trim())) {
+    throw new Invalid("an update needs a health call and a few words");
+  }
+  return mutate(
+    (r) => `${r.project.name}: reviewed${input.status ? `, now ${input.status}` : ""}${input.update ? ", update posted" : ""}`,
+    (s) => {
+      const d = projectIn(s, id);
+      const entries: Entry[] = [];
+      const stamp = now();
+      d.project.last_reviewed_at = stamp;
+      if (typeof input.next_action === "string") d.project.next_action = input.next_action.trim();
+      if (input.status && input.status !== d.project.status) {
+        const before = d.project.status;
+        d.project.status = input.status;
+        d.project.status_changed_at = stamp;
+        entries.push(addEntry(d, { kind: "status", title: `${STATUS_META[before].label} → ${STATUS_META[input.status].label}`, body: input.status_note ?? "" }));
+      }
+      if (input.update) {
+        entries.push(addEntry(d, { kind: "update", title: `Review ${today()}`, body: input.update.body.trim(), health: input.update.health, author: ME, entry_date: today() }));
+      }
+      touch(d);
+      return { project: d.project, entries };
     }
   );
 }
@@ -1132,7 +1214,7 @@ function cleanInbox(input: Record<string, unknown>): Record<string, unknown> {
   if ("source" in clean) clean.source = clean.source ? String(clean.source).slice(0, 64) : null;
   if ("project_id" in clean) clean.project_id = clean.project_id ? String(clean.project_id) : null;
   const taskish: Record<string, unknown> = {};
-  for (const f of ["agent", "priority", "due_date", "estimate", "labels"] as const) if (f in clean) taskish[f] = clean[f];
+  for (const f of ["agent", "priority", "due_date", "planned_for", "recurrence", "estimate", "labels"] as const) if (f in clean) taskish[f] = clean[f];
   if ("priority" in taskish && taskish.priority === null) delete taskish.priority;
   validateTaskFields(taskish);
   Object.assign(clean, taskish);
@@ -1156,6 +1238,8 @@ export async function captureInbox(input: Record<string, unknown>): Promise<Inbo
         agent: null,
         priority: null,
         due_date: null,
+        planned_for: null,
+        recurrence: null,
         estimate: null,
         labels: [],
         created_at: now(),
@@ -1207,12 +1291,15 @@ export async function triageInbox(id: string, input: Record<string, unknown>): P
       const projectId = String(input.project_id ?? item.project_id ?? "");
       if (!projectId) throw new Invalid("pick a project");
       const d = projectIn(s, projectId);
+      // Every hint the capture carried comes along; items written before a field existed read as null.
       const fields: Record<string, unknown> = {
         title: item.title,
         notes: item.notes,
         agent: item.agent,
         priority: item.priority ?? "medium",
         due_date: item.due_date,
+        planned_for: item.planned_for ?? null,
+        recurrence: item.recurrence ?? null,
         estimate: item.estimate,
         labels: item.labels,
       };
@@ -1267,12 +1354,21 @@ export async function restoreProject(id: string, sha: string): Promise<ProjectDe
     (d) => `${d.project.name}: restore version ${sha.slice(0, 7)}`,
     (s) => {
       const current = s.projects.get(id);
-      // Other projects may hold tasks with the same ids only if the file was copied; refuse that.
+      // Other projects may hold the same ids or import keys only if a file was copied; refuse that,
+      // because the store refuses to read a snapshot with duplicates.
+      const pastKeys = new Set(past.tasks.map((t) => normalizeSourceKey(t.source_key)).filter(Boolean));
+      const inboxIds = new Set(s.inbox.items.map((i) => i.id));
+      if ([...past.tasks, ...past.milestones, ...past.entries].some((x) => inboxIds.has(x.id))) {
+        throw new Conflict("that version shares record ids with the inbox");
+      }
       for (const [otherId, other] of Array.from(s.projects.entries())) {
         if (otherId === id) continue;
         const ids = new Set([...other.tasks, ...other.milestones, ...other.entries].map((x) => x.id));
         if ([...past.tasks, ...past.milestones, ...past.entries].some((x) => ids.has(x.id))) {
           throw new Conflict("that version shares record ids with another project");
+        }
+        if (other.tasks.some((t) => pastKeys.has(normalizeSourceKey(t.source_key)))) {
+          throw new Conflict("that version shares task source keys with another project");
         }
       }
       const restored: ProjectDetail = structuredClone(past);
