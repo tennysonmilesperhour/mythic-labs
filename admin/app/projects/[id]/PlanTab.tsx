@@ -28,6 +28,22 @@ import { useToast } from "@/components/Toast";
 import { PLAN_TEMPLATES } from "@/lib/templates";
 import { DateInput, type Store } from "./ProjectDetailClient";
 
+/** A task and every task beneath it. */
+function subtreeIds(tasks: Task[], id: string): Set<string> {
+  const ids = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const t of tasks) {
+      if (t.parent_id && ids.has(t.parent_id) && !ids.has(t.id)) {
+        ids.add(t.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
 const byOrder = (a: Task, b: Task) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
 
 type Drag = { id: string; parent_id: string | null };
@@ -124,10 +140,13 @@ export default function PlanTab({ store }: { store: Store }) {
 
   const patchTask = async (id: string, patch: Partial<Task>) => {
     const prev = tasks;
-    setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    // The server moves a task's subtasks with it between milestones; mirror that here so the headers count right.
+    const moved = "milestone_id" in patch ? subtreeIds(tasks, id) : new Set([id]);
+    const place = (t: Task) => (t.id === id ? { ...t, ...patch } : moved.has(t.id) ? { ...t, milestone_id: patch.milestone_id ?? null } : t);
+    setTasks((ts) => ts.map(place));
     try {
       const { task, spawned } = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${id}`, "PATCH", patch);
-      setTasks((ts) => [...ts.map((t) => (t.id === id ? task : t)), ...(spawned ? [spawned] : [])]);
+      setTasks((ts) => [...ts.map((t) => (t.id === id ? task : place(t))), ...(spawned ? [spawned] : [])]);
       if (spawned) toast({ message: `Next occurrence added, due ${fmtDate(spawned.due_date)}.`, tone: "success" });
     } catch (err: unknown) {
       setTasks(prev);

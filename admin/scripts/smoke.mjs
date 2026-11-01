@@ -361,6 +361,26 @@ const badPriority = await call(`/projects/${fixPid}`, 'PATCH', { priority: 'urge
 check('project dates, review stamps and priority are validated', badTarget.status === 400 && badReviewed.status === 400 && badPriority.status === 400);
 const ownerTomorrow = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Owner step due today, moved on', agent: 'me', due_date: dayPlus(0), planned_for: dayPlus(1) });
 check('a task planned for tomorrow is off today even when it is due today', ownerTomorrow.status === 200 && !(await call('/projects')).body.today.some((t) => t.id === ownerTomorrow.body.task.id));
+// ─── third round: anchors, reopen identity, real dates, commit messages ───
+const { body: monthly } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Monthly chore', recurrence: 'monthly', due_date: dayPlus(-45) });
+const monthlyDone = await call(`/tasks/${monthly.task.id}`, 'PATCH', { status: 'done' });
+check('a spawned occurrence records what spawned it and the day of the month it aims for',
+  monthlyDone.body.spawned?.spawned_from === monthly.task.id && monthlyDone.body.spawned.recurrence_day === Number(dayPlus(-45).slice(8, 10)) && monthlyDone.body.spawned.due_date > dayPlus(0));
+const { body: otherChore } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Other daily chore', recurrence: 'daily' });
+const wrongReopen = await call(`/tasks/${monthly.task.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: otherChore.task.id });
+const otherStill = (await call(`/projects/${fixPid}`)).body.tasks.some((t) => t.id === otherChore.task.id);
+check('reopen refuses a spawned_id this task did not spawn, and deletes nothing', wrongReopen.status === 400 && otherStill);
+await call(`/tasks/${monthlyDone.body.spawned.id}`, 'DELETE');
+const goneReopen = await call(`/tasks/${monthly.task.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: monthlyDone.body.spawned.id });
+check('reopen gives the rule back when the spawned occurrence is already gone', goneReopen.status === 200 && goneReopen.body.task.recurrence === 'monthly' && goneReopen.body.removed.length === 0);
+const badMonth = await call(`/tasks/${monthly.task.id}`, 'PATCH', { due_date: '2026-13-01' });
+const badDay = await call(`/tasks/${monthly.task.id}`, 'PATCH', { planned_for: '2026-02-30' });
+const badMsDate = await call(`/projects/${fixPid}/milestones`, 'POST', { title: 'Bad date', target_date: '2026-02-30' });
+const badLinks = await call(`/projects/${fixPid}`, 'PATCH', { links: {} });
+const badOwner = await call(`/projects/${fixPid}`, 'PATCH', { owner: 42 });
+check('impossible dates, malformed links and a numeric owner are refused', badMonth.status === 400 && badDay.status === 400 && badMsDate.status === 400 && badLinks.status === 400 && badOwner.status === 400);
+const fakeLog = (await (await fetch('http://localhost:4010/__stats')).json()).log;
+check('a reply that changes status says so in the commit message', fakeLog.some((m) => /reply and set todo on Stuck on a key/.test(m)));
 await call(`/repos/${trackedRepo?.id}`, 'DELETE');
 await call(`/projects/${gatedPid}`, 'DELETE');
 await call(`/projects/${templated.body.created[0].id}`, 'DELETE');

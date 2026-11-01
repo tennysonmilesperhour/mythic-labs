@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ESTIMATES,
@@ -10,6 +10,7 @@ import {
   PRIORITY_RANK,
   RECURRENCES,
   RECURRENCE_META,
+  isSnoozed,
   STATUS_META,
   TASK_STATUSES,
   addDays,
@@ -57,19 +58,21 @@ type Filters = {
   due: "" | "today" | "week";
   mine: boolean;
   unassigned: boolean;
+  /** Leave out snoozed tasks, as the overdue and blocked counts do. */
+  awake: boolean;
   q: string;
   group: "project" | "milestone" | "agent" | "priority" | "status" | "due" | "none";
   sort: "priority" | "due" | "updated" | "created" | "title" | "estimate";
 };
 
-const DEFAULTS: Filters = { status: "open", project: "", agent: "", priority: "", label: "", ready: false, overdue: false, due: "", mine: false, unassigned: false, q: "", group: "project", sort: "priority" };
+const DEFAULTS: Filters = { status: "open", project: "", agent: "", priority: "", label: "", ready: false, overdue: false, due: "", mine: false, unassigned: false, awake: false, q: "", group: "project", sort: "priority" };
 
 const PRESETS: Array<{ label: string; patch: Partial<Filters>; key?: string }> = [
   { label: "Open", patch: {} },
   { label: "Ready", patch: { ready: true } },
   { label: "In progress", patch: { status: "doing" } },
-  { label: "Blocked", patch: { status: "blocked" } },
-  { label: "Overdue", patch: { overdue: true } },
+  { label: "Blocked", patch: { status: "blocked", awake: true } },
+  { label: "Overdue", patch: { overdue: true, awake: true } },
   { label: "Due this week", patch: { due: "week" } },
   { label: "Mine", patch: { mine: true } },
   { label: "Unassigned", patch: { unassigned: true } },
@@ -88,6 +91,7 @@ function fromParams(p: Record<string, string | undefined>): Filters {
   f.due = p.due === "today" || p.due === "week" ? p.due : "";
   f.mine = p.mine === "1";
   f.unassigned = p.unassigned === "1";
+  f.awake = p.awake === "1";
   f.q = p.q ?? "";
   if (p.group && ["project", "milestone", "agent", "priority", "status", "due", "none"].includes(p.group)) f.group = p.group as Filters["group"];
   if (p.sort && ["priority", "due", "updated", "created", "title", "estimate"].includes(p.sort)) f.sort = p.sort as Filters["sort"];
@@ -121,12 +125,15 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
   const [rows, setRows] = useState(initialRows);
   useEffect(() => setRows(initialRows), [initialRows]);
   const [f, setF] = useState<Filters>(() => fromParams(initial));
-  // A client-side navigation to another /queue?… link re-renders with new params; follow them.
-  const initialKey = toParams(fromParams(initial));
+  // Follow the live URL: a client-side navigation to any /queue link resets the filters to it,
+  // while the page's own replaceState keeps the URL equal to the filters, so nothing loops.
+  const searchParams = useSearchParams();
+  const urlKey = searchParams.toString();
   useEffect(() => {
-    setF(fromParams(initial));
+    const fromUrl = fromParams(Object.fromEntries(searchParams.entries()));
+    setF((cur) => (toParams(cur) === toParams(fromUrl) ? cur : fromUrl));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialKey]);
+  }, [urlKey]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // A selection only holds tasks that are still listed.
   useEffect(() => {
@@ -165,6 +172,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
       .filter((t) => !f.due || (!!t.due_date && t.status !== "done" && (f.due === "today" ? t.due_date <= day : t.due_date <= week)))
       .filter((t) => !f.mine || t.mine)
       .filter((t) => !f.unassigned || !t.agent)
+      .filter((t) => !f.awake || !isSnoozed(t, day))
       .filter((t) => !q || `${t.title} ${t.notes} ${t.project_name} ${t.labels.join(" ")} ${t.agent ?? ""}`.toLowerCase().includes(q))
       .sort((a, b) => {
         switch (f.sort) {
@@ -376,6 +384,10 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
             </option>
           ))}
           <option value="all">all, including paused projects</option>
+        </select>
+        <select value={f.awake ? "awake" : "all"} onChange={(e) => set({ awake: e.target.value === "awake" })} className={inputBase} aria-label="Snoozed tasks">
+          <option value="all">with snoozed</option>
+          <option value="awake">without snoozed</option>
         </select>
         <span className="text-fg-ghost ml-2">group</span>
         <select value={f.group} onChange={(e) => set({ group: e.target.value as Filters["group"] })} className={inputBase} aria-label="Group by">

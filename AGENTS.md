@@ -12,7 +12,7 @@ Every word that ships (site copy, dashboard UI text, docs, skills, commits, PRs)
 
 - `projects/<id>.json` holds one project's plan, log and settings, and is the source of truth. `projects/<id>.md` is generated from it on every write.
 - `repos.json` holds the Repos page's tracked exceptions.
-- `operations.json` stores durable idempotency receipts, committed atomically with the request's changes.
+- `operations.json` stores idempotency receipts, committed atomically with the request's changes and dropped after 30 days (`RECEIPT_DAYS`).
 - `inbox.json` holds quick captures and agent proposals. It is optional: a missing file reads as an empty inbox and is written on the first capture.
 - The target repository must be verified private, and the branch plus initial reviewed data must already exist. Missing, inaccessible, or malformed state is an error, never an empty store. A validated legacy project-only snapshot can be read and receives missing versioned metadata atomically with its first mutation.
 - Fields added after the first release (task estimate, planned_for, recurrence, labels, snoozed_until; entry task_id and health; project last_reviewed_at) are optional in stored files. `normalizeDetail()` in `lib/projectTypes.ts` fills defaults on read, so code can rely on complete records. Add new fields the same way: optional on disk, normalized on read.
@@ -31,10 +31,10 @@ Rules for changing it:
 
 `lib/projectTypes.ts` holds the types and the rules the UI and the agent API share. It must stay importable from client components (no Node APIs):
 
-- **Readiness:** todo, not snoozed, every `depends_on` task done, every descendant done. Subtasks inherit their ancestors' priority for ordering. A snoozed task is deferred: hidden from Today, My tasks and attention, and not ready for agents, until its day.
+- **Readiness:** todo, not snoozed, every `depends_on` task done, every descendant done. Subtasks inherit their ancestors' priority for ordering. A snoozed task is deferred: hidden from Today, My tasks and attention, left out of the overdue and blocked counts, and not ready for agents, until its day. The lists those counts link to pass `awake=1` to All tasks so they show the same tasks.
 - **The attention engine,** which drives the "Needs attention" lists. Snoozed tasks raise nothing until their day.
 - **Health:** `projectHealth()` turns stats and attention into on track, at risk, off track, idle or paused, with reasons.
-- **Recurrence:** `nextOccurrence()` and `nextOccurrenceAfter()`; the server spawns the next occurrence when a recurring task is finished (without the import `source_key`, snoozed until it is due, always after today even when the task was finished weeks late) and clears the rule on the finished copy. `POST /api/tasks/:id/reopen` undoes a finish in one commit.
+- **Recurrence:** `nextOccurrence()` and `nextOccurrenceAfter()`; the server spawns the next occurrence when a recurring task is finished (without the import `source_key`, snoozed until it is due, always after today even when the task was finished weeks late) and clears the rule on the finished copy. The occurrence records `spawned_from` and, for month-based rules, `recurrence_day` (the day of the month to aim for, so a clamped February date does not move the chore). `POST /api/tasks/:id/reopen` undoes a finish in one commit and only takes back the occurrence the task spawned.
 - **The Markdown renderers** for `PROJECT.md`, the roadmap and the daily digest.
 
 The same rule applies to `lib/insights.ts` (throughput, cycle time, velocity, forecasts), `lib/quick.ts` (natural-language dates and the capture grammar), `lib/templates.ts` and `lib/ical.ts`. `scripts/unit.mjs` tests them by transpiling the TypeScript in place; add a check there when you change a rule.

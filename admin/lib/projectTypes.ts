@@ -162,6 +162,10 @@ export type Task = {
   labels: string[];
   /** Hidden from Today, My tasks and attention until this day (YYYY-MM-DD). */
   snoozed_until: string | null;
+  /** The day of the month a month-based rule aims for; set on spawned occurrences so a clamped February date does not move the chore. */
+  recurrence_day: number | null;
+  /** The finished task this occurrence was spawned from, so an undo can take it back. */
+  spawned_from: string | null;
   claimed_at: string | null;
   done_at: string | null;
   sort_order: number;
@@ -246,6 +250,8 @@ export function normalizeTask(t: Task): Task {
     recurrence: (RECURRENCES as readonly string[]).includes(t.recurrence as string) ? t.recurrence : null,
     labels: Array.isArray(t.labels) ? t.labels.filter((l): l is string => typeof l === "string" && !!l) : [],
     depends_on: Array.isArray(t.depends_on) ? t.depends_on : [],
+    recurrence_day: typeof t.recurrence_day === "number" && t.recurrence_day >= 1 && t.recurrence_day <= 31 ? Math.round(t.recurrence_day) : null,
+    spawned_from: typeof t.spawned_from === "string" && t.spawned_from ? t.spawned_from : null,
   };
 }
 
@@ -387,21 +393,21 @@ export function endOfMonth(date: string): string {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 12)).toISOString().slice(0, 10);
 }
 
-/** The day of the month a month-based rule aims for: 31 (month end) when the date is the last day of its month. */
-function anchorDayOf(date: string): number {
-  return date === endOfMonth(date) ? 31 : new Date(`${date}T12:00:00Z`).getUTCDate();
+/** The day of the month a date falls on. */
+export function dayOfMonth(date: string): number {
+  return new Date(`${date}T12:00:00Z`).getUTCDate();
 }
 
 /**
  * The next date a recurring task is due, counted from its current due date (or today).
- * Month-based rules keep the day of the month (`anchorDay`, by default the day of `from`)
- * and clamp it in shorter months. A date on the last day of its month stays on month
- * ends, so a chore due Jan 31 is next due Feb 28 and then Mar 31.
+ * Month-based rules aim for `anchorDay` (by default the day of `from`) and clamp it in
+ * shorter months. The server keeps the anchor on the task (`recurrence_day`), so a chore
+ * due Jan 31 is next due Feb 28 and then Mar 31, and one due Jan 30 stays on the 30th.
  */
 export function nextOccurrence(rule: Recurrence, from: string, anchorDay?: number): string {
   const base = from || today();
   const d = new Date(`${base}T12:00:00Z`);
-  const anchor = anchorDay ?? anchorDayOf(base);
+  const anchor = anchorDay ?? dayOfMonth(base);
   const months = (n: number) => {
     const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1, 12));
     const last = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 0, 12)).getUTCDate();
@@ -434,9 +440,9 @@ export function nextOccurrence(rule: Recurrence, from: string, anchorDay?: numbe
  * period late skips the occurrences already missed instead of spawning one in the past,
  * and a monthly chore keeps its day of the month across the skipped months.
  */
-export function nextOccurrenceAfter(rule: Recurrence, from: string, day = today()): string {
+export function nextOccurrenceAfter(rule: Recurrence, from: string, day = today(), anchorDay?: number): string {
   const base = from || day;
-  const anchor = anchorDayOf(base);
+  const anchor = anchorDay ?? dayOfMonth(base);
   let next = nextOccurrence(rule, base, anchor);
   while (next <= day) next = nextOccurrence(rule, next, anchor);
   return next;

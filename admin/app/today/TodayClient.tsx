@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PRIORITY_RANK,
   addDays,
@@ -80,14 +80,18 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
   const over = plannedPoints > capacity;
   const tomorrow = addDays(day, 1);
 
+  // One request per task at a time: a second d before the first finish lands would finish it again.
+  const inflight = useRef(new Set<string>());
   const patch = async (t: TaskRef, p: Partial<Task>, note?: string) => {
+    if (inflight.current.has(t.id)) return;
+    inflight.current.add(t.id);
     setBusy(t.id);
     try {
       const res = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${t.id}`, "PATCH", p);
       const updated = { ...t, ...res.task };
       if (p.status === "done") {
         setPlan((xs) => xs.filter((x) => x.id !== t.id));
-        setDone((xs) => [updated, ...xs]);
+        setDone((xs) => [updated, ...xs.filter((x) => x.id !== t.id)]);
         const spawned = res.spawned;
         toast({
           message: spawned ? `Done. Next occurrence due ${fmtDate(spawned.due_date)}.` : `Done: ${t.title}`,
@@ -122,6 +126,7 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
     } catch (e) {
       toast({ message: (e as Error).message, tone: "error" });
     } finally {
+      inflight.current.delete(t.id);
       setBusy(null);
     }
   };

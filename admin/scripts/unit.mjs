@@ -292,10 +292,17 @@ const templates = await load('../lib/templates.ts', { './projectTypes': types.ur
 const { PLAN_TEMPLATES } = templates.mod;
 t('month-based recurrence keeps month ends and catches up after a late finish', () => {
   assert.equal(endOfMonth('2026-02-10'), '2026-02-28');
-  assert.equal(nextOccurrence('monthly', '2026-02-28'), '2026-03-31'); // a month-end chore stays on month ends
-  assert.equal(nextOccurrence('monthly', '2026-02-27'), '2026-03-27');
-  assert.equal(nextOccurrence('monthly', '2026-02-28', 30), '2026-03-30'); // an explicit anchor survives a short month
-  assert.equal(nextOccurrenceAfter('monthly', '2026-01-31', '2026-03-15'), '2026-03-31');
+  assert.equal(nextOccurrence('monthly', '2026-02-28'), '2026-03-28'); // without an anchor, the day of the date
+  assert.equal(nextOccurrence('monthly', '2026-02-28', 31), '2026-03-31'); // the anchor the server keeps on the chore
+  assert.equal(nextOccurrence('monthly', '2026-02-28', 30), '2026-03-30');
+  assert.equal(nextOccurrence('yearly', '2026-02-28'), '2027-02-28');
+  assert.equal(nextOccurrenceAfter('monthly', '2026-01-31', '2026-03-15'), '2026-03-31'); // within one call the anchor is the start day
+  assert.equal(nextOccurrenceAfter('monthly', '2026-02-28', '2026-03-01', 30), '2026-03-30');
+  // Across spawns the server passes the stored anchor, so a "30th" chore never turns into a month-end chore.
+  const chain = [];
+  let due = '2026-01-30';
+  for (let i = 0; i < 4; i++) chain.push((due = nextOccurrence('monthly', due, 30)));
+  assert.deepEqual(chain, ['2026-02-28', '2026-03-30', '2026-04-30', '2026-05-30']);
   assert.equal(nextOccurrenceAfter('weekly', '2026-10-01', '2026-11-01'), '2026-11-05'); // a month late: skip the missed weeks
   assert.equal(nextOccurrenceAfter('daily', '2026-11-01', '2026-11-01'), '2026-11-02');
   assert.equal(nextOccurrenceAfter('weekly', '', '2026-11-01'), '2026-11-08'); // no due date: count from today
@@ -334,6 +341,46 @@ t('parseQuick reads dates of up to three words after due: and plan: and keeps th
   assert.equal(g.due_date, null);
   assert.ok(g.tokens.some((x) => x.kind === 'due?'));
   assert.equal(g.title, 'Pay rent it suits');
+});
+t('parseDate ignores inherited object keys and reads a year after month and day', () => {
+  assert.equal(parseDate('constructor', from), null);
+  assert.equal(parseDate('next constructor', from), null);
+  assert.equal(parseDate('dec 1 2027', from), '2027-12-01');
+  assert.equal(parseDate('1 dec 2027', from), '2027-12-01');
+  assert.equal(parseDate('12/1/2027', from), '2027-12-01');
+  assert.equal(parseDate('feb 30 2027', from), null);
+});
+t('parseQuick cuts tokens where they matched and reads every due: form', () => {
+  const a = parseQuick('Plan wedding wed', projects, from);
+  assert.equal(a.title, 'Plan wedding');
+  assert.equal(a.planned_for, '2026-11-11');
+  const a2 = parseQuick('Call monica mon', projects, from);
+  assert.equal(a2.title, 'Call monica');
+  assert.equal(a2.planned_for, '2026-11-09');
+  const b = parseQuick('Dinner due:fri $& budget', projects, from);
+  assert.equal(b.title, 'Dinner $& budget');
+  assert.equal(b.due_date, '2026-11-06');
+  assert.equal(b.tokens.filter((x) => x.kind === 'due').length, 1);
+  const c = parseQuick('Pay rent due: fri', projects, from);
+  assert.equal(c.due_date, '2026-11-06');
+  assert.equal(c.planned_for, null);
+  assert.equal(c.title, 'Pay rent');
+  const d = parseQuick('Pay rent due:', projects, from);
+  assert.equal(d.title, 'Pay rent');
+  assert.ok(d.tokens.some((x) => x.kind === 'due?'));
+  const e = parseQuick('Focus on: launch prep', projects, from);
+  assert.equal(e.title, 'Focus on: launch prep');
+  assert.equal(e.planned_for, null);
+  const f = parseQuick('Release due:dec 1 2027 at noon', projects, from);
+  assert.equal(f.due_date, '2027-12-01');
+  assert.equal(f.title, 'Release at noon');
+  const g = parseQuick('Review copy #café +déco', [{ id: 'p4', name: 'Café' }], from);
+  assert.equal(g.project?.id, 'p4');
+  assert.deepEqual(g.labels, ['déco']);
+  assert.equal(g.title, 'Review copy');
+  const h = parseQuick('Refactor the class due:constructor', projects, from);
+  assert.equal(h.due_date, null);
+  assert.equal(h.title, 'Refactor the class');
 });
 t('snoozed tasks are not counted as overdue or blocked', () => {
   const s = computeStats([task({ status: 'blocked', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01' })], []);

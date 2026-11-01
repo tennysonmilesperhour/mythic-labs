@@ -16,8 +16,9 @@
 
 import { PRIORITIES, RECURRENCES, addDays, today, type Priority, type Recurrence } from "./projectTypes";
 
-// Only these spellings are weekdays, so "friend" and "monitor" stay words.
-const WEEKDAY_FORMS: Record<string, number> = {
+// Only these spellings are weekdays, so "friend" and "monitor" stay words. A Map, so
+// inherited object keys such as "constructor" are not weekdays either.
+const WEEKDAY_FORMS = new Map<string, number>(Object.entries({
   sun: 0, sunday: 0,
   mon: 1, monday: 1,
   tue: 2, tues: 2, tuesday: 2,
@@ -25,7 +26,7 @@ const WEEKDAY_FORMS: Record<string, number> = {
   thu: 4, thur: 4, thurs: 4, thursday: 4,
   fri: 5, friday: 5,
   sat: 6, saturday: 6,
-};
+}));
 const WEEKDAY_WORD = "(?:mon(?:day)?|tue(?:s|sday)?|wed(?:s|nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)";
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
@@ -55,22 +56,30 @@ export function parseDate(raw: string, from = today()): string | null {
     return monthsFrom(from, n);
   }
   m = s.match(/^(next\s+)?([a-z]+)$/);
-  if (m && m[2] in WEEKDAY_FORMS) {
-    let ahead = (WEEKDAY_FORMS[m[2]] - dow(from) + 7) % 7;
+  const weekday = m ? WEEKDAY_FORMS.get(m[2]) : undefined;
+  if (m && weekday !== undefined) {
+    let ahead = (weekday - dow(from) + 7) % 7;
     if (ahead === 0) ahead = 7;
     if (m[1]) ahead += 7;
     return addDays(from, ahead);
   }
-  // "nov 5", "5 nov", "november 5th", "11/5"
-  m = s.match(/^([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?$/) || s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})$/);
+  // "nov 5", "5 nov", "november 5th", "11/5", each with an optional year: "nov 5 2027", "5 nov 2027", "11/5/2027"
+  m = s.match(/^([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?$/) || s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})(?:,?\s+(\d{4}))?$/);
   if (m) {
     const [a, b] = /^\d/.test(m[1]) ? [m[2], m[1]] : [m[1], m[2]];
     const month = MONTHS.indexOf(a.slice(0, 3));
-    if (month >= 0) return upcoming(from, month, Number(b));
+    if (month >= 0) return m[3] ? exact(Number(m[3]), month, Number(b)) : upcoming(from, month, Number(b));
   }
-  m = s.match(/^(\d{1,2})\/(\d{1,2})$/);
-  if (m) return upcoming(from, Number(m[1]) - 1, Number(m[2]));
+  m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);
+  if (m) return m[3] ? exact(Number(m[3]), Number(m[1]) - 1, Number(m[2])) : upcoming(from, Number(m[1]) - 1, Number(m[2]));
   return null;
+}
+
+/** A specific year, month (0-11) and day, or null when the day does not exist in that month. */
+function exact(year: number, month: number, day: number): string | null {
+  if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+  const d = new Date(Date.UTC(year, month, day, 12));
+  return d.getUTCMonth() === month ? d.toISOString().slice(0, 10) : null;
 }
 
 const dow = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -177,18 +186,24 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
     recurrence: null,
     tokens,
   };
-  // Each recognized token is cut out of the line; a handler may hand back words it did not use.
+  // Each recognized token is cut out of the line at the place it matched (never by text, which
+  // could hit an earlier word); a handler may hand back words it did not use.
+  const cut = (m: RegExpMatchArray, replacement: string) => {
+    const at = m.index ?? 0;
+    line = `${line.slice(0, at)} ${replacement} ${line.slice(at + m[0].length)}`;
+  };
   const take = (re: RegExp, fn: (m: RegExpMatchArray) => string | void) => {
     let m: RegExpMatchArray | null;
     let guard = 0;
-    while ((m = line.match(re)) && guard++ < 50) {
-      const leftover = fn(m);
-      line = line.replace(m[0], ` ${leftover ?? ""} `);
-    }
+    while ((m = line.match(re)) && guard++ < 50) cut(m, fn(m) ?? "");
   };
   // "due:nov 5" or "plan:next fri": the longest phrase that reads as a date wins, and the rest stays in the title.
-  const dateToken = (kind: "due" | "plan", m: RegExpMatchArray, set: (d: string) => void): string => {
-    const words = [m[1], ...m[2].trim().split(/\s+/).filter(Boolean)];
+  const dateToken = (kind: "due" | "plan", word: string, rest: string, set: (d: string) => void): string => {
+    const words = [word, ...rest.trim().split(/\s+/)].filter(Boolean);
+    if (!words.length) {
+      tokens.push({ kind: `${kind}?`, text: `no date after ${kind}:` });
+      return "";
+    }
     for (let n = words.length; n >= 1; n--) {
       const d = parseDate(words.slice(0, n).join(" "), from);
       if (d) {
@@ -197,11 +212,11 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
         return words.slice(n).join(" ");
       }
     }
-    tokens.push({ kind: `${kind}?`, text: `can't read date "${m[1]}"` });
+    tokens.push({ kind: `${kind}?`, text: `can't read date "${words[0]}"` });
     return words.slice(1).join(" ");
   };
 
-  take(/\s#"([^"]+)"|\s#([\w.-]+)/, (m) => {
+  take(/\s#"([^"]+)"|\s#([\p{L}\p{N}_.-]+)/u, (m) => {
     const name = m[1] ?? m[2];
     const p = matchProject(name, projects);
     if (p) {
@@ -228,13 +243,15 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
     out.priority = PRIORITIES[Number(m[1]) - 1];
     tokens.push({ kind: "priority", text: out.priority });
   });
-  take(new RegExp(`\\s(?:due|by):(\\S+)((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("due", m, (d) => (out.due_date = d)));
-  take(new RegExp(`\\s(?:plan|do|on):(\\S+)((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("plan", m, (d) => (out.planned_for = d)));
+  // "due:" and "plan:" may be followed by a space or stand alone at the end; the prose aliases
+  // (by:, do:, on:) need the date glued on, so "focus on: launch" keeps its words.
+  take(new RegExp(`\\s(?:due:\\s*(\\S*)|by:(\\S+))((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("due", m[1] ?? m[2] ?? "", m[3], (d) => (out.due_date = d)));
+  take(new RegExp(`\\s(?:plan:\\s*(\\S*)|(?:do|on):(\\S+))((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("plan", m[1] ?? m[2] ?? "", m[3], (d) => (out.planned_for = d)));
   take(/\s(?:~(\d{1,3})|(\d{1,3})\s?pts?)(?=\s)/i, (m) => {
     out.estimate = Number(m[1] ?? m[2]);
     tokens.push({ kind: "estimate", text: `${out.estimate} pt` });
   });
-  take(/\s\+([\w-]+)/, (m) => {
+  take(/\s\+([\p{L}\p{N}_-]+)/u, (m) => {
     if (!out.labels.includes(m[1])) out.labels.push(m[1]);
     tokens.push({ kind: "label", text: `+${m[1]}` });
   });
@@ -255,7 +272,7 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
     if (d && (after === "" || /^(#|@|!|\+|~|due:|plan:)/.test(after))) {
       out.planned_for = d;
       tokens.push({ kind: "plan", text: `plan ${d}` });
-      line = line.replace(bare[0], " ");
+      cut(bare, "");
     }
   }
   out.title = line.replace(/\s+/g, " ").trim();

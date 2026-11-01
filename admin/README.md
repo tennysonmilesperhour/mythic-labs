@@ -53,7 +53,7 @@ private project data repository / existing branch
 ├── projects/<id>.json   one project: plan, log, settings (source of truth)
 ├── projects/<id>.md     the same project as Markdown, for people and agents
 ├── repos.json           the Repos page's tracked exceptions
-├── operations.json      durable idempotency receipts
+├── operations.json      idempotency receipts, kept for 30 days
 └── inbox.json           quick captures waiting to be sorted (written on the first capture)
 ```
 
@@ -157,7 +157,7 @@ The dashboard's own pages and `/api/*` routes are no-auth (single-admin mode), s
 | `GET /api/calendar.ics` | The calendar feed |
 | `GET /api/digest` | Today's brief as Markdown |
 
-For an owner-reviewed inventory import, `POST /api/projects/:id/tasks` also accepts `{ "items": [...] }`. Every task must have a stable `source_key`; existing keys are skipped, and the whole batch is written in one store mutation. Send a stable `Idempotency-Key` for replay safety. A retry with the same key and payload replays the original result; the same key with a different payload returns 409. Single-task POSTs keep their existing response and behavior.
+For an owner-reviewed inventory import, `POST /api/projects/:id/tasks` also accepts `{ "items": [...] }`. Every task must have a stable `source_key`; existing keys are skipped, and the whole batch is written in one store mutation. Send a stable `Idempotency-Key` for replay safety. A retry with the same key and payload within 30 days replays the original result; the same key with a different payload returns 409. Single-task POSTs keep their existing response and behavior.
 
 ---
 

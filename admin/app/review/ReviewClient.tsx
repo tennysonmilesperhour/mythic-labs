@@ -62,7 +62,11 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur?.project.id]);
 
-  const advance = () => setCurId(i >= 0 ? list[i + 1]?.project.id ?? null : null);
+  // The pass walks the projects still due; the sidebar reaches any project.
+  const advance = () => {
+    const next = list.slice(i + 1).find((r) => r.due) ?? list.slice(0, Math.max(i, 0)).find((r) => r.due);
+    setCurId(next?.project.id ?? null);
+  };
   const goTo = (idx: number) => setCurId(list[idx]?.project.id ?? null);
 
   const markReviewed = async () => {
@@ -104,8 +108,8 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
   const items = useMemo(
     () => [
       { label: "Inbox to zero", n: checklist.inbox, href: "/inbox" },
-      { label: "Overdue tasks", n: checklist.overdue, href: "/queue?overdue=1" },
-      { label: "Blocked tasks", n: checklist.blocked, href: "/queue?status=blocked" },
+      { label: "Overdue tasks", n: checklist.overdue, href: "/queue?overdue=1&awake=1" },
+      { label: "Blocked tasks", n: checklist.blocked, href: "/queue?status=blocked&awake=1" },
       { label: "Decisions waiting on you", n: checklist.decisions, href: "/tasks" },
       { label: "Quiet projects", n: checklist.stale, href: "/fix?key=group:stale" },
     ],

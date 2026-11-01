@@ -25,6 +25,7 @@ import {
   addDays,
   computeAttention,
   computeStats,
+  dayOfMonth,
   daysFromNow,
   groupAttention,
   isReady,
@@ -74,6 +75,12 @@ const ENTRY_FIELDS = [
 const INBOX_FIELDS = ["title", "notes", "source", "project_id", "agent", "priority", "due_date", "planned_for", "recurrence", "estimate", "labels"] as const;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar date in YYYY-MM-DD form; the Date parser alone would roll 2026-02-30 into March and choke on month 13 later. */
+const isDate = (v: unknown): v is string => {
+  if (typeof v !== "string" || !DATE_RE.test(v)) return false;
+  const d = new Date(`${v}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const ENTRY_KINDS: readonly EntryKind[] = ["changelog", "decision", "note", "status", "progress", "update"];
 
@@ -82,7 +89,17 @@ function validateProjectFields(clean: Record<string, unknown>) {
   if ("status" in clean && !STATUSES.includes(clean.status as ProjectStatus)) throw new Invalid(`status must be one of ${STATUSES.join(", ")}`);
   if ("priority" in clean && !(PRIORITIES as readonly string[]).includes(String(clean.priority))) throw new Invalid(`priority must be one of ${PRIORITIES.join(", ")}`);
   for (const f of ["start_date", "target_date"] as const) {
-    if (f in clean && clean[f] !== null && !(typeof clean[f] === "string" && DATE_RE.test(clean[f] as string))) throw new Invalid(`${f} must be YYYY-MM-DD or null`);
+    if (f in clean && clean[f] !== null && !isDate(clean[f])) throw new Invalid(`${f} must be a real date (YYYY-MM-DD) or null`);
+  }
+  for (const f of ["owner", "repo"] as const) {
+    if (f in clean && clean[f] !== null && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string or null`);
+  }
+  if ("links" in clean) {
+    const links = clean.links;
+    if (!Array.isArray(links) || links.some((l) => !l || typeof l !== "object" || typeof (l as { label?: unknown }).label !== "string" || typeof (l as { url?: unknown }).url !== "string")) {
+      throw new Invalid("links must be an array of { label, url }");
+    }
+    clean.links = (links as Array<{ label: string; url: string }>).map((l) => ({ label: l.label, url: l.url }));
   }
   if ("last_reviewed_at" in clean) {
     if (!clean.last_reviewed_at) clean.last_reviewed_at = null;
@@ -120,7 +137,7 @@ function validateEntryFields(d: ProjectDetail, clean: Record<string, unknown>) {
   if ("entry_date" in clean) {
     // An empty date means today on create and no change on edit.
     if (!clean.entry_date) delete clean.entry_date;
-    else if (!(typeof clean.entry_date === "string" && DATE_RE.test(clean.entry_date))) throw new Invalid("entry_date must be YYYY-MM-DD");
+    else if (!isDate(clean.entry_date)) throw new Invalid("entry_date must be a real date (YYYY-MM-DD)");
   }
   for (const f of ["title", "body", "context", "alternatives", "consequences"] as const) {
     if (f in clean && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string`);
@@ -139,8 +156,8 @@ function validateTaskFields(clean: Record<string, unknown>) {
     throw new Invalid(`priority must be one of ${PRIORITIES.join(", ")}`);
   }
   for (const f of ["due_date", "planned_for", "snoozed_until"] as const) {
-    if (f in clean && clean[f] !== null && !(typeof clean[f] === "string" && DATE_RE.test(clean[f] as string))) {
-      throw new Invalid(`${f} must be YYYY-MM-DD or null`);
+    if (f in clean && clean[f] !== null && !isDate(clean[f])) {
+      throw new Invalid(`${f} must be a real date (YYYY-MM-DD) or null`);
     }
   }
   if ("estimate" in clean) {
@@ -622,9 +639,22 @@ function layTemplate(d: ProjectDetail, template: PlanTemplate, from: string): { 
   return made;
 }
 
+/** Reject malformed milestone fields before they reach the store. */
+function validateMilestoneFields(clean: Record<string, unknown>) {
+  for (const f of ["title", "description"] as const) {
+    if (f in clean && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string`);
+  }
+  for (const f of ["start_date", "target_date"] as const) {
+    if (f in clean && clean[f] !== null && !isDate(clean[f])) throw new Invalid(`${f} must be a real date (YYYY-MM-DD) or null`);
+  }
+  if ("done" in clean && typeof clean.done !== "boolean") throw new Invalid("done must be true or false");
+  if ("sort_order" in clean && typeof clean.sort_order !== "number") throw new Invalid("sort_order must be a number");
+}
+
 export async function createMilestone(projectId: string, input: Record<string, unknown>): Promise<Milestone> {
   const clean = pick(input, MILESTONE_FIELDS);
   if (!String(clean.title || "").trim()) throw new Invalid("title required");
+  validateMilestoneFields(clean);
   return mutate(
     (m, s) => `${pfx(s, m.project_id)}milestone ${clip(m.title)} added`,
     (s) => {
@@ -651,6 +681,8 @@ export async function createMilestone(projectId: string, input: Record<string, u
 
 export async function updateMilestone(id: string, patch: Record<string, unknown>): Promise<Milestone> {
   const clean = pick(patch, MILESTONE_FIELDS);
+  if ("title" in clean && !String(clean.title ?? "").trim()) throw new Invalid("title required");
+  validateMilestoneFields(clean);
   return mutate(
     (m, s) => `${pfx(s, m.project_id)}milestone ${clip(m.title)} ${"done" in clean ? (clean.done ? "reached" : "reopened") : "edited"}`,
     (s) => {
@@ -714,6 +746,8 @@ function newTask(d: ProjectDetail, clean: Record<string, unknown>): Task {
     recurrence: null,
     labels: [],
     snoozed_until: null,
+    recurrence_day: null,
+    spawned_from: null,
     claimed_at: null,
     done_at: null,
     sort_order: d.tasks.length,
@@ -769,13 +803,18 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
       const rule = task.recurrence as Recurrence;
       const t = now();
       const day = today();
+      // The day of the month a month-based rule aims for travels with the chore, so a clamped
+      // February date does not turn a "30th" chore into a month-end one.
+      const anchor = task.recurrence_day ?? dayOfMonth(task.due_date ?? day);
       // Always after today: a chore finished weeks late skips the occurrences it missed.
-      const nextDue = nextOccurrenceAfter(rule, task.due_date ?? day, day);
+      const nextDue = nextOccurrenceAfter(rule, task.due_date ?? day, day, anchor);
       spawned = normalizeTask({
         ...task,
         id: newId(),
         // An import identity belongs to one task; the store refuses duplicates.
         source_key: null,
+        spawned_from: task.id,
+        recurrence_day: anchor,
         status: "todo",
         due_date: nextDue,
         planned_for: null,
@@ -791,6 +830,8 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
       task.recurrence = null;
     }
   }
+  // A new due date or rule restarts the month anchor from the new date.
+  if (("due_date" in clean && clean.due_date !== task.due_date) || ("recurrence" in clean && clean.recurrence !== task.recurrence)) task.recurrence_day = null;
   Object.assign(task, clean, { updated_at: now() });
   if (spawned && "recurrence" in clean) task.recurrence = null;
   touch(d);
@@ -1034,6 +1075,8 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
           recurrence: (clean.recurrence as Recurrence | null) ?? null,
           labels: (clean.labels as string[]) ?? [],
           snoozed_until: (clean.snoozed_until as string | null) ?? null,
+          recurrence_day: null,
+          spawned_from: null,
           depends_on: ((clean.depends_on as string[]) ?? []).filter((x) => x !== raw.id && ids.has(x)),
           parent_id: clean.parent_id && ids.has(clean.parent_id as string) ? (clean.parent_id as string) : null,
           milestone_id: clean.milestone_id && d.milestones.some((m) => m.id === clean.milestone_id) ? (clean.milestone_id as string) : null,
@@ -1119,12 +1162,15 @@ export async function commentOnTask(
   if (!body.trim()) throw new Invalid("say something");
   const status = opts.asAgent ? undefined : opts.status;
   if (status && !(TASK_STATUSES as readonly string[]).includes(status)) throw new Invalid(`status must be one of ${TASK_STATUSES.join(", ")}`);
+  // Read before the patch, so the commit message can say what changed.
+  let changed = false;
   return mutate(
-    (r, s) => `${pfx(s, r.task.project_id)}${status && status !== r.task.status ? "reply and set " + status + " on" : "comment on"} ${clip(r.task.title)}${by(author)}`,
+    (r, s) => `${pfx(s, r.task.project_id)}${changed ? "reply and set " + status + " on" : "comment on"} ${clip(r.task.title)}${by(author)}`,
     (s) => {
       const { d, item } = findIn(s, "tasks", taskId);
       const task = item as Task;
       if (opts.asAgent) assertAgentProject(d, author);
+      changed = !!status && status !== task.status;
       const entry = addEntry(d, { kind: "progress", task_id: task.id, title: body.trim().split("\n")[0].slice(0, 140), body: body.trim(), author });
       const { spawned } = status && status !== task.status ? applyTaskPatch(d, task, { status }) : { spawned: null };
       task.updated_at = now();
@@ -1137,8 +1183,10 @@ export async function commentOnTask(
 /**
  * Undo finishing a task in one commit: reopen it, give its recurrence rule
  * back, and remove the occurrence that finishing it spawned, as long as nobody
- * has started that occurrence meanwhile. If the occurrence stays, so does its
- * rule, and the reopened task does not get the rule back (one chore, one rule).
+ * has started that occurrence meanwhile. While a live occurrence still carries
+ * the rule, the reopened task does not get it back (one chore, one rule); an
+ * occurrence that is gone leaves nothing to keep it, so the rule comes back.
+ * Only the occurrence this task spawned (`spawned_from`) can be taken back.
  */
 export async function reopenTask(
   id: string,
@@ -1152,17 +1200,17 @@ export async function reopenTask(
       const { d, item } = findIn(s, "tasks", id);
       const task = item as Task;
       const removed: Task[] = [];
-      if (input.spawned_id) {
-        const spawned = d.tasks.find((t) => t.id === input.spawned_id);
-        if (spawned && spawned.id !== task.id && spawned.status === "todo" && spawned.recurrence) {
-          const drop = subtree(d, [spawned.id]);
-          removed.push(...d.tasks.filter((t) => drop.has(t.id)));
-          d.tasks = d.tasks.filter((t) => !drop.has(t.id));
-          for (const t of d.tasks) t.depends_on = t.depends_on.filter((x) => !drop.has(x));
-        }
+      const spawned = input.spawned_id ? d.tasks.find((t) => t.id === input.spawned_id) : undefined;
+      if (spawned && spawned.spawned_from !== task.id) throw new Invalid("spawned_id is not an occurrence of this task");
+      if (spawned && spawned.status === "todo" && spawned.recurrence) {
+        const drop = subtree(d, [spawned.id]);
+        removed.push(...d.tasks.filter((t) => drop.has(t.id)));
+        d.tasks = d.tasks.filter((t) => !drop.has(t.id));
+        for (const t of d.tasks) t.depends_on = t.depends_on.filter((x) => !drop.has(x));
       }
+      const occurrenceKeepsRule = !!spawned && !removed.length && !!spawned.recurrence;
       const patch: Record<string, unknown> = { status };
-      if ("recurrence" in input && (!input.spawned_id || removed.length)) patch.recurrence = input.recurrence ?? null;
+      if ("recurrence" in input && !occurrenceKeepsRule) patch.recurrence = input.recurrence ?? null;
       if ("planned_for" in input) patch.planned_for = input.planned_for ?? null;
       applyTaskPatch(d, task, patch);
       return { task, removed };
