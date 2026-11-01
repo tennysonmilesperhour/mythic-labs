@@ -8,6 +8,7 @@ import { StatusDot } from "@/components/ProjectBits";
 import { ME, facetHref, fixHref, projectHref } from "@/lib/taskMap";
 import SubLink from "@/components/SubLink";
 import {
+  HEALTH_META,
   STALE_DAYS,
   STALLED_CLAIM_DAYS,
   SOON_DAYS,
@@ -73,6 +74,8 @@ export default async function Overview() {
 
   const mine = hub?.mine ?? [];
   const calls = attention.filter((a) => !a.task_id).length;
+  const reviewDue = attention.filter((a) => a.key.split(":")[1] === "review").reduce((n, a) => n + (a.key.startsWith("group:") ? Number(a.title.split(" ")[0]) || 1 : 1), 0);
+  const healthCount = (level: string) => projects.filter((p) => p.health.level === level).length;
 
   // A broken source leads the page; when all are fine it sits at the bottom.
   const sourcesOk = hubR.ok && marketR.ok && agentApiOn;
@@ -138,6 +141,22 @@ export default async function Overview() {
       </header>
 
       {sourcesOk ? null : sources}
+
+      {/* ── The day ── */}
+      {hubR.ok ? (
+        <Section
+          title="The day"
+          what="Where to start: today's plan, captures waiting to be sorted, what already shipped today, and projects due for their weekly pass."
+          action={{ href: "/today", label: "Open today" }}
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line">
+            <Metric label="Planned today" value={hub!.today.length} def="Tasks on today's plan, including carry-overs and your overdue work." href="/today" />
+            <Metric label="Inbox" value={hub!.inbox.length} def="Captures and agent proposals waiting to be sorted into a project." href="/inbox" warn />
+            <Metric label="Finished today" value={hub!.doneToday.length} def="Tasks closed today by you or an agent." href="/today#finished-today" />
+            <Metric label="Due for review" value={reviewDue} def="Live projects that have not had a weekly pass in 7 days." href="/review" warn />
+          </div>
+        </Section>
+      ) : null}
 
       {/* ── Your work ── */}
       {hubR.ok ? (
@@ -306,18 +325,32 @@ export default async function Overview() {
         {!hubR.ok ? (
           <Unavailable source="Project store" />
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line">
-            {STATUSES.map((s) => (
-              <Metric
-                key={s}
-                label={STATUS_META[s].label}
-                dot={<StatusDot status={s} />}
-                value={projects.filter((p) => p.status === s).length}
-                def={STATUS_META[s].hint}
-                href={`/projects?view=list&status=${s}`}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line mb-px">
+              {STATUSES.map((s) => (
+                <Metric
+                  key={s}
+                  label={STATUS_META[s].label}
+                  dot={<StatusDot status={s} />}
+                  value={projects.filter((p) => p.status === s).length}
+                  def={STATUS_META[s].hint}
+                  href={`/projects?view=list&status=${s}`}
+                />
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-px bg-line border border-line">
+              {(["on_track", "at_risk", "off_track"] as const).map((h) => (
+                <Metric
+                  key={h}
+                  label={HEALTH_META[h].label}
+                  value={healthCount(h)}
+                  def={HEALTH_META[h].hint}
+                  href={`/projects?view=list&health=${h}`}
+                  warn={h !== "on_track"}
+                />
+              ))}
+            </div>
+          </>
         )}
       </Section>
 
@@ -411,12 +444,12 @@ export default async function Overview() {
                   href={
                     e.kind === "decision" && e.decision_status === "proposed"
                       ? fixHref(`${e.project_id}:decision:${e.id}`)
-                      : `/projects/${e.project_id}?tab=${e.kind === "decision" ? "decisions" : "changelog"}&entry=${e.id}`
+                      : `/projects/${e.project_id}?tab=${e.kind === "decision" ? "decisions" : e.kind === "update" ? "activity" : "changelog"}&entry=${e.id}`
                   }
                   className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent"
                 >
                   <span className="font-mono text-[0.55rem] uppercase tracking-[0.15em] text-fg-dim w-20 shrink-0">
-                    {e.kind === "decision" ? e.decision_status ?? "decision" : e.change_type ?? "change"}
+                    {e.kind === "decision" ? e.decision_status ?? "decision" : e.kind === "update" ? (e.health ? HEALTH_META[e.health].label : "update") : e.change_type ?? "change"}
                   </span>
                   <span className="flex-1 min-w-0 truncate text-[0.85rem]">
                     {e.title}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getHub } from "@/lib/projects";
-import { EMPTY_HUB, STATUSES, type Hub, type ProjectStatus } from "@/lib/projectTypes";
+import { EMPTY_HUB, HEALTH_LEVELS, STATUSES, type HealthLevel, type Hub, type ProjectStatus } from "@/lib/projectTypes";
 import ProjectsClient from "./ProjectsClient";
 import { fixHref } from "@/lib/taskMap";
 
@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; status?: string; facet?: string }>;
+  searchParams: Promise<{ view?: string; status?: string; facet?: string; health?: string; new?: string }>;
 }) {
-  const { view, status, facet } = await searchParams;
+  const { view, status, facet, health, new: openNew } = await searchParams;
   let hub: Hub = EMPTY_HUB;
   let initialError: string | null = null;
   try {
@@ -43,9 +43,11 @@ export default async function ProjectsPage({
         </div>
       ) : null}
 
-      <ProjectsClient hub={hub} initialView={view === "list" || view === "timeline" ? view : "board"}
+      <ProjectsClient hub={hub} initialView={view === "list" || view === "timeline" || view === "calendar" ? view : "board"}
         initialStatus={STATUSES.includes(status as ProjectStatus) ? (status as ProjectStatus) : "all"}
         initialFacet={/^(agent|tool|tag):./.test(facet ?? "") ? facet! : ""}
+        initialHealth={HEALTH_LEVELS.includes(health as HealthLevel) ? (health as HealthLevel) : ""}
+        initialPanel={openNew === "1" ? "new" : "none"}
       />
     </div>
   );

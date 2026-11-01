@@ -329,6 +329,8 @@ export type Hub = {
   today: TaskRef[];
   /** Finished today, any assignee. */
   doneToday: TaskRef[];
+  /** Every open task with a due date, soonest first; feeds the calendar. */
+  dated: TaskRef[];
   /** Captures waiting to be sorted into a project. */
   inbox: InboxItem[];
   /** Latest changelog and decision entries across all projects, newest first. */
@@ -345,6 +347,7 @@ export const EMPTY_HUB: Hub = {
   mine: [],
   today: [],
   doneToday: [],
+  dated: [],
   inbox: [],
   recent: [],
 };

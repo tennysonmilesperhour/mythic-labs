@@ -1,4 +1,5 @@
 import { ME, isMine } from "./taskMap";
+import { PLAN_TEMPLATES } from "./templates";
 import {
   listHistory,
   mutate,
@@ -19,6 +20,7 @@ import {
   STATUS_META,
   TASK_STATUSES,
   WORKABLE,
+  addDays,
   computeAttention,
   computeStats,
   daysFromNow,
@@ -296,6 +298,9 @@ export async function getHub(): Promise<Hub> {
     doneToday: all
       .flatMap((d) => d.tasks.filter((t) => t.status === "done" && t.done_at?.slice(0, 10) === day).map((t) => ref(d, t)))
       .sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? "")),
+    dated: live
+      .flatMap((d) => d.tasks.filter((t) => t.status !== "done" && t.due_date).map((t) => ref(d, t)))
+      .sort((a, b) => a.due_date!.localeCompare(b.due_date!) || PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]),
     inbox,
     recent: all
       .flatMap((d) =>
@@ -480,6 +485,56 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 // ─────────── milestones ───────────
+
+/**
+ * Lay a template's milestones and tasks onto a project in one commit.
+ * Milestone target dates run back to back from `start` (today by default).
+ */
+export async function applyTemplate(projectId: string, templateId: string, start?: string | null): Promise<{ milestones: Milestone[]; tasks: Task[] }> {
+  const template = PLAN_TEMPLATES.find((t) => t.id === templateId);
+  if (!template) throw new NotFound(`no template ${templateId}`);
+  const from = start && DATE_RE.test(start) ? start : today();
+  return mutate(
+    (_r, s) => `${pfx(s, projectId)}start from the ${template.name} template`,
+    (s) => {
+      const d = projectIn(s, projectId);
+      const made: { milestones: Milestone[]; tasks: Task[] } = { milestones: [], tasks: [] };
+      let cursor = from;
+      for (const tm of template.milestones) {
+        cursor = addDays(cursor, tm.weeks * 7);
+        const m: Milestone = {
+          id: newId(),
+          project_id: projectId,
+          title: tm.title,
+          description: tm.description ?? "",
+          start_date: null,
+          target_date: cursor,
+          done: false,
+          done_at: null,
+          sort_order: d.milestones.length,
+          created_at: now(),
+        };
+        d.milestones.push(m);
+        made.milestones.push(m);
+        for (const tt of tm.tasks) {
+          made.tasks.push(
+            newTask(d, {
+              title: tt.title,
+              acceptance: tt.acceptance ?? "",
+              labels: tt.labels ?? [],
+              estimate: tt.estimate ?? null,
+              priority: tt.priority ?? "medium",
+              agent: tt.agent ?? null,
+              milestone_id: m.id,
+            })
+          );
+        }
+      }
+      touch(d);
+      return made;
+    }
+  );
+}
 
 export async function createMilestone(projectId: string, input: Record<string, unknown>): Promise<Milestone> {
   const clean = pick(input, MILESTONE_FIELDS);

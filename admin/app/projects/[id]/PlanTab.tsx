@@ -25,6 +25,7 @@ import { EditableMarkdown } from "@/components/Markdown";
 import { GlyphClose } from "@/components/Glyphs";
 import { isMine, taskHref } from "@/lib/taskMap";
 import { useToast } from "@/components/Toast";
+import { PLAN_TEMPLATES } from "@/lib/templates";
 import { DateInput, type Store } from "./ProjectDetailClient";
 
 const byOrder = (a: Task, b: Task) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
@@ -56,7 +57,25 @@ export default function PlanTab({ store }: { store: Store }) {
   }, [store.focusTask]);
   const [msTitle, setMsTitle] = useState("");
   const [msDate, setMsDate] = useState("");
+  const [templateBusy, setTemplateBusy] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
+
+  const applyTemplate = async (id: string) => {
+    const t = PLAN_TEMPLATES.find((x) => x.id === id);
+    if (!t) return;
+    if (milestones.length && !confirm(`Add the ${t.name} template's ${t.milestones.length} milestones after the existing ones?`)) return;
+    setTemplateBusy(true);
+    try {
+      const res = await api<{ milestones: Milestone[]; tasks: Task[] }>(`/api/projects/${project.id}/template`, "POST", { template: id });
+      setMilestones((ms) => [...ms, ...res.milestones]);
+      setTasks((ts) => [...ts, ...res.tasks]);
+      toast({ message: `${t.name}: ${res.milestones.length} milestones and ${res.tasks.length} tasks added.`, tone: "success" });
+    } catch (e) {
+      fail((e as Error).message);
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
   const [over, setOver] = useState<Over>(null);
   const dragRef = useRef<Drag | null>(null);
 
@@ -286,6 +305,44 @@ export default function PlanTab({ store }: { store: Store }) {
   const zoneCls = (id: string | null) =>
     drag && drag.parent_id === null && over && "zone" in over && over.zone === id ? "outline outline-1 outline-accent bg-[rgba(139,115,85,0.05)]" : "";
 
+  if (!milestones.length && !tasks.length) {
+    return (
+      <div>
+        <div className="border border-dashed border-line bg-bg-warm/40 p-8 mb-8">
+          <div className="serif-display text-2xl text-fg mb-2">An empty plan</div>
+          <p className="text-fg-dim text-sm max-w-xl leading-relaxed mb-5">
+            Start from a template and edit it down, or add the first milestone below. Every template marks the steps only you can do with @me.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {PLAN_TEMPLATES.map((t) => (
+              <button key={t.id} onClick={() => applyTemplate(t.id)} disabled={templateBusy} className="text-left border border-line bg-bg/80 p-4 hover:border-accent disabled:opacity-50">
+                <div className="text-[1rem] text-fg mb-1">{t.name}</div>
+                <div className="text-[0.8rem] text-fg-dim leading-relaxed mb-2">{t.summary}</div>
+                <div className="font-mono text-[0.58rem] text-fg-ghost">
+                  {t.milestones.map((m) => m.title).join(" → ")} · {t.milestones.reduce((n, m) => n + m.tasks.length, 0)} tasks
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="border border-dashed border-line bg-bg-warm/50 p-4 flex flex-wrap items-center gap-3">
+          <span className="mono-label">First milestone</span>
+          <input
+            value={msTitle}
+            onChange={(e) => setMsTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addMilestone()}
+            placeholder="e.g. Private beta"
+            className={`${inputBase} flex-1 min-w-[12rem]`}
+          />
+          <input type="date" value={msDate} onChange={(e) => setMsDate(e.target.value)} className={`${inputBase} w-40`} />
+          <button onClick={addMilestone} disabled={!msTitle.trim()} className={btnPrimary}>
+            Add
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-center gap-4 mb-8">
@@ -415,6 +472,14 @@ export default function PlanTab({ store }: { store: Store }) {
         <button onClick={addMilestone} disabled={!msTitle.trim()} className={btnPrimary}>
           Add
         </button>
+        <select value="" onChange={(e) => e.target.value && applyTemplate(e.target.value)} disabled={templateBusy} className={`${inputBase} w-auto`} aria-label="Add from a template">
+          <option value="">or add from a template…</option>
+          {PLAN_TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );
