@@ -979,7 +979,7 @@ export async function createEntries(
       const created: Entry[] = [];
       let skipped = 0;
       for (const input of inputs) {
-        // Same source_url imported twice: skip quietly.
+        // Same source_url imported twice: skip it and count it.
         if (input.source_url && d.entries.some((e) => e.source_url === input.source_url)) {
           skipped++;
           continue;
