@@ -1,141 +1,69 @@
 import Link from "next/link";
 import { loadAll } from "@/lib/projects";
-import type { ProjectDetail, Task } from "@/lib/projectTypes";
-import { extractUrls, repoFileLinks, taskHref } from "@/lib/taskMap";
+import { AGENT_PRESETS, isReady, sortProjects, taskPath, waitingOn } from "@/lib/projectTypes";
+import { fixHref, isMine } from "@/lib/taskMap";
+import QueueClient, { type QueueProject, type Row } from "./QueueClient";
 
 export const dynamic = "force-dynamic";
 
-type Lane = "Needs investigation" | "In progress / verify" | "Blocked" | "Planned" | "Paused" | "Completed";
-
-function laneFor(project: ProjectDetail, task: Task): Lane {
-  if (project.project.status === "paused") return "Paused";
-  if (task.status === "done") return "Completed";
-  if (task.status === "blocked") return "Blocked";
-  if (project.project.status === "planned") return "Planned";
-  if (task.status === "doing") return "In progress / verify";
-  return "Needs investigation";
-}
-
-const laneNotes: Record<Lane, string> = {
-  "Needs investigation": "Needs current evidence and a specific action proposal. No execution permission is inferred from the task record.",
-  "In progress / verify": "Existing work is recorded as in progress; verify its current state before proposing another action.",
-  Blocked: "A blocker is recorded. Resolve the stated dependency before considering an action.",
-  Planned: "The project is planned and has not been marked workable. Owner direction is needed before work starts.",
-  Paused: "The project is explicitly paused. It is excluded from investigation and execution.",
-  Completed: "Completed history is shown for context and is excluded from active work.",
-};
-
-/** Anchor for a lane, so other pages can link straight to it (e.g. /queue#blocked). */
-function laneId(lane: Lane): string {
-  return lane.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "");
-}
-
-const lanes: Lane[] = ["Needs investigation", "In progress / verify", "Blocked", "Planned", "Paused", "Completed"];
-
-function TaskCard({ project, task }: { project: ProjectDetail; task: Task }) {
-  const lane = laneFor(project, task);
-  return (
-    <article className="border border-line bg-bg-warm/50 p-4">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
-        <Link className="mono-label text-accent hover:text-fg" href={`/projects/${project.project.id}`}>
-          {project.project.name}
-        </Link>
-        <span className="font-mono text-[0.62rem] uppercase tracking-[0.14em] text-fg-ghost">
-          {task.priority} · {task.status}
-        </span>
-      </div>
-      <h3 className="text-fg text-sm font-medium leading-snug">
-        <Link href={taskHref(task.id, task.status === "blocked" ? "blocked" : undefined)} className="hover:text-accent">
-          {task.title} →
-        </Link>
-      </h3>
-      {task.notes ? (
-        <p className="text-fg-dim text-sm leading-relaxed mt-2 whitespace-pre-wrap break-words">
-          <Linked text={task.notes} project={project} />
-        </p>
-      ) : null}
-      {task.due_date ? <p className="mono-label-dim mt-3">Due {task.due_date}</p> : null}
-      <p className="text-fg-ghost text-xs leading-relaxed mt-3">{laneNotes[lane]}</p>
-    </article>
-  );
-}
-
-/** Notes with their URLs and repo file paths turned into links. */
-function Linked({ text, project }: { text: string; project: ProjectDetail }) {
-  const targets = new Map<string, string>();
-  for (const url of extractUrls(text)) targets.set(url, url);
-  for (const l of repoFileLinks(project.project, text)) {
-    if (l.label.startsWith("Run ")) continue;
-    const key = l.label.startsWith(".github/workflows/") ? l.label.slice(".github/workflows/".length) : l.label;
-    targets.set(key, l.url);
-  }
-  if (!targets.size) return <>{text}</>;
-  const keys = Array.from(targets.keys()).sort((a, b) => b.length - a.length);
-  const re = new RegExp(`(${keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
-  return (
-    <>
-      {text.split(re).map((part, i) =>
-        targets.has(part) ? (
-          <a key={i} href={targets.get(part)} target="_blank" rel="noreferrer" className="text-accent hover:text-fg">
-            {part}
-          </a>
-        ) : (
-          part
-        )
-      )}
-    </>
-  );
-}
-
-export default async function QueuePage() {
-  let projects: ProjectDetail[] = [];
+export default async function QueuePage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const params = await searchParams;
   let error: string | null = null;
+  let rows: Row[] = [];
+  let projects: QueueProject[] = [];
+  let agents: string[] = [];
+  let labels: string[] = [];
   try {
-    projects = await loadAll();
+    const all = await loadAll();
+    projects = sortProjects(all.map((d) => d.project)).map((p) => {
+      const d = all.find((x) => x.project.id === p.id)!;
+      return {
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        agents: p.agents,
+        milestones: d.milestones.sort((a, b) => a.sort_order - b.sort_order).map((m) => ({ id: m.id, title: m.title, done: m.done })),
+      };
+    });
+    rows = all.flatMap((d) =>
+      d.tasks.map((t) => {
+        const kids = d.tasks.filter((x) => x.parent_id === t.id);
+        return {
+          ...t,
+          project_name: d.project.name,
+          project_status: d.project.status,
+          milestone_title: d.milestones.find((m) => m.id === t.milestone_id)?.title ?? null,
+          path: taskPath(t, d.tasks),
+          ready: isReady(t, d.tasks),
+          waiting: waitingOn(t, d.tasks).map((x) => x.title),
+          subtasks: kids.length,
+          subtasks_done: kids.filter((x) => x.status === "done").length,
+          mine: isMine(t),
+          thread: d.entries.filter((e) => e.task_id === t.id).length,
+        };
+      })
+    );
+    agents = Array.from(new Set([...AGENT_PRESETS, ...all.flatMap((d) => d.project.agents), ...rows.map((r) => r.agent).filter((a): a is string => !!a)]));
+    labels = Array.from(new Set(rows.flatMap((r) => r.labels))).sort();
   } catch (err) {
-    error = err instanceof Error ? err.message : "Unable to read the private project store.";
+    error = err instanceof Error ? err.message : String(err);
   }
-
-  const rows = projects.flatMap((project) => project.tasks.map((task) => ({ project, task })));
-  const activeCount = rows.filter(({ project, task }) => project.project.status !== "paused" && task.status !== "done").length;
 
   return (
     <div>
-      <div className="hairline-accent mb-6"><span className="mono-label">02 · Automation queue</span></div>
-      <h1 className="serif-display text-[2.2rem] md:text-[3rem] leading-[1] mb-4">Review before anything runs</h1>
-      <p className="text-fg-dim text-sm leading-relaxed max-w-3xl mb-8">
-        This is a read-only queue preview. Task status and safety assessments do not grant authority. There are no run or approval controls here until the dashboard can verify owner approval for an exact, unchanged action.
-      </p>
-
+      <header className="border-b border-line pb-6 mb-8">
+        <h1 className="serif-display text-[2.2rem] md:text-[2.6rem] leading-none mb-2">All tasks</h1>
+        <p className="text-fg-dim text-sm max-w-2xl leading-relaxed">
+          Every task across every project, filtered, grouped and edited in place. Select several and change them in one commit. Keys: j k move, x select, ↵ open, d done, s start, b blocked, t today, e edit, p details.
+        </p>
+      </header>
       {error ? (
-        <div className="border border-line bg-bg-warm/80 p-6 glow-anchor">
-          <div className="mono-label mb-2">Queue unavailable</div>
-          <p className="text-fg-dim text-sm leading-relaxed">{error}</p>
-        </div>
+        <p className="border border-line bg-bg-warm/80 p-5 text-sm text-fg-dim">
+          The project store didn&apos;t load: {error}{" "}
+          <Link href={fixHref("source:store")} className="text-accent underline">Fix it step by step →</Link>
+        </p>
       ) : (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-line border border-line mb-10">
-            <Link href="/projects?view=list" className="bg-bg p-4 hover:bg-bg-warm"><div className="mono-label-dim">Recorded tasks</div><div className="serif-display text-2xl mt-2">{rows.length}</div></Link>
-            <Link href="#needs-investigation" className="bg-bg p-4 hover:bg-bg-warm"><div className="mono-label-dim">Open, not paused</div><div className="serif-display text-2xl mt-2">{activeCount}</div></Link>
-            <div className="bg-bg p-4"><div className="mono-label-dim">Runnable now</div><div className="serif-display text-2xl mt-2">0</div></div>
-            <div className="bg-bg p-4"><div className="mono-label-dim">Approval controls</div><div className="font-mono text-sm mt-3 text-fg-dim">Not enabled</div></div>
-          </div>
-
-          {lanes.map((lane) => {
-            const items = rows.filter(({ project, task }) => laneFor(project, task) === lane);
-            return (
-              <section key={lane} id={laneId(lane)} className="mb-10 scroll-mt-20">
-                <div className="flex items-baseline justify-between border-b border-line pb-3 mb-4">
-                  <h2 className="serif-display text-2xl">{lane}</h2>
-                  <span className="mono-label-dim">{items.length} items</span>
-                </div>
-                {items.length ? (
-                  <div className="grid md:grid-cols-2 gap-3">{items.map(({ project, task }) => <TaskCard key={task.id} project={project} task={task} />)}</div>
-                ) : <p className="text-fg-ghost text-sm">No items in this lane.</p>}
-              </section>
-            );
-          })}
-        </>
+        <QueueClient rows={rows} projects={projects} agents={agents} labels={labels} initial={params} />
       )}
     </div>
   );

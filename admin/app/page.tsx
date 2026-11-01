@@ -214,26 +214,26 @@ export default async function Overview() {
                 label="In progress"
                 value={hub!.inProgress.length}
                 def="Tasks marked doing."
-                href="/queue#in-progress-verify"
+                href="/queue?status=doing"
               />
               <Metric
                 label="Ready"
                 value={ready}
                 def="Todo with dependencies done, in an active or building project: what an agent can start now."
-                href="/queue#needs-investigation"
+                href="/queue?ready=1"
               />
               <Metric
                 label="Blocked"
                 value={blocked}
                 def="Tasks marked blocked."
-                href="/queue#blocked"
+                href="/queue?status=blocked"
                 warn
               />
               <Metric
                 label="Stalled"
                 value={stalled}
                 def={`Doing, but no update in ${STALLED_CLAIM_DAYS}+ days.`}
-                href="/queue#in-progress-verify"
+                href="/queue?status=doing"
                 warn
               />
               <Metric
@@ -252,7 +252,7 @@ export default async function Overview() {
                   tasks={hub!.inProgress}
                   show="since"
                   limit={6}
-                  moreHref="/queue#in-progress-verify"
+                  moreHref="/queue?status=doing"
                   empty="No task is marked doing. Ready tasks wait in the queue until a person or agent claims one."
                 />
               </div>

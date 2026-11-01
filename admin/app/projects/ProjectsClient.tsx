@@ -178,8 +178,8 @@ export default function ProjectsClient({
           <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line mb-8">
             <Pulse label="Needs you" value={needsYou} warn={needsYou > 0} sub={`${hub.attention.length} flags total`} href="/tasks" />
             <Pulse label="In motion" value={counts.active + counts.building} sub="active + building" href="/projects?view=list&status=active" />
-            <Pulse label="In progress" value={hub.inProgress.length} sub="tasks being worked" href="/queue#in-progress-verify" />
-            <Pulse label="Ready" value={ready} sub="unblocked, can start now" href="/queue#needs-investigation" />
+            <Pulse label="In progress" value={hub.inProgress.length} sub="tasks being worked" href="/queue?status=doing" />
+            <Pulse label="Ready" value={ready} sub="unblocked, can start now" href="/queue?ready=1" />
             <Pulse label={`Due · ${SOON_DAYS}d`} value={hub.upcoming.length + msSoon.length} sub={`${msSoon.length} milestones`} href="#due-soon" />
           </div>
 

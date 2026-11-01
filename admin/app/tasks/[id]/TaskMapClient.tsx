@@ -155,7 +155,7 @@ export default function TaskMapClient({
       </nav>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <Link href={`/queue#${QUEUE_LANE[task.status]}`} title="Open this lane of the queue" className="hover:opacity-80">
+        <Link href={`/queue?status=${task.status}`} title="All tasks with this status" className="hover:opacity-80">
           <Chip tone={task.status === "blocked" ? "solid" : task.status === "doing" ? "accent" : "dim"}>{task.status}</Chip>
         </Link>
         <Link href={`/projects/${project.id}?tab=plan&task=${task.id}`} title="See it in the project plan" className="hover:opacity-80">
@@ -624,10 +624,3 @@ function EntryLinks({ projectId, entries, fix }: { projectId: string; entries: E
 
 const statusLabel = (s: TaskStatus) => (s === "doing" ? "in progress" : s);
 
-/** Queue lane anchors (app/queue/page.tsx) for each task status. */
-const QUEUE_LANE: Record<TaskStatus, string> = {
-  todo: "needs-investigation",
-  doing: "in-progress-verify",
-  blocked: "blocked",
-  done: "completed",
-};
