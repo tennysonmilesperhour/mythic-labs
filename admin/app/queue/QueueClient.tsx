@@ -298,7 +298,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
   const current = flat[cursor];
 
   return (
-    <div>
+    <div className={selected.size ? "pb-24" : ""}>
       {/* presets */}
       <div className="flex flex-wrap items-stretch gap-px bg-line border border-line mb-3">
         {PRESETS.map((p) => (
