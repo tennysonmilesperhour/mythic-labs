@@ -12,8 +12,10 @@ import {
   type Entry,
 } from "@/lib/projectTypes";
 import { Chip, InlineText, api, btnGhost, btnPrimary, inputBase, inputCls } from "@/components/ProjectBits";
+import { EditableMarkdown } from "@/components/Markdown";
 import { GlyphClose } from "@/components/Glyphs";
-import { facetHref, githubRepoUrl, projectHref, taskHref } from "@/lib/taskMap";
+import { HEALTH_LEVELS, HEALTH_META, type HealthLevel } from "@/lib/projectTypes";
+import { ME, facetHref, githubRepoUrl, projectHref, taskHref } from "@/lib/taskMap";
 import { Section, type Store } from "./ProjectDetailClient";
 
 function useEntries(store: Store) {
@@ -475,7 +477,7 @@ export function DecisionsTab({ store }: { store: Store }) {
                 <div key={k}>
                   <div className="mono-label-dim mb-1">{label}</div>
                   <div className="text-[0.85rem] text-fg-dim leading-[1.6]">
-                    <InlineText multiline value={String(e[k as keyof Entry] ?? "")} onSave={(v) => patch(e.id, { [k]: v })} />
+                    <EditableMarkdown value={String(e[k as keyof Entry] ?? "")} placeholder="not written" onSave={(v) => patch(e.id, { [k]: v })} />
                   </div>
                 </div>
               ))}
@@ -529,7 +531,7 @@ export function NotesTab({ store }: { store: Store }) {
               </button>
             </div>
             <div className="text-[0.82rem] text-fg-dim leading-[1.6]">
-              <InlineText multiline value={e.body} placeholder="…" onSave={(b) => patch(e.id, { body: b })} />
+              <EditableMarkdown value={e.body} placeholder="…" onSave={(b) => patch(e.id, { body: b })} />
             </div>
             <SourceLink href={e.source_url} />
             <EvidenceSource href={e.evidence_url} />
@@ -551,21 +553,67 @@ export function NotesTab({ store }: { store: Store }) {
 
 // ─────────── Activity ───────────
 
+/** Write a status update: a health call plus a few lines, the way a lead reports upward. */
+function UpdateForm({ store }: { store: Store }) {
+  const { add } = useEntries(store);
+  const [open, setOpen] = useState(false);
+  const [health, setHealth] = useState<HealthLevel>("on_track");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!body.trim()) return;
+    setBusy(true);
+    try {
+      await add([{ kind: "update", title: `Update ${today()}`, body: body.trim(), health, entry_date: today(), author: ME }]);
+      setBody("");
+      setOpen(false);
+    } catch (e: unknown) {
+      store.fail((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className={`${btnGhost} mb-6`}>
+        Post a status update
+      </button>
+    );
+  }
+  return (
+    <div className="border border-line bg-bg-warm/80 p-4 mb-6 flex flex-col gap-3">
+      <div className="flex flex-wrap gap-1">
+        {HEALTH_LEVELS.filter((h) => h !== "paused" && h !== "idle").map((h) => (
+          <button key={h} onClick={() => setHealth(h)} className={`font-mono text-[0.6rem] uppercase tracking-[0.15em] px-2 py-1 border ${health === h ? "bg-fg text-bg border-fg" : "border-line text-fg-dim hover:text-fg"}`}>
+            {HEALTH_META[h].label}
+          </button>
+        ))}
+      </div>
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="What happened, what is next, what is in the way. Markdown works." className={inputCls} />
+      <div className="flex gap-2">
+        <button onClick={submit} disabled={busy || !body.trim()} className={btnPrimary}>Post update</button>
+        <button onClick={() => setOpen(false)} className={btnGhost}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export function ActivityTab({ store }: { store: Store }) {
   const { entries, tasks, milestones, project } = store;
   const feed = useMemo(() => {
     // Each row carries where it leads: the entry, the task map or the plan.
     const tab: Partial<Record<Entry["kind"], string>> = { changelog: "changelog", decision: "decisions", note: "notes" };
-    const rows: Array<{ at: string; kind: string; text: string; who: string | null; href: string | null }> = [
+    const rows: Array<{ at: string; kind: string; text: string; who: string | null; href: string | null; body?: string }> = [
       { at: project.created_at, kind: "created", text: "Project created", who: null, href: projectHref(project.id, "setup") },
       ...entries.map((e) => ({
         at: e.created_at,
-        kind: e.kind,
+        kind: e.kind === "update" && e.health ? HEALTH_META[e.health].label.toLowerCase() : e.kind,
         who: e.author,
         text:
           (e.kind === "status" ? `Status ${e.title}` : e.title) +
-          (e.body && (e.kind === "status" || e.kind === "progress") ? `: ${e.body}` : ""),
-        href: tab[e.kind] ? projectHref(project.id, tab[e.kind], e.id) : null,
+          (e.body && (e.kind === "status" || e.kind === "progress") && e.body !== e.title ? `: ${e.body}` : ""),
+        body: e.kind === "update" ? e.body : undefined,
+        href: tab[e.kind] ? projectHref(project.id, tab[e.kind], e.id) : e.task_id ? taskHref(e.task_id) : null,
       })),
       ...tasks.filter((t) => t.done_at).map((t) => ({ at: t.done_at!, kind: "done", text: t.title, who: t.agent, href: taskHref(t.id) })),
       ...milestones
@@ -576,6 +624,8 @@ export function ActivityTab({ store }: { store: Store }) {
   }, [entries, tasks, milestones, project.created_at, project.id]);
 
   return (
+    <>
+    <UpdateForm store={store} />
     <ol className="relative border-l border-line ml-2">
       {feed.map((r, i) => (
         <li key={i} className="pl-6 py-2 relative flex items-baseline gap-4">
@@ -584,12 +634,14 @@ export function ActivityTab({ store }: { store: Store }) {
             {fmtDate(r.at)}
           </span>
           <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent w-20 shrink-0">{r.kind}</span>
-          <span className="text-[0.88rem] text-fg">
+          <span className="text-[0.88rem] text-fg min-w-0">
             {r.who ? (
               <>
-                <Link href={facetHref("agent", r.who)} className="hover:text-accent">
-                  @{r.who}
-                </Link>
+                {r.who === ME ? `@${r.who}` : (
+                  <Link href={facetHref("agent", r.who)} className="hover:text-accent">
+                    @{r.who}
+                  </Link>
+                )}
                 {" · "}
               </>
             ) : null}
@@ -600,9 +652,11 @@ export function ActivityTab({ store }: { store: Store }) {
             ) : (
               r.text
             )}
+            {r.body ? <span className="block text-[0.82rem] text-fg-dim mt-0.5 whitespace-pre-wrap">{r.body}</span> : null}
           </span>
         </li>
       ))}
     </ol>
+    </>
   );
 }

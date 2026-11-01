@@ -1,29 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ESTIMATES,
+  LABEL_PRESETS,
+  RECURRENCES,
+  RECURRENCE_META,
   TASK_STATUSES,
   fmtDate,
   isOverdue,
   isReady,
+  isSnoozed,
+  pointsOf,
   relTime,
+  today,
   waitingOn,
   type Milestone,
   type Task,
   type TaskStatus,
 } from "@/lib/projectTypes";
-import { Chip, InlineText, PRIORITY_MARK, Progress, api, btnGhost, btnPrimary, inputBase, inputCls } from "@/components/ProjectBits";
+import { Chip, InlineText, PRIORITY_MARK, Progress, TagInput, api, btnGhost, btnPrimary, inputBase } from "@/components/ProjectBits";
+import { EditableMarkdown } from "@/components/Markdown";
 import { GlyphClose } from "@/components/Glyphs";
 import { isMine, taskHref } from "@/lib/taskMap";
+import { useToast } from "@/components/Toast";
 import { DateInput, type Store } from "./ProjectDetailClient";
 
 const byOrder = (a: Task, b: Task) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
 
+type Drag = { id: string; parent_id: string | null };
+type Over = { id: string; where: "before" | "after" } | { zone: string | null } | null;
+
 export default function PlanTab({ store }: { store: Store }) {
   const { project, milestones, tasks, setMilestones, setTasks, fail } = store;
+  const { toast } = useToast();
   const [hideDone, setHideDone] = useState(false);
   const [agentFilter, setAgentFilter] = useState("");
+  const [labelFilter, setLabelFilter] = useState("");
   const [open, setOpen] = useState<Set<string>>(() => {
     // Deep link (?task=…): expand the task's ancestors so it's visible.
     const s = new Set<string>();
@@ -42,6 +56,9 @@ export default function PlanTab({ store }: { store: Store }) {
   }, [store.focusTask]);
   const [msTitle, setMsTitle] = useState("");
   const [msDate, setMsDate] = useState("");
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [over, setOver] = useState<Over>(null);
+  const dragRef = useRef<Drag | null>(null);
 
   const children = useMemo(() => {
     const m = new Map<string | null, Task[]>();
@@ -50,18 +67,20 @@ export default function PlanTab({ store }: { store: Store }) {
     return m;
   }, [tasks]);
 
+  const labels = useMemo(() => Array.from(new Set(tasks.flatMap((t) => t.labels))).sort(), [tasks]);
+
   // A task is shown when it, or anything beneath it, passes the filters.
   const visible = useMemo(() => {
     const keep = new Set<string>();
     const walk = (t: Task): boolean => {
       const kids = (children.get(t.id) || []).map(walk).some(Boolean);
-      const self = (!hideDone || t.status !== "done") && (!agentFilter || t.agent === agentFilter);
+      const self = (!hideDone || t.status !== "done") && (!agentFilter || t.agent === agentFilter) && (!labelFilter || t.labels.includes(labelFilter));
       if (self || kids) keep.add(t.id);
       return self || kids;
     };
     (children.get(null) || []).forEach(walk);
     return keep;
-  }, [children, hideDone, agentFilter]);
+  }, [children, hideDone, agentFilter, labelFilter]);
 
   const toggleOpen = (id: string) =>
     setOpen((s) => {
@@ -88,8 +107,9 @@ export default function PlanTab({ store }: { store: Store }) {
     const prev = tasks;
     setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
     try {
-      const { task } = await api<{ task: Task }>(`/api/tasks/${id}`, "PATCH", patch);
-      setTasks((ts) => ts.map((t) => (t.id === id ? task : t)));
+      const { task, spawned } = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${id}`, "PATCH", patch);
+      setTasks((ts) => [...ts.map((t) => (t.id === id ? task : t)), ...(spawned ? [spawned] : [])]);
+      if (spawned) toast({ message: `Next occurrence added, due ${fmtDate(spawned.due_date)}.`, tone: "success" });
     } catch (err: unknown) {
       setTasks(prev);
       fail((err as Error).message);
@@ -99,6 +119,7 @@ export default function PlanTab({ store }: { store: Store }) {
   const removeTask = async (id: string) => {
     const kids = tasks.filter((t) => t.parent_id === id).length;
     if (kids && !confirm(`Delete this task and its ${kids} subtask${kids > 1 ? "s" : ""}?`)) return;
+    const prev = tasks;
     const drop = new Set([id]);
     let grew = true;
     while (grew) {
@@ -111,7 +132,22 @@ export default function PlanTab({ store }: { store: Store }) {
       }
     }
     setTasks((ts) => ts.filter((t) => !drop.has(t.id)));
-    await api(`/api/tasks/${id}`, "DELETE").catch((e: Error) => fail(e.message));
+    try {
+      const res = await api<{ removed: Task[] }>(`/api/tasks/${id}`, "DELETE");
+      toast({
+        message: `Deleted ${res.removed.length === 1 ? res.removed[0].title : `${res.removed.length} tasks`}.`,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            const back = await api<{ restored: Task[] }>("/api/tasks/restore", "POST", { tasks: res.removed });
+            setTasks((ts) => [...ts, ...back.restored]);
+          },
+        },
+      });
+    } catch (e) {
+      setTasks(prev);
+      fail((e as Error).message);
+    }
   };
 
   const addMilestone = async () => {
@@ -158,6 +194,55 @@ export default function PlanTab({ store }: { store: Store }) {
     });
   };
 
+  // ─── drag and drop: roots move among roots (and between milestones); subtasks among their siblings ───
+
+  const commitOrder = async (siblings: Task[], parentId: string | null) => {
+    const prev = tasks;
+    const order = siblings.map((t, i) => ({ id: t.id, sort_order: i, milestone_id: t.milestone_id }));
+    setTasks((ts) => ts.map((t) => {
+      const o = order.find((x) => x.id === t.id);
+      return o ? { ...t, sort_order: o.sort_order, milestone_id: parentId === null ? o.milestone_id : t.milestone_id } : t;
+    }));
+    try {
+      const res = await api<{ tasks: Task[] }>(`/api/projects/${project.id}/reorder`, "POST", {
+        order: order.map((o) => ({ id: o.id, ...(parentId === null ? { milestone_id: o.milestone_id } : {}) })),
+      });
+      setTasks(res.tasks);
+    } catch (e) {
+      setTasks(prev);
+      fail((e as Error).message);
+    }
+  };
+
+  const dropOnRow = (target: Task, where: "before" | "after") => {
+    const d = dragRef.current;
+    if (!d || d.id === target.id) return;
+    if (d.parent_id !== target.parent_id) return; // only among siblings
+    const moving = tasks.find((t) => t.id === d.id);
+    if (!moving) return;
+    const siblings = (children.get(d.parent_id) || []).filter((t) => t.id !== d.id);
+    const idx = siblings.findIndex((t) => t.id === target.id);
+    const movedTask = d.parent_id === null ? { ...moving, milestone_id: target.milestone_id } : moving;
+    siblings.splice(where === "before" ? idx : idx + 1, 0, movedTask);
+    commitOrder(siblings, d.parent_id);
+  };
+
+  const dropOnZone = (milestoneId: string | null) => {
+    const d = dragRef.current;
+    if (!d || d.parent_id !== null) return;
+    const moving = tasks.find((t) => t.id === d.id);
+    if (!moving) return;
+    const siblings = (children.get(null) || []).filter((t) => t.id !== d.id);
+    siblings.push({ ...moving, milestone_id: milestoneId });
+    commitOrder(siblings, null);
+  };
+
+  const endDrag = () => {
+    dragRef.current = null;
+    setDrag(null);
+    setOver(null);
+  };
+
   const subtreeCount = (id: string): { done: number; total: number } => {
     const kids = children.get(id) || [];
     return kids.reduce(
@@ -169,7 +254,7 @@ export default function PlanTab({ store }: { store: Store }) {
     );
   };
 
-  const rowProps = {
+  const rowProps: RowProps = {
     kidsOf: children,
     visible,
     open,
@@ -182,10 +267,24 @@ export default function PlanTab({ store }: { store: Store }) {
     milestones,
     allTasks: tasks,
     focusTask: store.focusTask,
+    drag,
+    over,
+    onDragStart: (t) => {
+      dragRef.current = { id: t.id, parent_id: t.parent_id };
+      setDrag(dragRef.current);
+    },
+    onDragOverRow: (t, where) => setOver({ id: t.id, where }),
+    onDropRow: (t, where) => {
+      dropOnRow(t, where);
+      endDrag();
+    },
+    onDragEnd: endDrag,
   };
 
   const roots = children.get(null) || [];
   const sortedMs = [...milestones].sort((a, b) => a.sort_order - b.sort_order);
+  const zoneCls = (id: string | null) =>
+    drag && drag.parent_id === null && over && "zone" in over && over.zone === id ? "outline outline-1 outline-accent bg-[rgba(139,115,85,0.05)]" : "";
 
   return (
     <div>
@@ -194,11 +293,7 @@ export default function PlanTab({ store }: { store: Store }) {
           <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} />
           hide done
         </label>
-        <select
-          value={agentFilter}
-          onChange={(e) => setAgentFilter(e.target.value)}
-          className="bg-bg/70 border border-line font-mono text-[0.62rem] text-fg-dim px-2 py-1 outline-none"
-        >
+        <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} className="bg-bg/70 border border-line font-mono text-[0.62rem] text-fg-dim px-2 py-1 outline-none">
           <option value="">any agent</option>
           {store.agentOptions.map((a) => (
             <option key={a} value={a}>
@@ -206,12 +301,23 @@ export default function PlanTab({ store }: { store: Store }) {
             </option>
           ))}
         </select>
+        {labels.length ? (
+          <select value={labelFilter} onChange={(e) => setLabelFilter(e.target.value)} className="bg-bg/70 border border-line font-mono text-[0.62rem] text-fg-dim px-2 py-1 outline-none">
+            <option value="">any label</option>
+            {labels.map((l) => (
+              <option key={l} value={l}>
+                +{l}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <button className={btnGhost} onClick={() => setOpen(new Set(tasks.map((t) => t.id)))}>
           Expand all
         </button>
         <button className={btnGhost} onClick={() => setOpen(new Set())}>
           Collapse
         </button>
+        <span className="font-mono text-[0.58rem] text-fg-ghost ml-auto">drag a task to reorder it or move it to another milestone</span>
       </div>
 
       <ol className="relative border-l border-line ml-2">
@@ -219,8 +325,23 @@ export default function PlanTab({ store }: { store: Store }) {
           const own = roots.filter((t) => t.milestone_id === m.id);
           const all = tasks.filter((t) => t.milestone_id === m.id);
           const late = isOverdue(m.target_date, m.done);
+          const pts = { done: all.filter((t) => t.status === "done").reduce((n, t) => n + pointsOf(t), 0), total: all.reduce((n, t) => n + pointsOf(t), 0) };
           return (
-            <li key={m.id} className="pl-8 pb-10 relative">
+            <li
+              key={m.id}
+              className={`pl-8 pb-10 relative ${zoneCls(m.id)}`}
+              onDragOver={(e) => {
+                if (!drag || drag.parent_id !== null) return;
+                e.preventDefault();
+                if (!(over && "id" in over)) setOver({ zone: m.id });
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (over && "id" in over) return;
+                dropOnZone(m.id);
+                endDrag();
+              }}
+            >
               <button
                 onClick={() => patchMilestone(m.id, { done: !m.done })}
                 title={m.done ? "Reopen milestone" : "Mark milestone done"}
@@ -239,6 +360,7 @@ export default function PlanTab({ store }: { store: Store }) {
                   <DateInput value={m.target_date} onChange={(target_date) => patchMilestone(m.id, { target_date })} />
                 </div>
                 {late ? <Chip tone="solid">overdue</Chip> : null}
+                <span className="font-mono text-[0.58rem] text-fg-ghost tnum">{pts.done}/{pts.total} pts</span>
                 <div className="ml-auto flex items-center gap-1 text-fg-ghost">
                   <button onClick={() => moveMilestone(m.id, -1)} className="px-1 hover:text-fg" title="Move up">↑</button>
                   <button onClick={() => moveMilestone(m.id, 1)} className="px-1 hover:text-fg" title="Move down">↓</button>
@@ -248,12 +370,7 @@ export default function PlanTab({ store }: { store: Store }) {
                 </div>
               </div>
               <div className="text-fg-dim text-[0.85rem] mb-3 max-w-2xl">
-                <InlineText
-                  multiline
-                  value={m.description}
-                  placeholder="Goal or definition of done…"
-                  onSave={(description) => patchMilestone(m.id, { description })}
-                />
+                <EditableMarkdown value={m.description} placeholder="Goal or definition of done…" onSave={(description) => patchMilestone(m.id, { description })} />
               </div>
               <div className="max-w-xs mb-4">
                 <Progress done={all.filter((t) => t.status === "done").length} total={all.length} />
@@ -264,7 +381,20 @@ export default function PlanTab({ store }: { store: Store }) {
           );
         })}
 
-        <li className="pl-8 pb-6 relative">
+        <li
+          className={`pl-8 pb-6 relative ${zoneCls(null)}`}
+          onDragOver={(e) => {
+            if (!drag || drag.parent_id !== null) return;
+            e.preventDefault();
+            if (!(over && "id" in over)) setOver({ zone: null });
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (over && "id" in over) return;
+            dropOnZone(null);
+            endDrag();
+          }}
+        >
           <span className="absolute -left-[5px] top-[0.6rem] h-[9px] w-[9px] rounded-full border border-fg-ghost bg-bg" />
           <h3 className="serif-display text-[1.4rem] text-fg-dim mb-3">Unscheduled</h3>
           <TaskList tasks={roots.filter((t) => !t.milestone_id)} depth={0} {...rowProps} />
@@ -303,6 +433,12 @@ type RowProps = {
   milestones: Milestone[];
   allTasks: Task[];
   focusTask: string | null;
+  drag: Drag | null;
+  over: Over;
+  onDragStart: (t: Task) => void;
+  onDragOverRow: (t: Task, where: "before" | "after") => void;
+  onDropRow: (t: Task, where: "before" | "after") => void;
+  onDragEnd: () => void;
 };
 
 function TaskList({ tasks, depth, ...rp }: { tasks: Task[]; depth: number } & RowProps) {
@@ -333,14 +469,40 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
   const ready = isReady(t, rp.allTasks);
   const waiting = t.status === "todo" ? waitingOn(t, rp.allTasks) : [];
   const focused = rp.focusTask === t.id;
+  const day = today();
+  const dragging = rp.drag?.id === t.id;
+  const overHere = rp.over && "id" in rp.over && rp.over.id === t.id ? rp.over.where : null;
+  const canDropHere = rp.drag && rp.drag.id !== t.id && rp.drag.parent_id === t.parent_id;
 
   return (
     <li className="py-1" id={`task-${t.id}`}>
       <div
-        className={`group flex flex-wrap md:flex-nowrap items-center gap-x-2 gap-y-1 py-1 px-1 hover:bg-[rgba(139,115,85,0.05)] ${
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", t.id);
+          rp.onDragStart(t);
+        }}
+        onDragEnd={rp.onDragEnd}
+        onDragOver={(e) => {
+          if (!canDropHere) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          rp.onDragOverRow(t, e.clientY < r.top + r.height / 2 ? "before" : "after");
+        }}
+        onDrop={(e) => {
+          if (!canDropHere) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          rp.onDropRow(t, e.clientY < r.top + r.height / 2 ? "before" : "after");
+        }}
+        className={`group relative flex flex-wrap md:flex-nowrap items-center gap-x-2 gap-y-1 py-1 px-1 hover:bg-[rgba(139,115,85,0.05)] ${
           focused ? "bg-[rgba(139,115,85,0.1)] outline outline-1 outline-accent" : ""
-        }`}
+        } ${dragging ? "opacity-40" : ""} ${overHere === "before" ? "border-t-2 border-accent" : overHere === "after" ? "border-b-2 border-accent" : "border-y-2 border-transparent"}`}
       >
+        <span className="cursor-grab active:cursor-grabbing text-fg-ghost font-mono text-[0.7rem] opacity-0 group-hover:opacity-100 shrink-0 select-none" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
         <button
           onClick={() => rp.toggleOpen(t.id)}
           className={`w-4 text-fg-ghost hover:text-fg font-mono text-[0.7rem] shrink-0 ${
@@ -362,11 +524,18 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         <span className={`flex-1 min-w-[10rem] text-[0.92rem] ${done ? "line-through text-fg-ghost" : "text-fg"}`}>
           <InlineText value={t.title} onSave={(title) => title && rp.patchTask(t.id, { title })} />
         </span>
+        {t.labels.slice(0, 3).map((l) => (
+          <span key={l} className="font-mono text-[0.55rem] text-fg-ghost shrink-0">+{l}</span>
+        ))}
         {sub.total ? (
           <span className="font-mono text-[0.58rem] text-fg-ghost tnum shrink-0">
             {sub.done}/{sub.total}
           </span>
         ) : null}
+        {t.estimate ? <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0 tnum">{t.estimate}pt</span> : null}
+        {t.recurrence ? <span className="font-mono text-[0.6rem] text-fg-ghost shrink-0" title={`Repeats ${RECURRENCE_META[t.recurrence].label.toLowerCase()}`}>↻</span> : null}
+        {t.planned_for === day && !done ? <span className="font-mono text-[0.52rem] uppercase tracking-[0.15em] text-accent shrink-0">today</span> : null}
+        {isSnoozed(t) ? <span className="font-mono text-[0.52rem] uppercase tracking-[0.15em] text-fg-ghost shrink-0" title={`Snoozed until ${fmtDate(t.snoozed_until)}`}>zz</span> : null}
         {ready ? (
           <span className="font-mono text-[0.52rem] uppercase tracking-[0.15em] text-accent border border-accent px-1 shrink-0" title="Unblocked: an agent can start this now">
             ready
@@ -439,36 +608,55 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 py-1">
             <div className="text-[0.82rem] text-fg-dim">
               <span className="mono-label-dim block mb-0.5">Done when</span>
-              <InlineText
-                multiline
-                value={t.acceptance}
-                placeholder="Acceptance criteria an agent can check…"
-                onSave={(acceptance) => rp.patchTask(t.id, { acceptance })}
-              />
+              <EditableMarkdown value={t.acceptance} placeholder="Acceptance criteria an agent can check…" onSave={(acceptance) => rp.patchTask(t.id, { acceptance })} />
             </div>
             <div className="text-[0.82rem] text-fg-dim">
               <span className="mono-label-dim block mb-0.5">Notes</span>
-              <InlineText
-                multiline
-                value={t.notes}
-                placeholder="Context, links, approach…"
-                onSave={(notes) => rp.patchTask(t.id, { notes })}
-              />
+              <EditableMarkdown value={t.notes} placeholder="Context, links, approach… Markdown works; '- step' lines become a checklist on the task map." onSave={(notes) => rp.patchTask(t.id, { notes })} />
             </div>
           </div>
           <DependsOn task={t} {...rp} />
-          <div className="flex flex-wrap items-center gap-3 font-mono text-[0.58rem] text-fg-ghost py-1">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.58rem] text-fg-ghost py-1">
             <label className="flex items-center gap-1">
               priority
-              <select
-                value={t.priority}
-                onChange={(e) => rp.patchTask(t.id, { priority: e.target.value as Task["priority"] })}
-                className="bg-transparent text-fg-dim outline-none"
-              >
+              <select value={t.priority} onChange={(e) => rp.patchTask(t.id, { priority: e.target.value as Task["priority"] })} className="bg-transparent text-fg-dim outline-none">
                 {["critical", "high", "medium", "low"].map((p) => (
                   <option key={p}>{p}</option>
                 ))}
               </select>
+            </label>
+            <label className="flex items-center gap-1">
+              estimate
+              <select value={t.estimate ?? ""} onChange={(e) => rp.patchTask(t.id, { estimate: e.target.value ? Number(e.target.value) : null })} className="bg-transparent text-fg-dim outline-none">
+                <option value="">none</option>
+                {ESTIMATES.map((n) => (
+                  <option key={n} value={n}>
+                    {n} pt
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              repeats
+              <select value={t.recurrence ?? ""} onChange={(e) => rp.patchTask(t.id, { recurrence: (e.target.value || null) as Task["recurrence"] })} className="bg-transparent text-fg-dim outline-none">
+                <option value="">never</option>
+                {RECURRENCES.map((r) => (
+                  <option key={r} value={r}>
+                    {RECURRENCE_META[r].label.toLowerCase()}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              plan for
+              <DateInput value={t.planned_for} onChange={(planned_for) => rp.patchTask(t.id, { planned_for })} />
+              {t.planned_for !== day ? (
+                <button onClick={() => rp.patchTask(t.id, { planned_for: day })} className="text-accent hover:text-fg">today</button>
+              ) : null}
+            </label>
+            <label className="flex items-center gap-1">
+              snooze until
+              <DateInput value={t.snoozed_until} onChange={(snoozed_until) => rp.patchTask(t.id, { snoozed_until })} />
             </label>
             {depth === 0 ? (
               <label className="flex items-center gap-1">
@@ -488,6 +676,9 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
               </label>
             ) : null}
             {t.done_at ? <span>done {fmtDate(t.done_at)}</span> : null}
+          </div>
+          <div className="py-1 max-w-md">
+            <TagInput value={t.labels} onChange={(labels) => rp.patchTask(t.id, { labels })} suggestions={LABEL_PRESETS} placeholder="add label…" prefix="+" />
           </div>
           <TaskList tasks={kids} depth={depth + 1} {...rp} />
           <AddTask

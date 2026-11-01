@@ -630,7 +630,8 @@ export function projectHealth(d: ProjectDetail, stats: ProjectStats, attention: 
   if (count("stuck")) reasons.push("nothing ready to work on");
   if (count("critical")) reasons.push("critical work open");
   if (p.status === "planned") return { level: pastTarget ? "off_track" : "idle", reasons };
-  const off = pastTarget || lateMilestones > 0 || stats.blocked >= 2 || stats.overdue >= 2 || (stats.blocked >= 1 && stats.overdue >= 1);
+  // Dates missed, or stuck work piling up, means off track. One late or blocked task is a risk.
+  const off = pastTarget || lateMilestones > 0 || stats.blocked >= 2 || stats.overdue >= 2;
   if (off) return { level: "off_track", reasons };
   if (reasons.length) return { level: "at_risk", reasons };
   return { level: "on_track", reasons };
