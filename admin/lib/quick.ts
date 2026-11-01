@@ -187,18 +187,27 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
     tokens,
   };
   // Each recognized token is cut out of the line at the place it matched (never by text, which
-  // could hit an earlier word); a handler may hand back words it did not use.
+  // could hit an earlier word); a handler may hand back words it did not use, or null to leave
+  // the match as typed and keep scanning after it.
   const cut = (m: RegExpMatchArray, replacement: string) => {
     const at = m.index ?? 0;
     line = `${line.slice(0, at)} ${replacement} ${line.slice(at + m[0].length)}`;
   };
-  const take = (re: RegExp, fn: (m: RegExpMatchArray) => string | void) => {
-    let m: RegExpMatchArray | null;
+  const take = (re: RegExp, fn: (m: RegExpMatchArray) => string | null | void) => {
+    const scan = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+    let m: RegExpExecArray | null;
     let guard = 0;
-    while ((m = line.match(re)) && guard++ < 50) cut(m, fn(m) ?? "");
+    while ((m = scan.exec(line)) && guard++ < 50) {
+      const out = fn(m);
+      if (out === null) continue;
+      cut(m, out ?? "");
+      scan.lastIndex = 0;
+    }
   };
-  // "due:nov 5" or "plan:next fri": the longest phrase that reads as a date wins, and the rest stays in the title.
-  const dateToken = (kind: "due" | "plan", word: string, rest: string, set: (d: string) => void): string => {
+  // "due:nov 5" or "plan:next fri": the longest phrase that reads as a date wins, and the rest stays in the
+  // title. "Due: taxes" with a space is prose when no date follows, and stays as typed; "due:taxes" is a token
+  // with an unreadable date.
+  const dateToken = (kind: "due" | "plan", spaced: boolean, word: string, rest: string, set: (d: string) => void): string | null => {
     const words = [word, ...rest.trim().split(/\s+/)].filter(Boolean);
     if (!words.length) {
       tokens.push({ kind: `${kind}?`, text: `no date after ${kind}:` });
@@ -212,6 +221,7 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
         return words.slice(n).join(" ");
       }
     }
+    if (spaced) return null;
     tokens.push({ kind: `${kind}?`, text: `can't read date "${words[0]}"` });
     return words.slice(1).join(" ");
   };
@@ -245,8 +255,8 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
   });
   // "due:" and "plan:" may be followed by a space or stand alone at the end; the prose aliases
   // (by:, do:, on:) need the date glued on, so "focus on: launch" keeps its words.
-  take(new RegExp(`\\s(?:due:\\s*(\\S*)|by:(\\S+))((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("due", m[1] ?? m[2] ?? "", m[3], (d) => (out.due_date = d)));
-  take(new RegExp(`\\s(?:plan:\\s*(\\S*)|(?:do|on):(\\S+))((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("plan", m[1] ?? m[2] ?? "", m[3], (d) => (out.planned_for = d)));
+  take(new RegExp(`\\s(?:due:(\\s*)(\\S*)|by:()(\\S+))((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("due", !!m[1], m[2] ?? m[4] ?? "", m[5] ?? "", (d) => (out.due_date = d)));
+  take(new RegExp(`\\s(?:plan:(\\s*)(\\S*)|(?:do|on):()(\\S+))((?:\\s+\\S+){0,${DATE_WORDS - 1}})`, "i"), (m) => dateToken("plan", !!m[1], m[2] ?? m[4] ?? "", m[5] ?? "", (d) => (out.planned_for = d)));
   take(/\s(?:~(\d{1,3})|(\d{1,3})\s?pts?)(?=\s)/i, (m) => {
     out.estimate = Number(m[1] ?? m[2]);
     tokens.push({ kind: "estimate", text: `${out.estimate} pt` });

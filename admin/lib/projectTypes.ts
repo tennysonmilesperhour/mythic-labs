@@ -49,6 +49,8 @@ export const DEFAULT_POINTS = 2;
 
 export const RECURRENCES = ["daily", "weekdays", "weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
 export type Recurrence = (typeof RECURRENCES)[number];
+/** The rules that aim for a day of the month, and so carry `recurrence_day` on their occurrences. */
+export const MONTH_RULES: readonly Recurrence[] = ["monthly", "quarterly", "yearly"];
 export const RECURRENCE_META: Record<Recurrence, { label: string; short: string }> = {
   daily: { label: "Every day", short: "daily" },
   weekdays: { label: "Every weekday", short: "weekdays" },
@@ -264,9 +266,21 @@ export function normalizeEntry(e: Entry): Entry {
 }
 
 export function normalizeDetail(d: ProjectDetail): ProjectDetail {
+  const p = d.project;
+  const strings = (xs: unknown) => (Array.isArray(xs) ? xs.filter((x): x is string => typeof x === "string" && !!x) : []);
   return {
     ...d,
-    project: { ...d.project, last_reviewed_at: typeof d.project.last_reviewed_at === "string" ? d.project.last_reviewed_at : null },
+    project: {
+      ...p,
+      last_reviewed_at: typeof p.last_reviewed_at === "string" ? p.last_reviewed_at : null,
+      // An older or hand-edited file may lack these lists; the pages and the Markdown render index them.
+      links: Array.isArray(p.links)
+        ? p.links.filter((l): l is ProjectLink => !!l && typeof l === "object" && typeof (l as ProjectLink).label === "string" && typeof (l as ProjectLink).url === "string")
+        : [],
+      tags: strings(p.tags),
+      tools: strings(p.tools),
+      agents: strings(p.agents),
+    },
     tasks: d.tasks.map(normalizeTask),
     entries: d.entries.map(normalizeEntry),
   };

@@ -14,6 +14,7 @@ import {
   CHANGE_TYPES,
   DECISION_STATUSES,
   HEALTH_LEVELS,
+  MONTH_RULES,
   PRIORITIES,
   PRIORITY_RANK,
   RECURRENCES,
@@ -814,7 +815,7 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
         // An import identity belongs to one task; the store refuses duplicates.
         source_key: null,
         spawned_from: task.id,
-        recurrence_day: anchor,
+        recurrence_day: MONTH_RULES.includes(rule) ? anchor : null,
         status: "todo",
         due_date: nextDue,
         planned_for: null,
@@ -830,8 +831,9 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
       task.recurrence = null;
     }
   }
-  // A new due date or rule restarts the month anchor from the new date.
-  if (("due_date" in clean && clean.due_date !== task.due_date) || ("recurrence" in clean && clean.recurrence !== task.recurrence)) task.recurrence_day = null;
+  // A new due date, or a change from one rule to another, restarts the month anchor from the new date.
+  // Handing a rule back to a reopened occurrence (whose rule was cleared when it was finished) keeps its anchor.
+  if (("due_date" in clean && clean.due_date !== task.due_date) || ("recurrence" in clean && task.recurrence && clean.recurrence !== task.recurrence)) task.recurrence_day = null;
   Object.assign(task, clean, { updated_at: now() });
   if (spawned && "recurrence" in clean) task.recurrence = null;
   touch(d);
@@ -1075,8 +1077,9 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
           recurrence: (clean.recurrence as Recurrence | null) ?? null,
           labels: (clean.labels as string[]) ?? [],
           snoozed_until: (clean.snoozed_until as string | null) ?? null,
-          recurrence_day: null,
-          spawned_from: null,
+          // An occurrence keeps its month anchor and its origin, so its own undo paths still work after a restore.
+          recurrence_day: raw.recurrence_day ?? null,
+          spawned_from: typeof raw.spawned_from === "string" && ids.has(raw.spawned_from) ? raw.spawned_from : null,
           depends_on: ((clean.depends_on as string[]) ?? []).filter((x) => x !== raw.id && ids.has(x)),
           parent_id: clean.parent_id && ids.has(clean.parent_id as string) ? (clean.parent_id as string) : null,
           milestone_id: clean.milestone_id && d.milestones.some((m) => m.id === clean.milestone_id) ? (clean.milestone_id as string) : null,
@@ -1208,7 +1211,8 @@ export async function reopenTask(
         d.tasks = d.tasks.filter((t) => !drop.has(t.id));
         for (const t of d.tasks) t.depends_on = t.depends_on.filter((x) => !drop.has(x));
       }
-      const occurrenceKeepsRule = !!spawned && !removed.length && !!spawned.recurrence;
+      // An occurrence left in place was started by someone, or was finished and spawned its own successor: the chain lives on without this task.
+      const occurrenceKeepsRule = !!spawned && !removed.length;
       const patch: Record<string, unknown> = { status };
       if ("recurrence" in input && !occurrenceKeepsRule) patch.recurrence = input.recurrence ?? null;
       if ("planned_for" in input) patch.planned_for = input.planned_for ?? null;

@@ -382,6 +382,25 @@ t('parseQuick cuts tokens where they matched and reads every due: form', () => {
   assert.equal(h.due_date, null);
   assert.equal(h.title, 'Refactor the class');
 });
+t('parseQuick leaves "due: " and "plan: " prose alone when no date follows', () => {
+  assert.equal(parseQuick('Plan: holiday', projects, from).title, 'Plan: holiday');
+  const a = parseQuick('Pay rent due: every month', projects, from);
+  assert.equal(a.recurrence, 'monthly');
+  assert.equal(a.title, 'Pay rent due:');
+  const b = parseQuick('Pay rent due: +bills', projects, from);
+  assert.deepEqual(b.labels, ['bills']);
+  assert.equal(b.due_date, null);
+  assert.equal(parseQuick('Review due: Q3 numbers', projects, from).title, 'Review due: Q3 numbers');
+  const c = parseQuick('Plan: wedding fri', projects, from);
+  assert.equal(c.title, 'Plan: wedding');
+  assert.equal(c.planned_for, '2026-11-06');
+  const d = parseQuick('Ship it due:whenever', projects, from);
+  assert.equal(d.title, 'Ship it');
+  assert.ok(d.tokens.some((x) => x.kind === 'due?'));
+  const e = parseQuick('Pay rent due: fri due: sat', projects, from);
+  assert.equal(e.due_date, '2026-11-07');
+  assert.equal(e.title, 'Pay rent');
+});
 t('snoozed tasks are not counted as overdue or blocked', () => {
   const s = computeStats([task({ status: 'blocked', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01' })], []);
   assert.equal(s.blocked, 0);

@@ -381,6 +381,20 @@ const badOwner = await call(`/projects/${fixPid}`, 'PATCH', { owner: 42 });
 check('impossible dates, malformed links and a numeric owner are refused', badMonth.status === 400 && badDay.status === 400 && badMsDate.status === 400 && badLinks.status === 400 && badOwner.status === 400);
 const fakeLog = (await (await fetch('http://localhost:4010/__stats')).json()).log;
 check('a reply that changes status says so in the commit message', fakeLog.some((m) => /reply and set todo on Stuck on a key/.test(m)));
+check('a weekly occurrence carries no month anchor', lateDone.body.spawned.recurrence_day === null);
+const { body: m2 } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Monthly chain', recurrence: 'monthly', due_date: dayPlus(-40) });
+const occ = (await call(`/tasks/${m2.task.id}`, 'PATCH', { status: 'done' })).body.spawned;
+const grand = (await call(`/tasks/${occ.id}`, 'PATCH', { status: 'done' })).body.spawned;
+const chainReopen = await call(`/tasks/${m2.task.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: occ.id });
+const grandNow = (await call(`/projects/${fixPid}`)).body.tasks.find((t) => t.id === grand.id);
+check('undoing the first finish after its occurrence was finished too leaves the rule with the live chain',
+  chainReopen.status === 200 && chainReopen.body.task.recurrence === null && chainReopen.body.removed.length === 0 && grandNow?.recurrence === 'monthly');
+const occBack = await call(`/tasks/${occ.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: grand.id });
+check('undoing a finish keeps the month anchor on the reopened occurrence',
+  occBack.status === 200 && occBack.body.removed.length === 1 && occBack.body.task.recurrence === 'monthly' && occ.recurrence_day === Number(dayPlus(-40).slice(8, 10)) && occBack.body.task.recurrence_day === occ.recurrence_day);
+const occRemoved = await call(`/tasks/${occ.id}`, 'DELETE');
+const occRestored = await call('/tasks/restore', 'POST', { tasks: occRemoved.body.removed });
+check('undoing a delete keeps an occurrence\'s anchor and origin', occRestored.body.restored[0]?.recurrence_day === occ.recurrence_day && occRestored.body.restored[0]?.spawned_from === m2.task.id);
 await call(`/repos/${trackedRepo?.id}`, 'DELETE');
 await call(`/projects/${gatedPid}`, 'DELETE');
 await call(`/projects/${templated.body.created[0].id}`, 'DELETE');
