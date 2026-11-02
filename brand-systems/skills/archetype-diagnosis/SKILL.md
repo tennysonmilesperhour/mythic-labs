@@ -1,6 +1,6 @@
 ---
 name: archetype-diagnosis
-description: Phase 01 of the Mythic Labs method: diagnose the foundational archetype of a brand, product, or audience from evidence. Use when someone asks "what archetype is this," "what's our foundational pattern," "who are we really," or is exploring brand identity, naming, or positioning from scratch. Returns dominant, secondary, and shadow-risk archetypes with confidence levels and cited evidence. Not for reviewing existing copy against a known archetype (use voice-audit) or for brand-product fit (use brand-architecture).
+description: "Phase 01 of the Mythic Labs method: diagnose the foundational archetype of a brand, product, or audience from evidence. Use when someone asks \"what archetype is this,\" \"what's our foundational pattern,\" \"who are we really,\" or is exploring brand identity, naming, or positioning from scratch. Returns dominant, secondary, and shadow-risk archetypes with confidence levels and cited evidence. Not for reviewing existing copy against a known archetype (use voice-audit) or for brand-product fit (use brand-architecture)."
 ---
 
 # Archetype Diagnosis (Phase 01: Discovery)

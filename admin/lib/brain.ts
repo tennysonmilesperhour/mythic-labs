@@ -1,5 +1,5 @@
-import matter from "gray-matter";
 import { readFile, readDir, BRAIN_OWNER, BRAIN_REPO } from "./github";
+import { parseCatalogFrontmatter } from "./frontmatter";
 
 export type Marketplace = {
   name: string;
@@ -135,10 +135,7 @@ async function listMarkdownInDir(
       const path = nested ? `${entry.path}/SKILL.md` : entry.path;
       const file = await readFile(BRAIN_OWNER, BRAIN_REPO, path);
       if (!file) return null;
-      const fm = matter(file.content).data as {
-        name?: string;
-        description?: string;
-      };
+      const fm = parseCatalogFrontmatter(file.content, path);
       return {
         name: fm.name || (nested ? entry.name : entry.name.replace(/\.md$/, "")),
         description: fm.description || "",
