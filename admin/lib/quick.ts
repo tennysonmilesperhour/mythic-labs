@@ -199,7 +199,12 @@ export function parseQuick(text: string, projects: ProjectOption[], from = today
     let guard = 0;
     while ((m = scan.exec(line)) && guard++ < 50) {
       const out = fn(m);
-      if (out === null) continue;
+      if (out === null) {
+        // Declined (prose). The match may have swallowed up to two following words, so the next
+        // scan starts just past where this one began and still sees a token among them.
+        scan.lastIndex = (m.index ?? 0) + 1;
+        continue;
+      }
       cut(m, out ?? "");
       scan.lastIndex = 0;
     }

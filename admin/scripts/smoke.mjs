@@ -392,6 +392,17 @@ check('undoing the first finish after its occurrence was finished too leaves the
 const occBack = await call(`/tasks/${occ.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: grand.id });
 check('undoing a finish keeps the month anchor on the reopened occurrence',
   occBack.status === 200 && occBack.body.removed.length === 1 && occBack.body.task.recurrence === 'monthly' && occ.recurrence_day === Number(dayPlus(-40).slice(8, 10)) && occBack.body.task.recurrence_day === occ.recurrence_day);
+const { body: plainT } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Finish and repeat at once', due_date: dayPlus(1) });
+const finishWithRule = await call(`/tasks/${plainT.task.id}`, 'PATCH', { status: 'done', recurrence: 'monthly' });
+const { body: weeklyT } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Weekly turned monthly', recurrence: 'weekly', due_date: dayPlus(1) });
+const finishRuleChange = await call(`/tasks/${weeklyT.task.id}`, 'PATCH', { status: 'done', recurrence: 'monthly' });
+const { body: stopT } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Monthly, stopped', recurrence: 'monthly', due_date: dayPlus(1) });
+const finishRuleOff = await call(`/tasks/${stopT.task.id}`, 'PATCH', { status: 'done', recurrence: null });
+check('a finish uses the rule set in the same patch, and the finished copy keeps none',
+  finishWithRule.body.spawned?.recurrence === 'monthly' && finishWithRule.body.task.recurrence === null &&
+  finishRuleChange.body.spawned?.recurrence === 'monthly' && finishRuleChange.body.task.recurrence === null &&
+  finishRuleOff.status === 200 && finishRuleOff.body.spawned === null && finishRuleOff.body.task.recurrence === null,
+  JSON.stringify([finishWithRule.body.spawned?.recurrence, finishRuleChange.body.spawned?.recurrence, finishRuleOff.body.spawned]));
 const occRemoved = await call(`/tasks/${occ.id}`, 'DELETE');
 const occRestored = await call('/tasks/restore', 'POST', { tasks: occRemoved.body.removed });
 check('undoing a delete keeps an occurrence\'s anchor and origin', occRestored.body.restored[0]?.recurrence_day === occ.recurrence_day && occRestored.body.restored[0]?.spawned_from === m2.task.id);

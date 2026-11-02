@@ -48,7 +48,8 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
       overdue: live.reduce((n, s) => n + s.stats.overdue, 0),
       decisions: hub.attention.filter((a) => a.key.split(":")[1] === "decision").length,
       blocked: live.reduce((n, s) => n + s.stats.blocked, 0),
-      stale: hub.attention.filter((a) => a.key.split(":")[1] === "stale").length,
+      // Counted per project: the hub folds three or more quiet projects into one item, and /fix lists each.
+      stale: summaries.flatMap((s) => s.attention).filter((a) => a.key.split(":")[1] === "stale").length,
     };
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);

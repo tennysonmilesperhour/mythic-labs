@@ -252,7 +252,7 @@ export default async function Overview() {
                 label="Stalled"
                 value={stalled}
                 def={`Doing, but no update in ${STALLED_CLAIM_DAYS}+ days.`}
-                href="/queue?status=doing"
+                href="/queue?stalled=1"
                 warn
               />
               <Metric

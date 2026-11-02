@@ -796,25 +796,34 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
       if (kid && kid.id !== task.id) kid.milestone_id = (clean.milestone_id as string | null) ?? null;
     }
   }
+  // Read before anything changes. A new due date, or a change from one rule to another, restarts the
+  // month anchor; handing a rule back to a reopened occurrence (whose rule was cleared when it was
+  // finished) keeps it.
+  const dueChanged = "due_date" in clean && clean.due_date !== task.due_date;
+  const ruleChanged = "recurrence" in clean && !!task.recurrence && clean.recurrence !== task.recurrence;
+  // A finish spawns from the task as this patch leaves it, so a rule or due date set in the same patch counts.
+  const rule = ("recurrence" in clean ? clean.recurrence : task.recurrence) as Recurrence | null;
   let spawned: Task | null = null;
   if ("status" in clean && clean.status !== task.status) {
     task.done_at = clean.status === "done" ? now() : null;
     if (clean.status === "doing") task.claimed_at = now();
-    if (clean.status === "done" && task.recurrence) {
-      const rule = task.recurrence as Recurrence;
+    if (clean.status === "done" && rule) {
       const t = now();
       const day = today();
+      const due = ("due_date" in clean ? clean.due_date : task.due_date) as string | null;
       // The day of the month a month-based rule aims for travels with the chore, so a clamped
       // February date does not turn a "30th" chore into a month-end one.
-      const anchor = task.recurrence_day ?? dayOfMonth(task.due_date ?? day);
+      const anchor = (dueChanged || ruleChanged ? null : task.recurrence_day) ?? dayOfMonth(due ?? day);
       // Always after today: a chore finished weeks late skips the occurrences it missed.
-      const nextDue = nextOccurrenceAfter(rule, task.due_date ?? day, day, anchor);
+      const nextDue = nextOccurrenceAfter(rule, due ?? day, day, anchor);
       spawned = normalizeTask({
         ...task,
+        ...(clean as Partial<Task>),
         id: newId(),
         // An import identity belongs to one task; the store refuses duplicates.
         source_key: null,
         spawned_from: task.id,
+        recurrence: rule,
         recurrence_day: MONTH_RULES.includes(rule) ? anchor : null,
         status: "todo",
         due_date: nextDue,
@@ -828,14 +837,12 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
         updated_at: t,
       });
       d.tasks.push(spawned);
-      task.recurrence = null;
     }
   }
-  // A new due date, or a change from one rule to another, restarts the month anchor from the new date.
-  // Handing a rule back to a reopened occurrence (whose rule was cleared when it was finished) keeps its anchor.
-  if (("due_date" in clean && clean.due_date !== task.due_date) || ("recurrence" in clean && task.recurrence && clean.recurrence !== task.recurrence)) task.recurrence_day = null;
+  if (dueChanged || ruleChanged) task.recurrence_day = null;
   Object.assign(task, clean, { updated_at: now() });
-  if (spawned && "recurrence" in clean) task.recurrence = null;
+  // The finished copy is plain history: the rule lives on in the occurrence it spawned.
+  if (spawned) task.recurrence = null;
   touch(d);
   return { spawned };
 }

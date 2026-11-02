@@ -274,12 +274,13 @@ export function normalizeDetail(d: ProjectDetail): ProjectDetail {
       ...p,
       last_reviewed_at: typeof p.last_reviewed_at === "string" ? p.last_reviewed_at : null,
       // An older or hand-edited file may lack these lists; the pages and the Markdown render index them.
+      // `agents` is left as stored: the store refuses a file without the array, and an entry that is not a
+      // name must keep matching no agent, where an empty list would let every agent in.
       links: Array.isArray(p.links)
         ? p.links.filter((l): l is ProjectLink => !!l && typeof l === "object" && typeof (l as ProjectLink).label === "string" && typeof (l as ProjectLink).url === "string")
         : [],
       tags: strings(p.tags),
       tools: strings(p.tools),
-      agents: strings(p.agents),
     },
     tasks: d.tasks.map(normalizeTask),
     entries: d.entries.map(normalizeEntry),

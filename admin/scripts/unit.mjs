@@ -401,6 +401,34 @@ t('parseQuick leaves "due: " and "plan: " prose alone when no date follows', () 
   assert.equal(e.due_date, '2026-11-07');
   assert.equal(e.title, 'Pay rent');
 });
+t('a declined "due: " prose match still lets a token in the next words through', () => {
+  const a = parseQuick('Due: taxes by:fri', projects, from);
+  assert.equal(a.due_date, '2026-11-06');
+  assert.equal(a.title, 'Due: taxes');
+  const b = parseQuick('Plan: holiday on:sat', projects, from);
+  assert.equal(b.planned_for, '2026-11-07');
+  assert.equal(b.title, 'Plan: holiday');
+  const c = parseQuick('Review due: Q3 due:fri', projects, from);
+  assert.equal(c.due_date, '2026-11-06');
+  assert.equal(c.title, 'Review due: Q3');
+  const d = parseQuick('Pay rent due: taxes due: fri', projects, from);
+  assert.equal(d.due_date, '2026-11-06');
+  assert.equal(d.planned_for, null);
+  assert.equal(d.title, 'Pay rent due: taxes');
+  const e = parseQuick('#mythic-labs Due: Q3 +ops due:fri', projects, from);
+  assert.equal(e.project?.id, 'p1');
+  assert.equal(e.due_date, '2026-11-06');
+  assert.deepEqual(e.labels, ['ops']);
+  assert.equal(e.title, 'Due: Q3');
+});
+t('normalizeDetail fills missing project lists and leaves agents as stored', () => {
+  const { normalizeDetail } = types.mod;
+  const d = normalizeDetail({ project: { ...base, links: null, tags: 'x', agents: [{ name: 'claude-code' }] }, tasks: [], milestones: [], entries: [] });
+  assert.deepEqual(d.project.links, []);
+  assert.deepEqual(d.project.tags, []);
+  assert.deepEqual(d.project.tools, []);
+  assert.equal(d.project.agents.length, 1); // an empty list would admit every agent
+});
 t('snoozed tasks are not counted as overdue or blocked', () => {
   const s = computeStats([task({ status: 'blocked', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01' })], []);
   assert.equal(s.blocked, 0);

@@ -10,11 +10,13 @@ import {
   PRIORITY_RANK,
   RECURRENCES,
   RECURRENCE_META,
+  STALLED_CLAIM_DAYS,
   isSnoozed,
   STATUS_META,
   TASK_STATUSES,
   addDays,
   daysFromNow,
+  daysSince,
   dueLabel,
   fmtDate,
   isOverdue,
@@ -60,17 +62,20 @@ type Filters = {
   unassigned: boolean;
   /** Leave out snoozed tasks, as the overdue and blocked counts do. */
   awake: boolean;
+  /** In progress with no update for STALLED_CLAIM_DAYS, the rule the Stalled flag and count use. */
+  stalled: boolean;
   q: string;
   group: "project" | "milestone" | "agent" | "priority" | "status" | "due" | "none";
   sort: "priority" | "due" | "updated" | "created" | "title" | "estimate";
 };
 
-const DEFAULTS: Filters = { status: "open", project: "", agent: "", priority: "", label: "", ready: false, overdue: false, due: "", mine: false, unassigned: false, awake: false, q: "", group: "project", sort: "priority" };
+const DEFAULTS: Filters = { status: "open", project: "", agent: "", priority: "", label: "", ready: false, overdue: false, due: "", mine: false, unassigned: false, awake: false, stalled: false, q: "", group: "project", sort: "priority" };
 
 const PRESETS: Array<{ label: string; patch: Partial<Filters>; key?: string }> = [
   { label: "Open", patch: {} },
   { label: "Ready", patch: { ready: true } },
   { label: "In progress", patch: { status: "doing" } },
+  { label: "Stalled", patch: { stalled: true } },
   { label: "Blocked", patch: { status: "blocked", awake: true } },
   { label: "Overdue", patch: { overdue: true, awake: true } },
   { label: "Due this week", patch: { due: "week" } },
@@ -92,6 +97,7 @@ function fromParams(p: Record<string, string | undefined>): Filters {
   f.mine = p.mine === "1";
   f.unassigned = p.unassigned === "1";
   f.awake = p.awake === "1";
+  f.stalled = p.stalled === "1";
   f.q = p.q ?? "";
   if (p.group && ["project", "milestone", "agent", "priority", "status", "due", "none"].includes(p.group)) f.group = p.group as Filters["group"];
   if (p.sort && ["priority", "due", "updated", "created", "title", "estimate"].includes(p.sort)) f.sort = p.sort as Filters["sort"];
@@ -173,6 +179,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
       .filter((t) => !f.mine || t.mine)
       .filter((t) => !f.unassigned || !t.agent)
       .filter((t) => !f.awake || !isSnoozed(t, day))
+      .filter((t) => !f.stalled || (t.status === "doing" && !isSnoozed(t, day) && daysSince(t.updated_at) >= STALLED_CLAIM_DAYS))
       .filter((t) => !q || `${t.title} ${t.notes} ${t.project_name} ${t.labels.join(" ")} ${t.agent ?? ""}`.toLowerCase().includes(q))
       .sort((a, b) => {
         switch (f.sort) {
