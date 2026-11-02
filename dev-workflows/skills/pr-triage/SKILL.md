@@ -1,6 +1,6 @@
 ---
 name: pr-triage
-description: Triage an open pull request — surface CI status, unresolved review threads, merge conflicts, and stale-since-last-review state. Use when the user asks "what's the status of PR X" or "is anything blocking this." Returns a punch list, not narrative prose.
+description: Triage an open pull request: surface CI status, unresolved review threads, merge conflicts, and stale-since-last-review state. Use when the user asks "what's the status of PR X" or "is anything blocking this." Returns a short punch list.
 ---
 
 # PR Triage
@@ -14,11 +14,11 @@ Quickly answer: **is this PR mergeable, and if not, what's blocking it?**
 
 ## Procedure
 
-1. `pull_request_read` with method `get` — basic state
-2. `pull_request_read` with method `get_status` — CI summary
-3. `pull_request_read` with method `get_check_runs` — individual checks
-4. `pull_request_read` with method `get_review_comments` — unresolved threads only
-5. `pull_request_read` with method `get_reviews` — approval state
+1. `pull_request_read` with method `get`: basic state
+2. `pull_request_read` with method `get_status`: CI summary
+3. `pull_request_read` with method `get_check_runs`: individual checks
+4. `pull_request_read` with method `get_review_comments`: unresolved threads only
+5. `pull_request_read` with method `get_reviews`: approval state
 
 Run all five in parallel when possible.
 
@@ -28,21 +28,21 @@ Run all five in parallel when possible.
 PR #<n> · <title>
 ─────────────────
 State:        open / draft / merged
-Mergeable:    yes / no — <reason if no>
+Mergeable:    yes / no: <reason if no>
 Behind base:  <n> commits
 
 CI
 ──
-✓ <check> — passed
-✗ <check> — failed: <one-line reason>
-… <check> — pending
+✓ <check>: passed
+✗ <check>: failed: <one-line reason>
+… <check>: pending
 
 REVIEW
 ──────
 Approvals:    <n>
 Changes req:  <n>
 Unresolved:   <n threads>
-  ▸ <file>:<line> — <commenter>: <gist>
+  ▸ <file>:<line>: <commenter>: <gist>
 
 BLOCKERS (priority order)
 ─────────────────────────

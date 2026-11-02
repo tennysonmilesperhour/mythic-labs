@@ -1,12 +1,12 @@
 ---
 name: brand-architecture
-description: Phase 02 of the Mythic Labs method — map whether a brand's product, audience, and surface expression all rest on the same archetypal foundation. Use when someone asks "does our product match our brand," "why does our marketing feel off," "how should we relate to our audience," "how do our sub-brands fit together," or suspects a brand is wearing a costume. Returns a relationship map (aligned, tension, fracture), an integration verdict, and ranked structural moves. Needs a known foundational archetype; if none exists, run archetype-diagnosis first.
+description: Phase 02 of the Mythic Labs method: map whether a brand's product, audience, and surface expression all rest on the same archetypal foundation. Use when someone asks "does our product match our brand," "why does our marketing feel off," "how should we relate to our audience," "how do our sub-brands fit together," or suspects a brand is wearing a costume. Returns a relationship map (aligned, tension, fracture), an integration verdict, and ranked structural moves. Needs a known foundational archetype; if none exists, run archetype-diagnosis first.
 ---
 
-# Brand Architecture — Phase 02: Structural Relationships
+# Brand Architecture (Phase 02: Structural Relationships)
 
 Phase 01 found the foundation. This phase checks whether everything built on
-it — the product, the audience relationship, the visible surface — rests on
+it (the product, the audience relationship, the visible surface) rests on
 that same foundation, or on something else.
 
 Method position: 01 `archetype-diagnosis` → **02 Architecture** (this skill) →
@@ -15,7 +15,7 @@ Method position: 01 `archetype-diagnosis` → **02 Architecture** (this skill) �
 ## Inputs
 
 - The foundational archetype (dominant + secondary) with its confidence.
-  If missing, say so and run Phase 01 first — don't guess a foundation.
+  If missing, say so and run Phase 01 first; don't guess a foundation.
 - Artifacts for each layer: product behavior, audience voice, and surface
   expression (site, ads, visual identity).
 
@@ -28,17 +28,17 @@ how it handles failure). For each, name the archetype it enacts.
 
 - All three match → **Aligned**
 - One differs, with a coherent story → **Tension** (often fine, sometimes the secondary archetype)
-- Behavior enacts a different archetype → **Fracture**. This is a product decision, not a branding problem. Say so.
+- Behavior enacts a different archetype → **Fracture**. Say plainly that it is a product decision; rebranding won't fix it.
 
 ### 2. Brand ↔ Audience
-Define the audience by the **identity they are moving toward**, not demographics.
+Define the audience by the **identity they are moving toward**. Ignore demographics.
 
-- **Matching** — the audience already identifies with the archetype and wants
+- **Matching**: the audience already identifies with the archetype and wants
   a mirror (Explorers buying from an Explorer brand).
-- **Complementary** — the audience needs what the archetype provides
+- **Complementary**: the audience needs what the archetype provides
   (anxious first-time parents in an Innocent-under-threat state, served by a
   Caregiver brand).
-- **Mismatch** — the brand assumes a mirror when the audience needs a
+- **Mismatch**: the brand assumes a mirror when the audience needs a
   complement, or the reverse. A Hero brand challenging an audience that wants
   to be cared for is a mismatch.
 
@@ -53,18 +53,18 @@ the tone shifts sharply between marketing and product UI.
 ### Portfolio (only if there are sub-brands or multiple products)
 Sub-brands may lead with a different archetype, but should share the parent's
 foundation as their secondary. A sub-brand with no shared archetype reads as an
-acquisition, not a family.
+acquisition rather than part of the family.
 
 ## Integration verdict
 
-- **Integrated** — all relationships aligned or matching/complementary
-- **Partially integrated** — at least one tension, no fractures
-- **Fractured** — any fracture, mismatch, or costume
+- **Integrated**: all relationships aligned or matching/complementary
+- **Partially integrated**: at least one tension, no fractures
+- **Fractured**: any fracture, mismatch, or costume
 
 ## Output format
 
 ```
-BRAND ARCHITECTURE — <subject>
+BRAND ARCHITECTURE: <subject>
 ══════════════════════════════
 Foundation:  <dominant> / <secondary>   [Phase 01 confidence]
 
@@ -80,12 +80,12 @@ Surface ↔ Foundation   <Worn | Costume>
 INTEGRATION
 ───────────
 Verdict:                   <integrated | partially integrated | fractured>
-Highest-leverage fracture: <one sentence>
+Highest-impact fracture: <one sentence>
 
 STRUCTURAL MOVES  (ranked)
 ──────────────────────────
-1. <move> — because <structural reason>
-2. <move> — because <structural reason>
+1. <move>, because <structural reason>
+2. <move>, because <structural reason>
 
 NEXT
 ────
@@ -95,7 +95,7 @@ Phase 03 → unified-expression   (shadow risks → shadow-analysis)
 ## Guardrails
 
 - Fix structure before surface. Expression changes come in Phase 03.
-- When surface and foundation disagree, change the surface — unless the
+- When surface and foundation disagree, change the surface, unless the
   product behavior itself contradicts the foundation, which is a decision for
   the people who own the product.
 - Every relationship rating cites an artifact.

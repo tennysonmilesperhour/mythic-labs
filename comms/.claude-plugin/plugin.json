@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "comms",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Inbox triage, calendar coordination, and meeting prep. Reduces context-switching cost between asynchronous work and synchronous coordination.",
   "author": {
     "name": "Mythic Labs"

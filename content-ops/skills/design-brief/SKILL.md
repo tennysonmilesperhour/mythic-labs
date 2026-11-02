@@ -1,6 +1,6 @@
 ---
 name: design-brief
-description: Translate an archetypal diagnosis into a concrete design brief that downstream tools (Canva, Wix, designers) can act on. Use when the user has done brand discovery and now needs deliverables. Outputs spec sheets, not mood boards — specific palettes, type pairings, spatial rules, and motion principles tied to the archetypal foundation.
+description: Translate an archetypal diagnosis into a concrete design brief that downstream tools (Canva, Wix, designers) can act on. Use when the user has done brand discovery and now needs deliverables. Outputs spec sheets with specific palettes, type pairings, spatial rules, and motion principles tied to the archetypal foundation.
 ---
 
 # Design Brief Generator
@@ -29,7 +29,7 @@ For each design dimension, derive specs from the archetype:
 ## Output Format
 
 ```
-DESIGN BRIEF — <deliverable>
+DESIGN BRIEF: <deliverable>
 ════════════════════════════
 Anchor archetype:  <name>
 Foundational mood: <one phrase>

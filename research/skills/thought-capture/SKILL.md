@@ -12,7 +12,7 @@ Persistent memory across sessions. Two modes: write and recall.
 When the user says "save this" or you detect a worth-keeping insight:
 
 1. `capture_thought` with:
-   - The thought itself (verbatim where possible — don't paraphrase the user's wording away)
+   - The thought itself (verbatim where possible; don't paraphrase the user's wording away)
    - Tags inferred from context (project, topic, archetype, etc.)
    - A link back to the source artifact if one exists
 2. Confirm capture with the thought ID
@@ -21,14 +21,14 @@ When the user says "save this" or you detect a worth-keeping insight:
 
 When the user asks "what did I think about X" or "have I noted anything on Y":
 
-1. `search_thoughts` with the query — tune up to 10 results
+1. `search_thoughts` with the query: tune up to 10 results
 2. Order by recency + relevance
 3. Return as a chronological list with snippet + tags
 
 ## Output Format (recall)
 
 ```
-THOUGHT RECALL — <query>
+THOUGHT RECALL: <query>
 ════════════════════════
 Found: <n>
 
@@ -55,6 +55,6 @@ ID:       <id>
 ## Guardrails
 
 - Verbatim > paraphrase. The user's wording often *is* the insight.
-- Tag conservatively — over-tagging makes recall noisy.
+- Tag conservatively, because over-tagging makes recall noisy.
 - If a thought is a duplicate of something recent, ask before capturing.
 - Periodically (when asked) run `thought_stats` to summarize the corpus shape.

@@ -1,12 +1,12 @@
 ---
 name: archetype-diagnosis
-description: Phase 01 of the Mythic Labs method — diagnose the foundational archetype of a brand, product, or audience from evidence. Use when someone asks "what archetype is this," "what's our foundational pattern," "who are we really," or is exploring brand identity, naming, or positioning from scratch. Returns dominant, secondary, and shadow-risk archetypes with confidence levels and cited evidence. Not for reviewing existing copy against a known archetype (use voice-audit) or for brand–product fit (use brand-architecture).
+description: Phase 01 of the Mythic Labs method: diagnose the foundational archetype of a brand, product, or audience from evidence. Use when someone asks "what archetype is this," "what's our foundational pattern," "who are we really," or is exploring brand identity, naming, or positioning from scratch. Returns dominant, secondary, and shadow-risk archetypes with confidence levels and cited evidence. Not for reviewing existing copy against a known archetype (use voice-audit) or for brand-product fit (use brand-architecture).
 ---
 
-# Archetype Diagnosis — Phase 01: Discovery
+# Archetype Diagnosis (Phase 01: Discovery)
 
 You are in **diagnostic mode**. The brand already has a foundational structure.
-Your job is to uncover it from evidence, not to propose a new one.
+Your job is to uncover the one already there, from evidence.
 
 This is the first of three phases:
 **01 Discovery** (this skill) → **02 Architecture** (`brand-architecture`) →
@@ -18,10 +18,10 @@ tells, and the discriminating questions for confused pairs.
 ## Procedure
 
 1. **Inventory evidence.** List every artifact you have, tagged by type:
-   - *Behavior* — what the product does, prices, defaults, makes easy or hard
-   - *Copy* — taglines, site text, UI microcopy, emails
-   - *Stated values* — mission, manifesto, founder statements
-   - *Audience voice* — reviews, testimonials, community language
+   - *Behavior*: what the product does, prices, defaults, makes easy or hard
+   - *Copy*: taglines, site text, UI microcopy, emails
+   - *Stated values*: mission, manifesto, founder statements
+   - *Audience voice*: reviews, testimonials, community language
 
    Behavior outweighs copy, which outweighs stated values.
 
@@ -40,7 +40,7 @@ tells, and the discriminating questions for confused pairs.
 
 6. **Behavior check.** Does the dominant explain the product's behavior, not
    only its copy? If the copy says one archetype and the behavior enacts
-   another, the behavior is the foundation — say so explicitly.
+   another, the behavior is the foundation; say so explicitly.
 
 ## Confidence rubric
 
@@ -57,7 +57,7 @@ artifacts would raise it (e.g. "pricing page," "cancellation flow,"
 ## Output format
 
 ```
-ARCHETYPAL DIAGNOSIS — <subject>
+ARCHETYPAL DIAGNOSIS: <subject>
 ════════════════════════════════
 Dominant:     <archetype>   [confidence: high | medium | low]
 Secondary:    <archetype>
@@ -65,8 +65,8 @@ Shadow risk:  <shadow form of the dominant>
 
 EVIDENCE
 ────────
-▸ [behavior] <artifact> — <desire/fear signal>
-▸ [copy]     <artifact> — <signal>
+▸ [behavior] <artifact>: <desire/fear signal>
+▸ [copy]     <artifact>: <signal>
 
 DISCRIMINATION
 ──────────────
@@ -90,7 +90,7 @@ Phase 02 → brand-architecture
 ## Guardrails
 
 - Cite an artifact for every claim. No claims from reputation or vibes.
-- Diagnose what is there, not what the brand wishes it were.
+- Diagnose what the evidence shows, even when the brand wishes otherwise.
 - No trend language ("modern," "fresh," "disruptive") as structural evidence.
 - When diagnosing a real company, work only from artifacts you actually read.
-- Don't propose rebrands in this phase — expression comes in Phase 03.
+- Don't propose rebrands in this phase; expression comes in Phase 03.
