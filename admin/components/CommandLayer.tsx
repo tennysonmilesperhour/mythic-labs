@@ -7,6 +7,7 @@ import { STATUS_META, fmtDate, type ProjectStatus } from "@/lib/projectTypes";
 import { fuzzyScore, parseQuick, toTaskFields, type Parsed, type ProjectOption } from "@/lib/quick";
 import { api } from "@/components/ProjectBits";
 import { projectHref, taskHref } from "@/lib/taskMap";
+import { armChord, chordArmed, clearChord } from "./chord";
 import { useToast } from "./Toast";
 
 type Mode = null | "palette" | "capture" | "help";
@@ -76,7 +77,6 @@ export default function CommandLayer({ children }: { children: React.ReactNode }
   const [mode, setMode] = useState<Mode>(null);
   const [seed, setSeed] = useState("");
   const router = useRouter();
-  const pending = useRef<{ key: string; at: number } | null>(null);
 
   const open = useCallback((m: Exclude<Mode, null>, s = "") => {
     setSeed(s);
@@ -98,17 +98,19 @@ export default function CommandLayer({ children }: { children: React.ReactNode }
       }
       if (mode || typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       const now = Date.now();
-      if (pending.current && now - pending.current.at < 900) {
+      if (chordArmed(now)) {
+        // The second key of a chord belongs to the chord, whatever the page would do with it.
+        clearChord();
+        e.preventDefault();
+        e.stopImmediatePropagation();
         const target = GO.find((g) => g.key === e.key.toLowerCase());
-        pending.current = null;
-        if (target) {
-          e.preventDefault();
-          router.push(target.href);
-        }
+        if (target) router.push(target.href);
         return;
       }
       if (e.key === "g") {
-        pending.current = { key: "g", at: now };
+        armChord(now);
+        e.preventDefault();
+        e.stopImmediatePropagation();
         return;
       }
       if (e.key === "/") {
@@ -331,7 +333,8 @@ function Capture({ seed, onClose }: { seed: string; onClose: () => void }) {
   const { toast } = useToast();
   const [text, setText] = useState(seed);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [override, setOverride] = useState<string>("");
+  // null: file it where the parse says. "": the Inbox, even when a #project was typed. Otherwise a project id.
+  const [override, setOverride] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -344,7 +347,7 @@ function Capture({ seed, onClose }: { seed: string; onClose: () => void }) {
   }, []);
 
   const parsed: Parsed = useMemo(() => parseQuick(text, projects), [text, projects]);
-  const target = override ? projects.find((p) => p.id === override) ?? null : parsed.project;
+  const target = override === null ? parsed.project : override ? projects.find((p) => p.id === override) ?? null : null;
 
   const submit = async () => {
     if (!parsed.title.trim()) return;
@@ -401,7 +404,7 @@ function Capture({ seed, onClose }: { seed: string; onClose: () => void }) {
       <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3">
         <label className="flex items-center gap-2 font-mono text-[0.6rem] text-fg-dim">
           To
-          <select value={override || parsed.project?.id || ""} onChange={(e) => setOverride(e.target.value)} className="bg-bg border border-line px-2 py-1 text-fg outline-none max-w-[14rem]">
+          <select value={target?.id ?? ""} onChange={(e) => setOverride(e.target.value)} className="bg-bg border border-line px-2 py-1 text-fg outline-none max-w-[14rem]" aria-label="Where to file it">
             <option value="">Inbox (sort later)</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -442,13 +445,16 @@ function Help({ onClose }: { onClose: () => void }) {
       "In task lists",
       [
         ["j / k", "Next / previous task"],
-        ["x", "Select"],
         ["↵", "Open"],
         ["d", "Mark done"],
         ["s", "Start"],
-        ["b", "Mark blocked"],
-        ["t", "Plan for today"],
-        ["e", "Edit in place"],
+        ["t", "Plan for today / take it off today"],
+        ["n", "Move to tomorrow (Today)"],
+        ["x", "Select (All tasks)"],
+        ["b", "Mark blocked (All tasks)"],
+        ["e", "Edit in place (All tasks)"],
+        ["p", "Details panel (All tasks)"],
+        ["↵ / ⌫", "Add as task / drop (Inbox)"],
       ],
     ],
   ];
@@ -474,7 +480,7 @@ function Help({ onClose }: { onClose: () => void }) {
         ))}
       </div>
       <p className="mt-5 text-[0.78rem] text-fg-ghost">
-        Shortcuts stay quiet while you type in a field. Due dates in capture accept words like tomorrow, fri, next week, in 3d, nov 5 or 2026-11-05.{" "}
+        Shortcuts are off while you type in a field. Due dates in capture accept words like tomorrow, fri, next week, in 3 days, nov 5 or 2026-11-05.{" "}
         <Link href="/today" onClick={onClose} className="text-accent hover:text-fg">Start with Today →</Link>
       </p>
     </div>

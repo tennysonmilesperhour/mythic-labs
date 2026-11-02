@@ -28,6 +28,22 @@ import { useToast } from "@/components/Toast";
 import { PLAN_TEMPLATES } from "@/lib/templates";
 import { DateInput, type Store } from "./ProjectDetailClient";
 
+/** A task and every task beneath it. */
+function subtreeIds(tasks: Task[], id: string): Set<string> {
+  const ids = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const t of tasks) {
+      if (t.parent_id && ids.has(t.parent_id) && !ids.has(t.id)) {
+        ids.add(t.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
 const byOrder = (a: Task, b: Task) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
 
 type Drag = { id: string; parent_id: string | null };
@@ -124,10 +140,13 @@ export default function PlanTab({ store }: { store: Store }) {
 
   const patchTask = async (id: string, patch: Partial<Task>) => {
     const prev = tasks;
-    setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    // The server moves a task's subtasks with it between milestones; mirror that here so the headers count right.
+    const moved = "milestone_id" in patch ? subtreeIds(tasks, id) : new Set([id]);
+    const place = (t: Task) => (t.id === id ? { ...t, ...patch } : moved.has(t.id) ? { ...t, milestone_id: patch.milestone_id ?? null } : t);
+    setTasks((ts) => ts.map(place));
     try {
       const { task, spawned } = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${id}`, "PATCH", patch);
-      setTasks((ts) => [...ts.map((t) => (t.id === id ? task : t)), ...(spawned ? [spawned] : [])]);
+      setTasks((ts) => [...ts.map((t) => (t.id === id ? task : place(t))), ...(spawned ? [spawned] : [])]);
       if (spawned) toast({ message: `Next occurrence added, due ${fmtDate(spawned.due_date)}.`, tone: "success" });
     } catch (err: unknown) {
       setTasks(prev);
@@ -216,19 +235,22 @@ export default function PlanTab({ store }: { store: Store }) {
   // ─── drag and drop: roots move among roots (and between milestones); subtasks among their siblings ───
 
   const commitOrder = async (siblings: Task[], parentId: string | null) => {
-    const prev = tasks;
+    // On failure, put back only the rows this request moved; edits made meanwhile to other rows stay.
+    const before = new Map(tasks.map((t) => [t.id, t]));
     const order = siblings.map((t, i) => ({ id: t.id, sort_order: i, milestone_id: t.milestone_id }));
     setTasks((ts) => ts.map((t) => {
       const o = order.find((x) => x.id === t.id);
       return o ? { ...t, sort_order: o.sort_order, milestone_id: parentId === null ? o.milestone_id : t.milestone_id } : t;
     }));
     try {
-      const res = await api<{ tasks: Task[] }>(`/api/projects/${project.id}/reorder`, "POST", {
+      // The server answers with each task's placement (order, milestone, parent); everything else is kept as shown.
+      const res = await api<{ tasks: Array<Pick<Task, "id" | "sort_order" | "milestone_id" | "parent_id" | "updated_at">> }>(`/api/projects/${project.id}/reorder`, "POST", {
         order: order.map((o) => ({ id: o.id, ...(parentId === null ? { milestone_id: o.milestone_id } : {}) })),
       });
-      setTasks(res.tasks);
+      const placed = new Map(res.tasks.map((p) => [p.id, p]));
+      setTasks((ts) => ts.map((t) => (placed.has(t.id) ? { ...t, ...placed.get(t.id)! } : t)));
     } catch (e) {
-      setTasks(prev);
+      setTasks((ts) => ts.map((t) => (order.some((o) => o.id === t.id) && before.has(t.id) ? before.get(t.id)! : t)));
       fail((e as Error).message);
     }
   };
@@ -388,13 +410,14 @@ export default function PlanTab({ store }: { store: Store }) {
               key={m.id}
               className={`pl-8 pb-10 relative ${zoneCls(m.id)}`}
               onDragOver={(e) => {
+                // Rows stop their own drag events, so reaching here means the pointer is over the milestone's open space.
                 if (!drag || drag.parent_id !== null) return;
                 e.preventDefault();
-                if (!(over && "id" in over)) setOver({ zone: m.id });
+                setOver((o) => (o && "zone" in o && o.zone === m.id ? o : { zone: m.id }));
               }}
               onDrop={(e) => {
+                if (!drag || drag.parent_id !== null) return;
                 e.preventDefault();
-                if (over && "id" in over) return;
                 dropOnZone(m.id);
                 endDrag();
               }}
@@ -443,11 +466,11 @@ export default function PlanTab({ store }: { store: Store }) {
           onDragOver={(e) => {
             if (!drag || drag.parent_id !== null) return;
             e.preventDefault();
-            if (!(over && "id" in over)) setOver({ zone: null });
+            setOver((o) => (o && "zone" in o && o.zone === null ? o : { zone: null }));
           }}
           onDrop={(e) => {
+            if (!drag || drag.parent_id !== null) return;
             e.preventDefault();
-            if (over && "id" in over) return;
             dropOnZone(null);
             endDrag();
           }}

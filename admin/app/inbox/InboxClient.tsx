@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { PRIORITIES, relTime, today, type InboxItem, type Priority, type ProjectStatus, type Task } from "@/lib/projectTypes";
+import { PRIORITIES, RECURRENCE_META, fmtDate, relTime, today, type InboxItem, type Priority, type ProjectStatus, type Task } from "@/lib/projectTypes";
 import { ME, facetHref, projectHref, taskHref } from "@/lib/taskMap";
 import { Chip, InlineText, StatusDot, api, btnGhost, btnPrimary, inputBase } from "@/components/ProjectBits";
 import { useToast } from "@/components/Toast";
@@ -48,7 +48,8 @@ export default function InboxClient({ initial, projects, agents }: { initial: In
         agent: c.agent || null,
         priority: c.priority,
         due_date: c.due_date || null,
-        planned_for: c.planned_for ? today() : null,
+        // Only an explicit "today" overrides the plan date the capture carried.
+        ...(c.planned_for ? { planned_for: today() } : {}),
       });
       setItems((xs) => xs.filter((x) => x.id !== i.id));
       const name = projects.find((p) => p.id === c.project_id)?.name ?? "project";
@@ -78,6 +79,8 @@ export default function InboxClient({ initial, projects, agents }: { initial: In
               agent: i.agent,
               priority: i.priority,
               due_date: i.due_date,
+              planned_for: i.planned_for,
+              recurrence: i.recurrence,
               estimate: i.estimate,
               labels: i.labels,
               source: i.source,
@@ -159,6 +162,8 @@ export default function InboxClient({ initial, projects, agents }: { initial: In
                 <Chip key={l}>+{l}</Chip>
               ))}
               {i.estimate ? <Chip>{i.estimate} pt</Chip> : null}
+              {i.planned_for ? <Chip>plan {fmtDate(i.planned_for)}</Chip> : null}
+              {i.recurrence ? <Chip>↻ {RECURRENCE_META[i.recurrence].short}</Chip> : null}
               {i.project_id && projects.find((p) => p.id === i.project_id) ? (
                 <Chip tone="accent">
                   <Link href={projectHref(i.project_id)}>{projects.find((p) => p.id === i.project_id)!.name}</Link>

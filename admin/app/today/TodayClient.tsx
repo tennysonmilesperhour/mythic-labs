@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PRIORITY_RANK,
   addDays,
@@ -80,18 +80,38 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
   const over = plannedPoints > capacity;
   const tomorrow = addDays(day, 1);
 
+  // One request per task at a time: a second d before the first finish lands would finish it again.
+  const inflight = useRef(new Set<string>());
   const patch = async (t: TaskRef, p: Partial<Task>, note?: string) => {
+    if (inflight.current.has(t.id)) return;
+    inflight.current.add(t.id);
     setBusy(t.id);
     try {
       const res = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${t.id}`, "PATCH", p);
       const updated = { ...t, ...res.task };
       if (p.status === "done") {
         setPlan((xs) => xs.filter((x) => x.id !== t.id));
-        setDone((xs) => [updated, ...xs]);
+        setDone((xs) => [updated, ...xs.filter((x) => x.id !== t.id)]);
+        const spawned = res.spawned;
         toast({
-          message: res.spawned ? `Done. Next occurrence due ${fmtDate(res.spawned.due_date)}.` : `Done: ${t.title}`,
+          message: spawned ? `Done. Next occurrence due ${fmtDate(spawned.due_date)}.` : `Done: ${t.title}`,
           tone: "success",
-          action: { label: "Undo", onClick: () => patch(updated, { status: t.status }) },
+          action: {
+            label: "Undo",
+            // One request, one commit: reopen the task, give the rule back and remove the occurrence it spawned.
+            onClick: async () => {
+              const back = await api<{ task: Task }>(`/api/tasks/${t.id}/reopen`, "POST", {
+                status: t.status === "done" ? "todo" : t.status,
+                recurrence: t.recurrence,
+                ...(spawned ? { spawned_id: spawned.id } : {}),
+              });
+              const restored = { ...updated, ...back.task };
+              setDone((xs) => xs.filter((x) => x.id !== t.id));
+              setPlan((xs) => (xs.some((x) => x.id === t.id) ? xs.map((x) => (x.id === t.id ? restored : x)) : [...xs, restored]));
+              invalidateIndex();
+              router.refresh();
+            },
+          },
         });
       } else if ("planned_for" in p && p.planned_for !== day) {
         setPlan((xs) => xs.filter((x) => x.id !== t.id));
@@ -106,32 +126,45 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
     } catch (e) {
       toast({ message: (e as Error).message, tone: "error" });
     } finally {
+      inflight.current.delete(t.id);
       setBusy(null);
     }
   };
 
   const pull = async (t: TaskRef) => {
+    if (busy) return;
+    setBusy(t.id);
     setPool((xs) => xs.filter((x) => x.id !== t.id));
-    setPlan((xs) => [...xs, { ...t, planned_for: day }]);
+    setPlan((xs) => (xs.some((x) => x.id === t.id) ? xs : [...xs, { ...t, planned_for: day }]));
     try {
       await api(`/api/tasks/${t.id}`, "PATCH", { planned_for: day });
       invalidateIndex();
       router.refresh();
     } catch (e) {
       setPlan((xs) => xs.filter((x) => x.id !== t.id));
-      setPool((xs) => [t, ...xs]);
+      setPool((xs) => (xs.some((x) => x.id === t.id) ? xs : [t, ...xs]));
       toast({ message: (e as Error).message, tone: "error" });
+    } finally {
+      setBusy(null);
     }
   };
 
   const reopen = async (t: TaskRef) => {
+    if (busy) return;
+    setBusy(t.id);
     setDone((xs) => xs.filter((x) => x.id !== t.id));
-    setPlan((xs) => [...xs, { ...t, status: "todo" }]);
+    setPlan((xs) => (xs.some((x) => x.id === t.id) ? xs : [...xs, { ...t, status: "todo", planned_for: day }]));
     try {
-      await api(`/api/tasks/${t.id}`, "PATCH", { status: "todo", planned_for: day });
+      const res = await api<{ task: Task }>(`/api/tasks/${t.id}/reopen`, "POST", { status: "todo", planned_for: day });
+      setPlan((xs) => xs.map((x) => (x.id === t.id ? { ...x, ...res.task } : x)));
+      invalidateIndex();
       router.refresh();
     } catch (e) {
+      setPlan((xs) => xs.filter((x) => x.id !== t.id));
+      setDone((xs) => (xs.some((x) => x.id === t.id) ? xs : [t, ...xs]));
       toast({ message: (e as Error).message, tone: "error" });
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -287,7 +320,7 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
             <ul className="border border-line bg-bg/85 divide-y divide-line-soft">
               {pool.slice(0, 15).map((t) => (
                 <li key={t.id} className="flex items-center gap-3 px-4 py-2">
-                  <button onClick={() => pull(t)} className={`${btnGhost} shrink-0`} title="Plan for today">+ Today</button>
+                  <button onClick={() => pull(t)} disabled={busy === t.id} className={`${btnGhost} shrink-0`} title="Plan for today">+ Today</button>
                   <StatusDot status={t.project_status} />
                   <Link href={taskHref(t.id)} className="flex-1 min-w-0 truncate text-[0.88rem] text-fg hover:text-accent">
                     {t.title}
@@ -321,7 +354,7 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
           <ul className="border border-line bg-bg/85 divide-y divide-line-soft">
             {done.map((t) => (
               <li key={t.id} className="flex items-center gap-3 px-4 py-2">
-                <input type="checkbox" checked readOnly onClick={() => reopen(t)} className="shrink-0" aria-label={`Reopen ${t.title}`} />
+                <input type="checkbox" checked readOnly disabled={busy === t.id} onClick={() => reopen(t)} className="shrink-0" aria-label={`Reopen ${t.title}`} />
                 <Link href={taskHref(t.id)} className="flex-1 min-w-0 truncate text-[0.88rem] text-fg-ghost line-through hover:text-accent">{t.title}</Link>
                 <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0">
                   {t.agent ? `@${t.agent} · ` : ""}

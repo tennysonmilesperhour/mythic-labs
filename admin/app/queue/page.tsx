@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { loadAll } from "@/lib/projects";
-import { AGENT_PRESETS, isReady, sortProjects, taskPath, waitingOn } from "@/lib/projectTypes";
+import { AGENT_PRESETS, WORKABLE, isReady, sortProjects, taskPath, waitingOn } from "@/lib/projectTypes";
 import { fixHref, isMine } from "@/lib/taskMap";
 import QueueClient, { type QueueProject, type Row } from "./QueueClient";
 
@@ -34,7 +34,8 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
           project_status: d.project.status,
           milestone_title: d.milestones.find((m) => m.id === t.milestone_id)?.title ?? null,
           path: taskPath(t, d.tasks),
-          ready: isReady(t, d.tasks),
+          // Ready as the Overview counts it and agents take it: only in an active or building project.
+          ready: WORKABLE.includes(d.project.status) && isReady(t, d.tasks),
           waiting: waitingOn(t, d.tasks).map((x) => x.title),
           subtasks: kids.length,
           subtasks_done: kids.filter((x) => x.status === "done").length,

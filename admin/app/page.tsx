@@ -244,15 +244,15 @@ export default async function Overview() {
               <Metric
                 label="Blocked"
                 value={blocked}
-                def="Tasks marked blocked."
-                href="/queue?status=blocked"
+                def="Tasks marked blocked and not snoozed."
+                href="/queue?status=blocked&awake=1"
                 warn
               />
               <Metric
                 label="Stalled"
                 value={stalled}
                 def={`Doing, but no update in ${STALLED_CLAIM_DAYS}+ days.`}
-                href="/queue?status=doing"
+                href="/queue?stalled=1"
                 warn
               />
               <Metric

@@ -14,8 +14,8 @@ const SAFE_URL = /^https?:\/\//i;
 
 function inline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
-  // Tokens: code, bold, italics, links, bare URLs.
-  const re = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*|_[^_\n]+_)|(\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\))|(https?:\/\/[^\s<>()"'`]+[^\s<>()"'`.,;:!?])/g;
+  // Tokens: code, bold, italics, links, bare URLs. Every span is bounded so a long pasted line cannot stall the renderer.
+  const re = /(`[^`\n]{1,500}`)|(\*\*[^*\n]{1,500}\*\*)|(\*[^*\n]{1,500}\*|_[^_\n]{1,500}_)|(\[[^\]\n]{1,200}\]\((https?:\/\/[^\s)]{1,2000})\))|(https?:\/\/[^\s<>()"'`]{0,2000}[^\s<>()"'`.,;:!?])/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;

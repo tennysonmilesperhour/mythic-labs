@@ -27,7 +27,7 @@ A Next.js app for the Mythic Labs central brain (this repo's plugin marketplace)
 
 ### Keyboard and capture
 
-`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g i` Inbox, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `x` selects, `↵` opens, `d` finishes, `s` starts, `b` blocks, `t` plans for today, `e` edits. Shortcuts stay quiet while you type in a field.
+`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g i` Inbox, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `↵` opens, `d` finishes, `s` starts, and `t` plans a task for today or takes it off today. On Today, `n` moves a task to tomorrow. On All tasks, `x` selects, `b` blocks, `e` edits in place and `p` toggles the details panel. In the Inbox, `↵` adds the item as a task and `⌫` drops it. Shortcuts are off while you type in a field, and the second key of a `g` chord never reaches a list.
 
 Quick capture reads one line the way Todoist and Things do, and shows every recognized token before saving:
 
@@ -53,7 +53,7 @@ private project data repository / existing branch
 ├── projects/<id>.json   one project: plan, log, settings (source of truth)
 ├── projects/<id>.md     the same project as Markdown, for people and agents
 ├── repos.json           the Repos page's tracked exceptions
-├── operations.json      durable idempotency receipts
+├── operations.json      idempotency receipts, kept for 30 days
 └── inbox.json           quick captures waiting to be sorted (written on the first capture)
 ```
 
@@ -127,13 +127,13 @@ The dashboard doubles as the roadmap agents work from. The API is disabled unles
 | `GET /api/agent/tasks/:id` | One task with its thread (reports and the owner's replies, oldest first), subtasks and what it waits on |
 | `POST /api/agent/tasks/:id/claim` | Mark doing and assign. 409 if another agent holds it or it isn't ready |
 | `PATCH /api/agent/tasks/:id` | `{status, note}`; blocked needs a note; done is refused while subtasks are open |
-| `POST /api/agent/tasks/:id/comments` | `{body}`: a question or checkpoint on the thread without changing status |
-| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up (title, parent_id, acceptance, estimate, labels, depends_on) |
+| `POST /api/agent/tasks/:id/comments` | `{body}`: a question or checkpoint on the thread without changing status. Checked against the project like every agent write |
+| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up (title, parent_id, acceptance, estimate, labels, due_date, depends_on) |
 | `POST /api/agent/projects/:id/entries` | Changelog, progress, note, or decision (always lands as *proposed*) |
 | `POST /api/agent/inbox` | Propose work into the owner's inbox; touches no plan |
 | `PATCH /api/agent/projects/:id` | `{next_action}` only |
 
-**Ready** means: todo, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence.
+**Ready** means: todo, not snoozed, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence, snoozed until it is due, so the same chore is not picked up again at once.
 
 The `roadmap` skill in `dev-workflows` teaches any agent this loop. Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
 
@@ -145,9 +145,11 @@ The dashboard's own pages and `/api/*` routes are no-auth (single-admin mode), s
 |---|---|
 | `PATCH /api/tasks` | `{items: [{id, ...patch}]}`: edit many tasks, any projects, in one commit. `DELETE` with `{ids}` removes many and returns them for undo |
 | `POST /api/tasks/restore` | `{tasks}`: put deleted tasks back with their original ids |
-| `POST /api/tasks/:id/comments` | `{body}`: your reply on a task's thread |
+| `POST /api/tasks/:id/reopen` | `{status?, recurrence?, planned_for?, spawned_id?}`: undo a finish in one commit; with `spawned_id` the occurrence that finishing a recurring task spawned is removed, unless someone has started it |
+| `POST /api/tasks/:id/comments` | `{body, status?}`: your reply on a task's thread; with `status` (for example `todo` to unblock) the reply and the change are one commit |
 | `POST /api/projects/:id/reorder` | `{order: [{id, milestone_id?, parent_id?}]}`: the plan's new task order |
-| `POST /api/projects/:id/template` | `{template, start?}`: lay a plan template's milestones and tasks onto the project |
+| `POST /api/projects/:id/template` | `{template, start?}`: lay a plan template's milestones and tasks onto the project (`POST /api/projects` also takes `template`, so a new project and its plan are one commit) |
+| `POST /api/projects/:id/review` | `{next_action?, status?, status_note?, update?: {health, body}}`: one review pass in one commit |
 | `GET /api/projects/:id/history/:sha` | The project as it was at a commit; `POST` restores it |
 | `GET /api/history[?project=]` | Recent commits to the data store |
 | `GET` `POST /api/inbox`, `PATCH` `DELETE /api/inbox/:id`, `POST /api/inbox/:id/triage` | Captures and turning one into a task |
@@ -155,7 +157,7 @@ The dashboard's own pages and `/api/*` routes are no-auth (single-admin mode), s
 | `GET /api/calendar.ics` | The calendar feed |
 | `GET /api/digest` | Today's brief as Markdown |
 
-For an owner-reviewed inventory import, `POST /api/projects/:id/tasks` also accepts `{ "items": [...] }`. Every task must have a stable `source_key`; existing keys are skipped, and the whole batch is written in one store mutation. Send a stable `Idempotency-Key` for replay safety. A retry with the same key and payload replays the original result; the same key with a different payload returns 409. Single-task POSTs keep their existing response and behavior.
+For an owner-reviewed inventory import, `POST /api/projects/:id/tasks` also accepts `{ "items": [...] }`. Every task must have a stable `source_key`; existing keys are skipped, and the whole batch is written in one store mutation. Send a stable `Idempotency-Key` for replay safety. A retry with the same key and payload within 30 days replays the original result; the same key with a different payload returns 409. Single-task POSTs keep their existing response and behavior.
 
 ---
 

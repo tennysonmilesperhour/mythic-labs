@@ -17,6 +17,7 @@ import {
   taskPath,
   fmtDate,
   isOverdue,
+  isSnoozed,
   relTime,
   renderProjectMarkdown,
   type Entry,
@@ -229,12 +230,12 @@ export default function ProjectDetailClient({
         </Cell>
         <Cell label="Ready" value={stats.ready} href={firstMap(rankReady(tasks, milestones)[0])} />
         <Cell label="Doing" value={stats.doing} href={firstMap(tasks.find((t) => t.status === "doing"))} />
-        <Cell label="Blocked" value={stats.blocked} warn={stats.blocked > 0} href={firstMap(tasks.find((t) => t.status === "blocked"), "blocked")} />
+        <Cell label="Blocked" value={stats.blocked} warn={stats.blocked > 0} href={firstMap(tasks.find((t) => t.status === "blocked" && !isSnoozed(t)), "blocked")} />
         <Cell
           label="Overdue"
           value={stats.overdue}
           warn={stats.overdue > 0}
-          href={firstMap(tasks.find((t) => isOverdue(t.due_date, t.status === "done")), "overdue")}
+          href={firstMap(tasks.find((t) => !isSnoozed(t) && isOverdue(t.due_date, t.status === "done")), "overdue")}
         />
         <Cell label="Priority">
           <select

@@ -104,10 +104,14 @@ export default function TaskMapClient({
     if (!reply.trim()) return;
     setSaving(true);
     try {
-      const res = await api<{ entry: Entry }>(`/api/tasks/${task.id}/comments`, "POST", { body: reply.trim() });
+      // The reply and the unblock are one request and one commit, so neither can land without the other.
+      const res = await api<{ entry: Entry; task: Task; spawned: Task | null }>(`/api/tasks/${task.id}/comments`, "POST", {
+        body: reply.trim(),
+        ...(unblock ? { status: "todo" } : {}),
+      });
       setEntries((es) => [res.entry, ...es]);
+      setTasks((ts) => ts.map((x) => (x.id === task.id ? res.task : x)));
       setReply("");
-      if (unblock) await patch(task.id, { status: "todo" });
       toast({ message: unblock ? "Replied and unblocked." : "Reply posted to the thread.", tone: "success" });
     } catch (e) {
       setError((e as Error).message);
@@ -439,7 +443,8 @@ export default function TaskMapClient({
                 value={reply}
                 onChange={(e) => setReply(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(task.status === "blocked");
+                  // The shortcut posts the reply; unblocking is the explicit button, so a quick answer cannot reopen work by accident.
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(false);
                 }}
                 rows={2}
                 placeholder={task.status === "blocked" ? "Answer the blocker…" : "Add a note or reply… (Markdown, ⌘↵ to send)"}

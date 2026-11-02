@@ -41,12 +41,15 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
         ready: d.tasks.filter((t) => t.status === "todo" && t.agent === "me").slice(0, 3).map((t) => t.title),
       };
     });
+    // The counts match the All tasks lists they link to, which leave paused projects out.
+    const live = summaries.filter((s) => s.status !== "paused");
     checklist = {
       inbox: hub.inbox.length,
-      overdue: summaries.reduce((n, s) => n + s.stats.overdue, 0),
+      overdue: live.reduce((n, s) => n + s.stats.overdue, 0),
       decisions: hub.attention.filter((a) => a.key.split(":")[1] === "decision").length,
-      blocked: summaries.reduce((n, s) => n + s.stats.blocked, 0),
-      stale: hub.attention.filter((a) => a.key.split(":")[1] === "stale").length,
+      blocked: live.reduce((n, s) => n + s.stats.blocked, 0),
+      // Counted per project: the hub folds three or more quiet projects into one item, and /fix lists each.
+      stale: summaries.flatMap((s) => s.attention).filter((a) => a.key.split(":")[1] === "stale").length,
     };
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);

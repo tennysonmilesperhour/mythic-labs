@@ -646,16 +646,14 @@ function NewProjectForm({
     setBusy(true);
     setErr(null);
     try {
+      // The template rides along, so the project and its plan are one commit.
       const res = await api<{ created: Project[]; failed: Array<{ name: string; reason: string }> }>(
         "/api/projects",
         "POST",
-        { name: name.trim() || r, owner: owner || null, repo: r || null, summary, status }
+        { name: name.trim() || r, owner: owner || null, repo: r || null, summary, status, ...(template ? { template } : {}) }
       );
       if (!res.created.length) setErr(res.failed[0]?.reason || "Not created");
-      else {
-        if (template) await api(`/api/projects/${res.created[0].id}/template`, "POST", { template });
-        onDone(res.created, res.failed);
-      }
+      else onDone(res.created, res.failed);
     } catch (e: unknown) {
       setErr((e as Error).message);
     } finally {

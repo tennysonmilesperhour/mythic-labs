@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { chordArmed } from "./chord";
 
 /**
  * j/k moves a cursor through a list; other single keys fire handlers for the
- * item under the cursor. Keys stay quiet while a field has focus or an overlay
- * is open (the command layer stops propagation for its own keys).
+ * item under the cursor. Keys are off while a field has focus, an overlay is
+ * open, or a g-chord is armed, and Enter on a focused button or link is left
+ * to the browser. Holding an action key down fires it once.
  */
 export function useListKeys<T>(
   items: T[],
@@ -25,6 +27,10 @@ export function useListKeys<T>(
       const tag = el?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
       if (document.querySelector('[role="dialog"]')) return;
+      if (chordArmed()) return;
+      const nav = e.key === "j" || e.key === "k" || e.key === "ArrowDown" || e.key === "ArrowUp";
+      if (!nav && e.repeat) return;
+      if ((e.key === "Enter" || e.key === " ") && (tag === "BUTTON" || tag === "A" || tag === "SUMMARY" || el?.getAttribute("role") === "button")) return;
       if (e.key === "j" || e.key === "ArrowDown") {
         if (!items.length) return;
         e.preventDefault();
