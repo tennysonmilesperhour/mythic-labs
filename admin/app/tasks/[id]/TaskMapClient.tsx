@@ -3,10 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ESTIMATES,
+  LABEL_PRESETS,
+  RECURRENCES,
+  RECURRENCE_META,
+  addDays,
   dueLabel,
   fmtDate,
   isOverdue,
   isReady,
+  isSnoozed,
   relTime,
   daysSince,
   taskPath,
@@ -17,6 +23,9 @@ import {
   type Task,
   type TaskStatus,
 } from "@/lib/projectTypes";
+import { EditableMarkdown } from "@/components/Markdown";
+import Markdown from "@/components/Markdown";
+import { useToast } from "@/components/Toast";
 import {
   ME,
   extractSnippets,
@@ -36,7 +45,7 @@ import {
   toolLinks,
   type MapLink,
 } from "@/lib/taskMap";
-import { Chip, InlineText, PRIORITY_MARK, api, btnGhost, btnPrimary, inputCls } from "@/components/ProjectBits";
+import { Chip, InlineText, PRIORITY_MARK, TagInput, api, btnGhost, btnPrimary, inputBase, inputCls } from "@/components/ProjectBits";
 import CopyBlock from "@/components/CopyBlock";
 import SubLink from "@/components/SubLink";
 import { GlyphArrow } from "@/components/Glyphs";
@@ -63,23 +72,44 @@ export default function TaskMapClient({
   mine: Mine[];
   workable: boolean;
 }) {
-  const { project, milestones, entries } = initial;
+  const { project, milestones } = initial;
+  const { toast } = useToast();
   const [tasks, setTasks] = useState(initial.tasks);
+  const [entries, setEntries] = useState(initial.entries);
   const [error, setError] = useState<string | null>(null);
   const [blockNote, setBlockNote] = useState<string | null>(null);
+  const [reply, setReply] = useState("");
   const [saving, setSaving] = useState(false);
   const task = tasks.find((t) => t.id === taskId)!;
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  const day = today();
 
   const patch = async (id: string, p: Partial<Task>) => {
     const prev = tasks;
     setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, ...p } : t)));
     setSaving(true);
     try {
-      const res = await api<{ task: Task }>(`/api/tasks/${id}`, "PATCH", p);
-      setTasks((ts) => ts.map((t) => (t.id === id ? res.task : t)));
+      const res = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${id}`, "PATCH", p);
+      setTasks((ts) => [...ts.map((t) => (t.id === id ? res.task : t)), ...(res.spawned ? [res.spawned] : [])]);
+      if (res.spawned) toast({ message: `Next occurrence added, due ${fmtDate(res.spawned.due_date)}.`, tone: "success" });
     } catch (e) {
       setTasks(prev);
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendReply = async (unblock = false) => {
+    if (!reply.trim()) return;
+    setSaving(true);
+    try {
+      const res = await api<{ entry: Entry }>(`/api/tasks/${task.id}/comments`, "POST", { body: reply.trim() });
+      setEntries((es) => [res.entry, ...es]);
+      setReply("");
+      if (unblock) await patch(task.id, { status: "todo" });
+      toast({ message: unblock ? "Replied and unblocked." : "Reply posted to the thread.", tone: "success" });
+    } catch (e) {
       setError((e as Error).message);
     } finally {
       setSaving(false);
@@ -116,7 +146,11 @@ export default function TaskMapClient({
   ].filter((g) => g.items.length);
   const decisions = entries.filter((e) => e.kind === "decision" && e.decision_status === "accepted");
   const proposed = entries.filter((e) => e.kind === "decision" && e.decision_status === "proposed");
-  const progress = entries.filter((e) => e.kind === "progress" && e.title.includes(task.title)).slice(0, 5);
+  // The task's thread: comments and agent reports attached to it, oldest first.
+  // Entries written before threads existed matched by title, so they still show.
+  const thread = entries
+    .filter((e) => e.task_id === task.id || (e.kind === "progress" && !e.task_id && e.title.includes(task.title)))
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   const branch = `claude/${slug(task.title)}`;
   const brief = [
@@ -155,7 +189,7 @@ export default function TaskMapClient({
       </nav>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <Link href={`/queue#${QUEUE_LANE[task.status]}`} title="Open this lane of the queue" className="hover:opacity-80">
+        <Link href={`/queue?status=${task.status}`} title="All tasks with this status" className="hover:opacity-80">
           <Chip tone={task.status === "blocked" ? "solid" : task.status === "doing" ? "accent" : "dim"}>{task.status}</Chip>
         </Link>
         <Link href={`/projects/${project.id}?tab=plan&task=${task.id}`} title="See it in the project plan" className="hover:opacity-80">
@@ -165,6 +199,15 @@ export default function TaskMapClient({
         </Link>
         {ready ? <Chip tone="accent">ready</Chip> : null}
         {late ? <Chip tone="solid">{dueLabel(task.due_date)}</Chip> : null}
+        {task.planned_for === day && !done ? <Chip tone="accent">today</Chip> : null}
+        {task.recurrence ? <Chip title="Finishing it creates the next occurrence">↻ {RECURRENCE_META[task.recurrence].short}</Chip> : null}
+        {isSnoozed(task) ? <Chip>snoozed until {fmtDate(task.snoozed_until)}</Chip> : null}
+        {task.estimate ? <Chip>{task.estimate} pt</Chip> : null}
+        {task.labels.map((l) => (
+          <Link key={l} href={`/queue?label=${encodeURIComponent(l)}`} title={`All tasks labelled ${l}`}>
+            <Chip>+{l}</Chip>
+          </Link>
+        ))}
         {milestone ? (
           <Link href={`/projects/${project.id}?tab=plan`} className="font-mono text-[0.6rem] text-fg-dim hover:text-accent">
             ◆ {milestone.title}{milestone.target_date ? ` · ${fmtDate(milestone.target_date)}` : ""}
@@ -226,6 +269,24 @@ export default function TaskMapClient({
           <button className={btnGhost} onClick={() => setBlockNote(blockNote === null ? "" : null)}>I&apos;m blocked</button>
         ) : null}
         <span className="mx-2 h-4 w-px bg-line" />
+        {!done ? (
+          <button
+            className={btnGhost}
+            disabled={saving}
+            onClick={() => patch(task.id, { planned_for: task.planned_for === day ? null : day })}
+            title={task.planned_for === day ? "Remove from today's plan" : "Put it on today's plan"}
+          >
+            {task.planned_for === day ? "Unplan" : "Plan today"}
+          </button>
+        ) : null}
+        {!done && !isSnoozed(task) ? (
+          <button className={btnGhost} disabled={saving} onClick={() => patch(task.id, { snoozed_until: addDays(day, 7) })} title="Hide it from Today and My tasks for a week">
+            Snooze 1w
+          </button>
+        ) : null}
+        {isSnoozed(task) ? (
+          <button className={btnGhost} disabled={saving} onClick={() => patch(task.id, { snoozed_until: null })}>Wake</button>
+        ) : null}
         {!humanOnly ? (
           <button className={btnGhost} disabled={saving} onClick={() => patch(task.id, { agent: ME })}>Take it myself</button>
         ) : null}
@@ -280,8 +341,8 @@ export default function TaskMapClient({
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-12">
         <div className="flex flex-col gap-10 min-w-0">
           <Block n="1" title="Done when" hint="The finish line. If it's vague, sharpen it before you start.">
-            <div className="border border-accent bg-[rgba(139,115,85,0.04)] p-4 text-[0.95rem] leading-relaxed whitespace-pre-wrap">
-              <InlineText multiline value={task.acceptance} placeholder="No finish line yet. Click to write one, e.g. 'Domain resolves and SSL is green'." onSave={(acceptance) => patch(task.id, { acceptance })} />
+            <div className="border border-accent bg-[rgba(139,115,85,0.04)] p-4 text-[0.95rem] leading-relaxed">
+              <EditableMarkdown value={task.acceptance} placeholder="No finish line yet. Click to write one, e.g. 'Domain resolves and SSL is green'." onSave={(acceptance) => patch(task.id, { acceptance })} />
             </div>
           </Block>
 
@@ -340,13 +401,60 @@ export default function TaskMapClient({
             ) : null}
             <details className="mt-4" open={!steps.length}>
               <summary className="mono-label-dim cursor-pointer">Notes</summary>
-              <div className="mt-2 border border-line bg-bg/70 p-3 text-[0.88rem] leading-relaxed text-fg-dim whitespace-pre-wrap min-h-[4rem]">
-                <InlineText multiline value={task.notes} placeholder={"Add context, links and steps:\n- first step\n- second step"} onSave={(notes) => patch(task.id, { notes })} />
+              <div className="mt-2 border border-line bg-bg/70 p-3 text-[0.88rem] leading-relaxed text-fg-dim min-h-[4rem]">
+                <EditableMarkdown value={task.notes} placeholder={"Add context, links and steps (Markdown):\n- first step\n- second step"} onSave={(notes) => patch(task.id, { notes })} />
               </div>
             </details>
           </Block>
 
-          <Block n="3" title="Copy and paste" hint="Ready-made text for this task. Click Copy on any block.">
+          <Block n="3" title="Thread" hint={task.agent && task.agent !== ME ? `Progress reports from @${task.agent} and your replies. An agent reads this thread through the API, so a reply here answers its question.` : "Progress notes and comments on this task, oldest first."}>
+            {thread.length ? (
+              <ol className="flex flex-col gap-3 mb-4">
+                {thread.map((e) => {
+                  const mine = e.author === ME;
+                  return (
+                    <li key={e.id} className={`border px-4 py-3 ${mine ? "border-accent bg-[rgba(139,115,85,0.05)]" : "border-line bg-bg/70"}`}>
+                      <div className="flex items-baseline gap-3 mb-1 font-mono text-[0.58rem] text-fg-ghost">
+                        <span className={mine ? "text-accent" : "text-fg"}>{e.author ? `@${e.author}` : "system"}</span>
+                        <span title={new Date(e.created_at).toLocaleString()}>{relTime(e.created_at)}</span>
+                        {e.kind !== "progress" ? <span>{e.kind}</span> : null}
+                      </div>
+                      {e.body && e.body !== e.title ? (
+                        <>
+                          {e.title && !e.body.startsWith(e.title) ? <div className="text-[0.85rem] text-fg mb-1">{e.title}</div> : null}
+                          <Markdown text={e.body} className="text-[0.88rem] text-fg leading-relaxed" />
+                        </>
+                      ) : (
+                        <div className="text-[0.88rem] text-fg">{e.title}</div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p className="text-fg-ghost text-[0.85rem] mb-3">Nothing in the thread yet.</p>
+            )}
+            <div className="flex flex-col gap-2">
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(task.status === "blocked");
+                }}
+                rows={2}
+                placeholder={task.status === "blocked" ? "Answer the blocker…" : "Add a note or reply… (Markdown, ⌘↵ to send)"}
+                className={inputCls}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button className={btnPrimary} disabled={saving || !reply.trim()} onClick={() => sendReply(false)}>Post</button>
+                {task.status === "blocked" ? (
+                  <button className={btnGhost} disabled={saving || !reply.trim()} onClick={() => sendReply(true)} title="Post the reply and set the task back to todo">Reply and unblock</button>
+                ) : null}
+              </div>
+            </div>
+          </Block>
+
+          <Block n="4" title="Copy and paste" hint="Ready-made text for this task. Click Copy on any block.">
             <div className="flex flex-col gap-4">
               {snippets.map((s, i) => (
                 <Copy key={i} label={i === 0 ? "From the notes" : undefined} text={s} />
@@ -374,7 +482,7 @@ export default function TaskMapClient({
           </Block>
 
           {deps.length || unblocks.length ? (
-            <Block n="4" title="Connected tasks" hint="What this needs, and what it frees up when it's done.">
+            <Block n="5" title="Connected tasks" hint="What this needs, and what it frees up when it's done.">
               <div className="grid md:grid-cols-2 gap-6">
                 <TaskLinks title="Needs first" tasks={deps} empty="Nothing." />
                 <TaskLinks title="Unblocks" tasks={unblocks} empty="Nothing waits on this." />
@@ -406,6 +514,44 @@ export default function TaskMapClient({
                 <Link href={`/projects/${project.id}?tab=setup`} className="text-accent underline">Setup</Link>.
               </p>
             )}
+          </Side>
+
+          <Side title="Fields">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2 font-mono text-[0.6rem]">
+              <label className="flex flex-col gap-1 text-fg-ghost">
+                estimate
+                <select value={task.estimate ?? ""} onChange={(e) => patch(task.id, { estimate: e.target.value ? Number(e.target.value) : null })} className={inputBase}>
+                  <option value="">none</option>
+                  {ESTIMATES.map((n) => (
+                    <option key={n} value={n}>
+                      {n} pt
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-fg-ghost">
+                repeats
+                <select value={task.recurrence ?? ""} onChange={(e) => patch(task.id, { recurrence: (e.target.value || null) as Task["recurrence"] })} className={inputBase}>
+                  <option value="">never</option>
+                  {RECURRENCES.map((r) => (
+                    <option key={r} value={r}>
+                      {RECURRENCE_META[r].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-fg-ghost">
+                planned for
+                <input type="date" value={task.planned_for ?? ""} onChange={(e) => patch(task.id, { planned_for: e.target.value || null })} className={inputBase} />
+              </label>
+              <label className="flex flex-col gap-1 text-fg-ghost">
+                snoozed until
+                <input type="date" value={task.snoozed_until ?? ""} onChange={(e) => patch(task.id, { snoozed_until: e.target.value || null })} className={inputBase} />
+              </label>
+            </div>
+            <div className="mt-3">
+              <TagInput value={task.labels} onChange={(labels) => patch(task.id, { labels })} suggestions={LABEL_PRESETS} placeholder="add label…" prefix="+" />
+            </div>
           </Side>
 
           <Side title="Context">
@@ -446,17 +592,6 @@ export default function TaskMapClient({
                 <summary className="mono-label-dim cursor-pointer">Build instructions</summary>
                 <pre className="mt-2 whitespace-pre-wrap font-mono text-[0.68rem] text-fg-dim leading-relaxed">{project.agent_instructions}</pre>
               </details>
-            ) : null}
-            {progress.length ? (
-              <ul className="mt-4 flex flex-col gap-1 font-mono text-[0.62rem] text-fg-dim">
-                {progress.map((e) => (
-                  <li key={e.id}>
-                    <Link href={projectHref(project.id, "activity")} className="hover:text-accent">
-                      {e.entry_date} · {e.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
             ) : null}
           </Side>
 
@@ -624,10 +759,3 @@ function EntryLinks({ projectId, entries, fix }: { projectId: string; entries: E
 
 const statusLabel = (s: TaskStatus) => (s === "doing" ? "in progress" : s);
 
-/** Queue lane anchors (app/queue/page.tsx) for each task status. */
-const QUEUE_LANE: Record<TaskStatus, string> = {
-  todo: "needs-investigation",
-  doing: "in-progress-verify",
-  blocked: "blocked",
-  done: "completed",
-};

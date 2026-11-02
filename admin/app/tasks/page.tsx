@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getHub, loadAll } from "@/lib/projects";
-import { dueLabel, isOverdue, isReady, waitingOn, type Task } from "@/lib/projectTypes";
+import { dueLabel, isOverdue, isReady, isSnoozed, waitingOn, type Task } from "@/lib/projectTypes";
 import { ME, attentionHref, facetHref, fixHref, isMine, projectHref, taskHref } from "@/lib/taskMap";
 import SubLink from "@/components/SubLink";
 
@@ -20,10 +20,11 @@ export default async function MyTasksPage() {
   }
 
   const live = all.filter((d) => d.project.status !== "paused");
+  // Snoozed tasks wait for their day; they come back on their own.
   const rows = (pick: (t: Task, ts: Task[]) => boolean, note: (t: Task, ts: Task[]) => string): Row[] =>
     live.flatMap((d) =>
       d.tasks
-        .filter((t) => pick(t, d.tasks))
+        .filter((t) => !isSnoozed(t) && pick(t, d.tasks))
         .map((t) => ({ ...t, project_name: d.project.name, note: note(t, d.tasks), waits: t.status === "todo" ? waitingOn(t, d.tasks) : [] }))
     );
   const open = (t: Task) => t.status !== "done";
@@ -47,7 +48,8 @@ export default async function MyTasksPage() {
         <h1 className="serif-display text-[2.2rem] md:text-[2.6rem] leading-none mb-2">My tasks</h1>
         <p className="text-fg-dim text-sm max-w-2xl leading-relaxed">
           Everything only you can do: tasks assigned to @{ME} or whose notes say &quot;owner step&quot;, decisions waiting on your call, and agents stuck on a
-          blocker. Each row opens a task map with the steps, links and text to paste.
+          blocker. Each row opens a task map with the steps, links and text to paste. To plan the day from this list, use{" "}
+          <Link href="/today" className="text-accent hover:text-fg">Today</Link>.
         </p>
       </header>
 
@@ -64,7 +66,7 @@ export default async function MyTasksPage() {
             <Head title="Your calls" count={calls.length} />
             <p className="text-fg-ghost text-[0.78rem] mb-3">Project decisions and fixes nobody else can make.</p>
             {calls.length ? (
-              <ul className="border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
+              <ul className="border border-line divide-y divide-line-soft bg-bg/85">
                 {calls.map((a) => (
                   <li key={a.key}>
                     <Link href={attentionHref(a)} className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">
@@ -112,7 +114,7 @@ function Group({ title, rows, empty }: { title: string; rows: Row[]; empty: stri
     <section>
       <Head title={title} count={rows.length} />
       {rows.length ? (
-        <ul className="mt-3 border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
+        <ul className="mt-3 border border-line divide-y divide-line-soft bg-bg/85">
           {rows.map((t) => (
             <li key={t.id}>
               <Link href={taskHref(t.id, t.status === "blocked" ? "blocked" : undefined)} className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-[rgba(139,115,85,0.05)]">

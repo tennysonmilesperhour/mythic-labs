@@ -39,6 +39,23 @@ http.createServer((req, res) => {
     if (!req.headers.authorization) return send(res, 401, { message: 'Requires authentication' });
     let m;
     if (req.method === 'GET' && (m = p.match(/^\/repos\/[^/]+\/[^/]+$/))) return send(res, 200, { private: repoPrivate, default_branch: 'main' });
+    if (req.method === 'GET' && (m = p.match(/^\/repos\/[^/]+\/[^/]+\/commits$/))) {
+      // Walk first parents from the branch head, newest first; `path` keeps only commits that changed that file.
+      const start = refs[u.searchParams.get('sha') || 'main']; const limit = Number(u.searchParams.get('per_page') || 30); const path = u.searchParams.get('path');
+      const out = []; let cur = start && commits[start];
+      while (cur && out.length < limit) {
+        const parent = cur.parents[0] && commits[cur.parents[0].sha];
+        const mine = trees[cur.tree.sha]?.[path], theirs = parent ? trees[parent.tree.sha]?.[path] : undefined;
+        if (!path || mine !== theirs) out.push({ sha: cur.sha, commit: { message: cur.message, author: cur.author || { date: null }, committer: cur.committer || { date: null } } });
+        cur = parent;
+      }
+      return send(res, 200, out);
+    }
+    if (req.method === 'GET' && (m = p.match(/^\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/))) {
+      const ref = u.searchParams.get('ref') || refs.main; const c = commits[ref]; const sha = c && trees[c.tree.sha]?.[m[1]];
+      if (!sha) return send(res, 404, { message: 'Not Found' });
+      return send(res, 200, { type: 'file', sha, encoding: 'base64', content: Buffer.from(blobs[sha], 'utf8').toString('base64') });
+    }
     if (req.method === 'GET' && (m = p.match(/^\/repos\/[^/]+\/[^/]+\/git\/ref\/heads\/(.+)$/))) {
       const sha = refs[m[1]]; return sha ? send(res, 200, { ref: `refs/heads/${m[1]}`, object: { sha, type: 'commit' } }) : send(res, 404, { message: 'Not Found' });
     }
@@ -54,7 +71,7 @@ http.createServer((req, res) => {
       const sha = h(JSON.stringify(t)); trees[sha] = t; return send(res, 201, { sha });
     }
     if (req.method === 'POST' && p.endsWith('/git/commits')) {
-      const sha = h(JSON.stringify(j) + Math.random()); commits[sha] = { sha, message: j.message, tree: { sha: j.tree }, parents: j.parents.map((s) => ({ sha: s })) };
+      const sha = h(JSON.stringify(j) + Math.random()); commits[sha] = { sha, message: j.message, tree: { sha: j.tree }, parents: j.parents.map((s) => ({ sha: s })), author: { date: new Date().toISOString() }, committer: { date: new Date().toISOString() } };
       return send(res, 201, { sha });
     }
     if (req.method === 'PATCH' && (m = p.match(/git\/refs\/heads\/(.+)$/))) {

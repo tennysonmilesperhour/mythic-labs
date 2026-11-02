@@ -33,6 +33,7 @@ export function attentionHref(a: AttentionItem): string {
   if (a.href) return a.href;
   const kind = flagKind(a.key);
   if (a.task_id && TASK_FLAGS.has(kind)) return taskHref(a.task_id, kind);
+  if (kind === "review") return a.project_id ? `/review?project=${a.project_id}` : "/review";
   return fixHref(a.key);
 }
 

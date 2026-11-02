@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "mythic-brain",
   "description": "Tennyson's centralized skills, agents, hooks, and MCP configurations. Skills use the open SKILL.md format, so Claude Code, Codex, Cursor and other agents share them. In Claude Code: enable once at user or organization scope; per-repo .claude/settings.json only for exceptions.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "owner": {
     "name": "Tennyson",
     "url": "https://github.com/tennysonmilesperhour/mythic-labs"
@@ -16,7 +16,7 @@
     {
       "name": "dev-workflows",
       "source": "./dev-workflows",
-      "description": "PR review, security audit, deploy helpers, CI autofix patterns, and the roadmap loop autonomous build agents use to take, build and report tasks from the dashboard. Bundles MCP access to GitHub, Supabase, and Vercel where applicable."
+      "description": "PR review, security audit, deploy helpers, CI autofix patterns, and the roadmap loop autonomous build agents use to take, build, report and discuss tasks from the dashboard, and to propose work to its inbox. Bundles MCP access to GitHub, Supabase, and Vercel where applicable."
     },
     {
       "name": "content-ops",

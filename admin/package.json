@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node scripts/unit.mjs && node scripts/overview-regression.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@octokit/rest": "^21.0.2",

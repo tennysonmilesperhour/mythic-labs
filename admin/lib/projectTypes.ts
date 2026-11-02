@@ -32,7 +32,35 @@ export type ChangeType = (typeof CHANGE_TYPES)[number];
 export const DECISION_STATUSES = ["proposed", "accepted", "superseded", "rejected"] as const;
 export type DecisionStatus = (typeof DECISION_STATUSES)[number];
 
-export type EntryKind = "changelog" | "decision" | "note" | "status" | "progress";
+/**
+ * changelog: a user-visible change. decision: an ADR. note: anything. status: a
+ * project status transition. progress: a task's thread (agent reports, comments).
+ * update: a written status update with a health call, the way a lead reports.
+ */
+export type EntryKind = "changelog" | "decision" | "note" | "status" | "progress" | "update";
+
+/** How often a live project should get a review pass before it is flagged. */
+export const REVIEW_DAYS = 7;
+
+/** Story points. Small numbers keep estimates honest; the sequence is Fibonacci. */
+export const ESTIMATES = [1, 2, 3, 5, 8, 13] as const;
+/** Points assumed for an unestimated task when forecasting. */
+export const DEFAULT_POINTS = 2;
+
+export const RECURRENCES = ["daily", "weekdays", "weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
+export type Recurrence = (typeof RECURRENCES)[number];
+export const RECURRENCE_META: Record<Recurrence, { label: string; short: string }> = {
+  daily: { label: "Every day", short: "daily" },
+  weekdays: { label: "Every weekday", short: "weekdays" },
+  weekly: { label: "Every week", short: "weekly" },
+  biweekly: { label: "Every two weeks", short: "2 weeks" },
+  monthly: { label: "Every month", short: "monthly" },
+  quarterly: { label: "Every quarter", short: "quarterly" },
+  yearly: { label: "Every year", short: "yearly" },
+};
+
+/** Suggestions for task labels; any free text is accepted. */
+export const LABEL_PRESETS = ["bug", "feature", "chore", "research", "ops", "design", "docs", "launch"];
 
 // Suggestions only; every tag input also accepts free text.
 export const AGENT_PRESETS = [
@@ -90,6 +118,8 @@ export type Project = {
   start_date: string | null;
   target_date: string | null;
   status_changed_at: string;
+  /** When you last gave the project a review pass (weekly review). */
+  last_reviewed_at: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -123,6 +153,15 @@ export type Task = {
   priority: Priority;
   agent: string | null;
   due_date: string | null;
+  /** Story points (ESTIMATES), or null when unestimated. */
+  estimate: number | null;
+  /** The day you plan to work on it (YYYY-MM-DD); drives the Today page. */
+  planned_for: string | null;
+  /** When set, finishing the task creates the next occurrence. */
+  recurrence: Recurrence | null;
+  labels: string[];
+  /** Hidden from Today, My tasks and attention until this day (YYYY-MM-DD). */
+  snoozed_until: string | null;
   claimed_at: string | null;
   done_at: string | null;
   sort_order: number;
@@ -133,6 +172,8 @@ export type Task = {
 export type Entry = {
   id: string;
   project_id: string;
+  /** Progress notes and comments attach to the task they are about. */
+  task_id: string | null;
   kind: EntryKind;
   title: string;
   body: string;
@@ -143,6 +184,8 @@ export type Entry = {
   source_url: string | null;
   evidence_url: string | null;
   decision_status: DecisionStatus | null;
+  /** On status updates: the health call made in that update. */
+  health: HealthLevel | null;
   context: string;
   alternatives: string;
   consequences: string;
@@ -156,6 +199,81 @@ export type ProjectDetail = {
   entries: Entry[];
 };
 
+/** A quick capture waiting to be sorted into a project. */
+export type InboxItem = {
+  id: string;
+  title: string;
+  notes: string;
+  /** Who captured it: "me", an agent name, or null. */
+  source: string | null;
+  /** Hints parsed from the capture; applied when the item becomes a task. */
+  project_id: string | null;
+  agent: string | null;
+  priority: Priority | null;
+  due_date: string | null;
+  estimate: number | null;
+  labels: string[];
+  created_at: string;
+};
+
+export type InboxFile = { schemaVersion: 1; items: InboxItem[] };
+
+export const HEALTH_LEVELS = ["on_track", "at_risk", "off_track", "idle", "paused"] as const;
+export type HealthLevel = (typeof HEALTH_LEVELS)[number];
+export type Health = { level: HealthLevel; reasons: string[] };
+export const HEALTH_META: Record<HealthLevel, { label: string; hint: string }> = {
+  on_track: { label: "On track", hint: "Work is moving and nothing is late or stuck" },
+  at_risk: { label: "At risk", hint: "Something is late, blocked, stalled or quiet" },
+  off_track: { label: "Off track", hint: "Dates have passed or several tasks are stuck" },
+  idle: { label: "Idle", hint: "Planned, not started" },
+  paused: { label: "Paused", hint: "On hold by choice" },
+};
+
+// ─────────── normalization ───────────
+// Fields added after the first release are optional in stored files. Reads
+// fill the defaults so the rest of the code can rely on complete records.
+
+const dateOrNull = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+
+export function normalizeTask(t: Task): Task {
+  return {
+    ...t,
+    estimate: typeof t.estimate === "number" && t.estimate > 0 ? t.estimate : null,
+    planned_for: dateOrNull(t.planned_for),
+    snoozed_until: dateOrNull(t.snoozed_until),
+    recurrence: (RECURRENCES as readonly string[]).includes(t.recurrence as string) ? t.recurrence : null,
+    labels: Array.isArray(t.labels) ? t.labels.filter((l): l is string => typeof l === "string" && !!l) : [],
+    depends_on: Array.isArray(t.depends_on) ? t.depends_on : [],
+  };
+}
+
+export function normalizeEntry(e: Entry): Entry {
+  return {
+    ...e,
+    task_id: typeof e.task_id === "string" && e.task_id ? e.task_id : null,
+    health: (HEALTH_LEVELS as readonly string[]).includes(e.health as string) ? e.health : null,
+  };
+}
+
+export function normalizeDetail(d: ProjectDetail): ProjectDetail {
+  return {
+    ...d,
+    project: { ...d.project, last_reviewed_at: typeof d.project.last_reviewed_at === "string" ? d.project.last_reviewed_at : null },
+    tasks: d.tasks.map(normalizeTask),
+    entries: d.entries.map(normalizeEntry),
+  };
+}
+
+/** A task is snoozed when its snooze date is still ahead of today. */
+export function isSnoozed(t: Pick<Task, "snoozed_until">, day = today()): boolean {
+  return !!t.snoozed_until && t.snoozed_until > day;
+}
+
+/** The latest written status update, if any. */
+export function latestUpdate(entries: Entry[]): Entry | null {
+  return entries.filter((e) => e.kind === "update").sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+}
+
 export type ProjectStats = {
   total: number;
   done: number;
@@ -163,9 +281,16 @@ export type ProjectStats = {
   blocked: number;
   ready: number;
   overdue: number;
+  /** Story points, with DEFAULT_POINTS standing in for unestimated tasks. */
+  points: { done: number; total: number };
   nextMilestone: { title: string; target_date: string | null } | null;
   lastActivity: string | null;
 };
+
+/** A task's points for planning: its estimate, or the default when unestimated. */
+export function pointsOf(t: Pick<Task, "estimate">): number {
+  return t.estimate ?? DEFAULT_POINTS;
+}
 
 export type Severity = "high" | "medium" | "low";
 
@@ -181,7 +306,7 @@ export type AttentionItem = {
   href?: string;
 };
 
-export type ProjectSummary = Project & { stats: ProjectStats; attention: AttentionItem[] };
+export type ProjectSummary = Project & { stats: ProjectStats; attention: AttentionItem[]; health: Health };
 
 export type TimelineItem = Milestone & {
   project_name: string;
@@ -200,8 +325,31 @@ export type Hub = {
   upcoming: TaskRef[];
   /** Open tasks assigned to "me" (human-only work), in progress first. */
   mine: TaskRef[];
+  /** Today's plan: planned for today (or carried over), due today or late and yours, or in progress and yours. */
+  today: TaskRef[];
+  /** Finished today, any assignee. */
+  doneToday: TaskRef[];
+  /** Every open task with a due date, soonest first; feeds the calendar. */
+  dated: TaskRef[];
+  /** Captures waiting to be sorted into a project. */
+  inbox: InboxItem[];
   /** Latest changelog and decision entries across all projects, newest first. */
   recent: Array<Entry & { project_name: string }>;
+};
+
+/** What a page renders before (or without) the store. */
+export const EMPTY_HUB: Hub = {
+  projects: [],
+  timeline: [],
+  attention: [],
+  inProgress: [],
+  upcoming: [],
+  mine: [],
+  today: [],
+  doneToday: [],
+  dated: [],
+  inbox: [],
+  recent: [],
 };
 
 // ─────────── dates ───────────
@@ -212,6 +360,55 @@ export function today(): string {
 
 export function daysFromNow(n: number): string {
   return new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD plus n days. Noon UTC keeps the arithmetic clear of daylight-saving edges. */
+export function addDays(date: string, n: number): string {
+  return new Date(new Date(`${date}T12:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Whole days from one YYYY-MM-DD to another (negative when `to` is earlier). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((new Date(`${to}T12:00:00Z`).getTime() - new Date(`${from}T12:00:00Z`).getTime()) / 86_400_000);
+}
+
+/** Monday of the week containing the date (ISO weeks). */
+export function weekStart(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  const shift = (d.getUTCDay() + 6) % 7;
+  return addDays(date, -shift);
+}
+
+/** The next date a recurring task is due, counted from its current due date (or today). */
+export function nextOccurrence(rule: Recurrence, from: string): string {
+  const base = from || today();
+  const d = new Date(`${base}T12:00:00Z`);
+  const months = (n: number) => {
+    const day = d.getUTCDate();
+    const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1, 12));
+    const last = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 0, 12)).getUTCDate();
+    m.setUTCDate(Math.min(day, last));
+    return m.toISOString().slice(0, 10);
+  };
+  switch (rule) {
+    case "daily":
+      return addDays(base, 1);
+    case "weekdays": {
+      let next = addDays(base, 1);
+      while ([0, 6].includes(new Date(`${next}T12:00:00Z`).getUTCDay())) next = addDays(next, 1);
+      return next;
+    }
+    case "weekly":
+      return addDays(base, 7);
+    case "biweekly":
+      return addDays(base, 14);
+    case "monthly":
+      return months(1);
+    case "quarterly":
+      return months(3);
+    case "yearly":
+      return months(12);
+  }
 }
 
 export function isUpcoming(dueDate: string | null, status: TaskStatus, through: string, from = today()): boolean {
@@ -343,6 +540,10 @@ export function computeStats(
     blocked: tasks.filter((t) => t.status === "blocked").length,
     ready: tasks.filter((t) => isReady(t, tasks)).length,
     overdue: tasks.filter((t) => isOverdue(t.due_date, t.status === "done")).length,
+    points: {
+      done: tasks.filter((t) => t.status === "done").reduce((n, t) => n + pointsOf(t), 0),
+      total: tasks.reduce((n, t) => n + pointsOf(t), 0),
+    },
     nextMilestone: open[0] ? { title: open[0].title, target_date: open[0].target_date } : null,
     lastActivity: stamps.length ? stamps[stamps.length - 1] : null,
   };
@@ -360,8 +561,8 @@ export function computeAttention(d: ProjectDetail, lastActivity: string | null):
 
   for (const t of tasks) {
     // Paused work is intentionally quiet; the project-level long-pause flag
-    // remains the reminder to revisit it.
-    if (p.status === "paused") continue;
+    // remains the reminder to revisit it. Snoozed tasks wait for their day.
+    if (p.status === "paused" || isSnoozed(t)) continue;
     if (t.status === "blocked") {
       add("high", `blocked:${t.id}`, `Blocked: ${t.title}`, t.agent ? `@${t.agent}` : "unassigned", t.id);
     }
@@ -399,11 +600,44 @@ export function computeAttention(d: ProjectDetail, lastActivity: string | null):
       add("medium", "stale", `Quiet for ${daysSince(lastActivity)}d`, "still active, or should it be paused?");
     if (p.agents.some((a) => a !== "me") && !p.agent_instructions.trim())
       add("low", "instructions", "Agents assigned without build instructions", "add them in Setup");
+    const sinceReview = daysSince(p.last_reviewed_at ?? p.created_at);
+    if (sinceReview >= REVIEW_DAYS)
+      add("low", "review", p.last_reviewed_at ? `Not reviewed in ${sinceReview}d` : "Never reviewed", "give it a pass on the Review page");
   }
   if (p.status === "paused" && daysSince(p.status_changed_at) >= LONG_PAUSE_DAYS) {
     add("low", "paused", `Paused for ${daysSince(p.status_changed_at)}d`, "revive it, or leave it be");
   }
   return out.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+}
+
+/**
+ * One word on how a project is doing, the way a status update would put it.
+ * Off track means dates have passed or work is piling up stuck; at risk means
+ * one thing is late, blocked, stalled or the project has gone quiet.
+ */
+export function projectHealth(d: ProjectDetail, stats: ProjectStats, attention: AttentionItem[]): Health {
+  const p = d.project;
+  if (p.status === "paused") return { level: "paused", reasons: [] };
+  const kind = (a: AttentionItem) => a.key.split(":")[1];
+  const count = (k: string) => attention.filter((a) => kind(a) === k).length;
+  const reasons: string[] = [];
+  const lateMilestones = count("ms");
+  const pastTarget = count("target") > 0;
+  if (pastTarget) reasons.push("past its target date");
+  if (lateMilestones) reasons.push(`${lateMilestones} late milestone${lateMilestones > 1 ? "s" : ""}`);
+  if (stats.overdue) reasons.push(`${stats.overdue} overdue task${stats.overdue > 1 ? "s" : ""}`);
+  if (stats.blocked) reasons.push(`${stats.blocked} blocked`);
+  const stalled = count("stalled");
+  if (stalled) reasons.push(`${stalled} stalled`);
+  if (count("stale")) reasons.push("quiet for a while");
+  if (count("stuck")) reasons.push("nothing ready to work on");
+  if (count("critical")) reasons.push("critical work open");
+  if (p.status === "planned") return { level: pastTarget ? "off_track" : "idle", reasons };
+  // Dates missed, or stuck work piling up, means off track. One late or blocked task is a risk.
+  const off = pastTarget || lateMilestones > 0 || stats.blocked >= 2 || stats.overdue >= 2;
+  if (off) return { level: "off_track", reasons };
+  if (reasons.length) return { level: "at_risk", reasons };
+  return { level: "on_track", reasons };
 }
 
 export function sortAttention(items: AttentionItem[], projects: Pick<Project, "id" | "priority" | "status">[]) {
@@ -424,6 +658,7 @@ const GROUPABLE: Record<string, (n: number) => string> = {
   stale: (n) => `${n} active projects have gone quiet`,
   instructions: (n) => `${n} projects have agents but no build instructions`,
   paused: (n) => `${n} projects paused 60+ days`,
+  review: (n) => `${n} projects are due for a review`,
 };
 
 /**
@@ -456,7 +691,7 @@ export function groupAttention(items: AttentionItem[], min = 3): AttentionItem[]
       project_name: "",
       title: GROUPABLE[k](group.length),
       detail: names.slice(0, 6).join(", ") + (names.length > 6 ? ` +${names.length - 6} more` : ""),
-      href: `/fix?key=group:${k}`,
+      href: k === "review" ? "/review" : `/fix?key=group:${k}`,
     });
   }
   return out;
@@ -527,7 +762,10 @@ export function renderProjectMarkdown(d: ProjectDetail, opts: MdOpts = {}): stri
       if (t.agent) bits.push(`@${t.agent}`);
       if (t.status === "doing" || t.status === "blocked") bits.push(`(${t.status})`);
       if (t.priority !== "medium") bits.push(`[${t.priority}]`);
+      if (t.estimate) bits.push(`${t.estimate}pt`);
+      if (t.labels.length) bits.push(t.labels.map((l) => `#${l}`).join(" "));
       if (t.due_date) bits.push(`due ${t.due_date}`);
+      if (t.recurrence) bits.push(`repeats ${RECURRENCE_META[t.recurrence].short}`);
       const lines = [`${pad}- [${t.status === "done" ? "x" : " "}] ${bits.join(" ")}${tid(t)}`];
       if (t.status !== "done") {
         const deps = t.depends_on.map((id) => byId.get(id)).filter(Boolean) as Task[];
@@ -606,6 +844,36 @@ export function renderRoadmapMarkdown(details: ProjectDetail[], attention: Atten
   }
   const paused = sorted.filter((x) => x.project.status === "paused");
   if (paused.length) out.push("## Paused", "", ...paused.map((x) => `- ${x.project.name}`), "");
+  return finish(out);
+}
+
+/**
+ * The day in one page of Markdown: what needs you, today's plan, what agents
+ * are on, what is due soon and what changed. Pasteable into a note or a chat.
+ */
+export function renderDigestMarkdown(hub: Hub, date = today()): string {
+  const out: string[] = [`# Brief for ${fmtDate(date)}`, ""];
+  const line = (t: TaskRef, extra = "") =>
+    `- ${t.title} (${t.project_name}${t.agent ? `, @${t.agent}` : ""}${t.due_date ? `, due ${t.due_date}` : ""}${extra})`;
+  const urgent = hub.attention.filter((a) => a.severity !== "low");
+  out.push(`## Needs a decision (${urgent.length})`, "");
+  if (urgent.length) for (const a of urgent.slice(0, 12)) out.push(`- ${a.project_name ? `${a.project_name}: ` : ""}${a.title} (${a.detail})`);
+  else out.push("- Nothing is blocked, overdue, stalled or waiting on a decision.");
+  out.push("", `## Today (${hub.today.length})`, "");
+  if (hub.today.length) for (const t of hub.today) out.push(line(t, t.status === "doing" ? ", in progress" : ""));
+  else out.push("- Nothing planned yet.");
+  if (hub.inbox.length) out.push("", `## Inbox (${hub.inbox.length} to sort)`, "", ...hub.inbox.slice(0, 8).map((i) => `- ${i.title}`));
+  out.push("", `## Agents are on (${hub.inProgress.length})`, "");
+  if (hub.inProgress.length) for (const t of hub.inProgress.slice(0, 10)) out.push(line(t));
+  else out.push("- No task is marked doing.");
+  out.push("", `## Due in the next ${SOON_DAYS} days (${hub.upcoming.length})`, "");
+  if (hub.upcoming.length) for (const t of hub.upcoming.slice(0, 10)) out.push(line(t));
+  else out.push("- Nothing due.");
+  if (hub.doneToday.length) out.push("", `## Finished today (${hub.doneToday.length})`, "", ...hub.doneToday.map((t) => line(t)));
+  if (hub.recent.length) {
+    out.push("", "## Recent changes and decisions", "");
+    for (const e of hub.recent.slice(0, 8)) out.push(`- ${e.entry_date} ${e.project_name}: ${e.title}${e.kind === "decision" ? ` (decision, ${e.decision_status})` : ""}`);
+  }
   return finish(out);
 }
 

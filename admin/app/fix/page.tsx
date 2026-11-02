@@ -31,7 +31,7 @@ export default async function FixPage({ searchParams }: { searchParams: Promise<
         <h1 className="serif-display text-[2.2rem] md:text-[2.8rem] leading-[1.05] mb-3">{head?.title ?? `${items.length} projects flagged`}</h1>
         <p className="text-fg-dim text-sm mb-8 max-w-2xl">One fix per project. Each row opens its own map with the fix inline; come back here for the next.</p>
         {items.length ? (
-          <ul className="border border-line divide-y divide-[rgba(26,24,20,0.06)] bg-bg/85">
+          <ul className="border border-line divide-y divide-line-soft bg-bg/85">
             {items.map((a) => (
               <li key={a.key}>
                 <Link href={attentionHref(a)} className="flex items-baseline gap-3 px-4 py-3 hover:bg-[rgba(139,115,85,0.05)]">

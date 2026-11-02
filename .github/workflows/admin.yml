@@ -1,0 +1,72 @@
+name: Admin dashboard
+
+# Type-checks, unit-tests, builds and smoke-tests the dashboard in admin/.
+# The smoke test runs the agent loop, a claim race and parallel writes against
+# a fake GitHub Git Data API, so no token or network is needed.
+on:
+  pull_request:
+    paths:
+      - "admin/**"
+      - ".github/workflows/admin.yml"
+  push:
+    branches: [main]
+    paths:
+      - "admin/**"
+      - ".github/workflows/admin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, test, build, smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit checks
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke test against a fake GitHub
+        # GITHUB_API_URL is reserved by Actions (always api.github.com), so the
+        # app reads PM_GITHUB_API_URL first.
+        env:
+          GITHUB_TOKEN: fake
+          PM_GITHUB_API_URL: http://localhost:4010
+          PM_DATA_OWNER: smoke
+          PM_DATA_REPO: smoke-data
+          PM_DATA_BRANCH: main
+          PM_AGENT_API_ENABLED: "true"
+          PM_AGENT_TOKEN: smoke-token
+        run: |
+          node scripts/fake-github.mjs &
+          npx next start -p 3000 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/api/history && break
+            sleep 1
+          done
+          npm run smoke
