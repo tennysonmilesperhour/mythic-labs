@@ -1,6 +1,6 @@
 ---
 name: brand-architecture
-description: Phase 02 of the Mythic Labs method: map whether a brand's product, audience, and surface expression all rest on the same archetypal foundation. Use when someone asks "does our product match our brand," "why does our marketing feel off," "how should we relate to our audience," "how do our sub-brands fit together," or suspects a brand is wearing a costume. Returns a relationship map (aligned, tension, fracture), an integration verdict, and ranked structural moves. Needs a known foundational archetype; if none exists, run archetype-diagnosis first.
+description: "Phase 02 of the Mythic Labs method: map whether a brand's product, audience, and surface expression all rest on the same archetypal foundation. Use when someone asks \"does our product match our brand,\" \"why does our marketing feel off,\" \"how should we relate to our audience,\" \"how do our sub-brands fit together,\" or suspects a brand is wearing a costume. Returns a relationship map (aligned, tension, fracture), an integration verdict, and ranked structural moves. Needs a known foundational archetype; if none exists, run archetype-diagnosis first."
 ---
 
 # Brand Architecture (Phase 02: Structural Relationships)

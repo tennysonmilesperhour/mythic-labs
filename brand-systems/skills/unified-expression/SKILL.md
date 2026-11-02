@@ -1,6 +1,6 @@
 ---
 name: unified-expression
-description: Phase 03 of the Mythic Labs method: translate a brand's diagnosed archetypal structure into an enforceable Expression Spec covering voice, visual direction, interface, naming, and service rituals. Use when someone asks "how should we sound," "how should this look," "turn our archetype into brand guidelines," "what should we name this," or needs design direction grounded in brand identity rather than trends. Returns a spec of do/never rules, each tied to a structural reason, that voice-audit can check copy against. Needs a known foundational archetype.
+description: "Phase 03 of the Mythic Labs method: translate a brand's diagnosed archetypal structure into an enforceable Expression Spec covering voice, visual direction, interface, naming, and service rituals. Use when someone asks \"how should we sound,\" \"how should this look,\" \"turn our archetype into brand guidelines,\" \"what should we name this,\" or needs design direction grounded in brand identity rather than trends. Returns a spec of do/never rules, each tied to a structural reason, that voice-audit can check copy against. Needs a known foundational archetype."
 ---
 
 # Unified Expression (Phase 03: Expression)

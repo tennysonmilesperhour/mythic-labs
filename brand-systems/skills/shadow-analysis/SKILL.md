@@ -1,6 +1,6 @@
 ---
 name: shadow-analysis
-description: Find where a brand's archetypal shadow leaks into its product, copy, or culture: the failure mode of its own strength. Use when someone asks "what's the dark side of our brand," "where could this go wrong," "why does our messaging feel manipulative or preachy," "what are our brand risks," or is reviewing cancellation flows, pricing, error states, or crisis communication for tone. Returns detected leaks with severity, the repressed opposite archetype, and integration moves. Needs a known foundational archetype.
+description: "Find where a brand's archetypal shadow leaks into its product, copy, or culture: the failure mode of its own strength. Use when someone asks \"what's the dark side of our brand,\" \"where could this go wrong,\" \"why does our messaging feel manipulative or preachy,\" \"what are our brand risks,\" or is reviewing cancellation flows, pricing, error states, or crisis communication for tone. Returns detected leaks with severity, the repressed opposite archetype, and integration moves. Needs a known foundational archetype."
 ---
 
 # Shadow Analysis: Shadow & Light

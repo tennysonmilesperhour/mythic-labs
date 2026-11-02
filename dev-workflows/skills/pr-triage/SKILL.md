@@ -1,6 +1,6 @@
 ---
 name: pr-triage
-description: Triage an open pull request: surface CI status, unresolved review threads, merge conflicts, and stale-since-last-review state. Use when the user asks "what's the status of PR X" or "is anything blocking this." Returns a short punch list.
+description: "Triage an open pull request: surface CI status, unresolved review threads, merge conflicts, and stale-since-last-review state. Use when the user asks \"what's the status of PR X\" or \"is anything blocking this.\" Returns a short punch list."
 ---
 
 # PR Triage
