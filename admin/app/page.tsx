@@ -244,8 +244,8 @@ export default async function Overview() {
               <Metric
                 label="Blocked"
                 value={blocked}
-                def="Tasks marked blocked."
-                href="/queue?status=blocked"
+                def="Tasks marked blocked and not snoozed."
+                href="/queue?status=blocked&awake=1"
                 warn
               />
               <Metric

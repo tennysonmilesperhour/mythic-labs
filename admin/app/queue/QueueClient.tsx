@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ESTIMATES,
@@ -10,6 +10,7 @@ import {
   PRIORITY_RANK,
   RECURRENCES,
   RECURRENCE_META,
+  isSnoozed,
   STATUS_META,
   TASK_STATUSES,
   addDays,
@@ -57,19 +58,21 @@ type Filters = {
   due: "" | "today" | "week";
   mine: boolean;
   unassigned: boolean;
+  /** Leave out snoozed tasks, as the overdue and blocked counts do. */
+  awake: boolean;
   q: string;
   group: "project" | "milestone" | "agent" | "priority" | "status" | "due" | "none";
   sort: "priority" | "due" | "updated" | "created" | "title" | "estimate";
 };
 
-const DEFAULTS: Filters = { status: "open", project: "", agent: "", priority: "", label: "", ready: false, overdue: false, due: "", mine: false, unassigned: false, q: "", group: "project", sort: "priority" };
+const DEFAULTS: Filters = { status: "open", project: "", agent: "", priority: "", label: "", ready: false, overdue: false, due: "", mine: false, unassigned: false, awake: false, q: "", group: "project", sort: "priority" };
 
 const PRESETS: Array<{ label: string; patch: Partial<Filters>; key?: string }> = [
   { label: "Open", patch: {} },
   { label: "Ready", patch: { ready: true } },
   { label: "In progress", patch: { status: "doing" } },
-  { label: "Blocked", patch: { status: "blocked" } },
-  { label: "Overdue", patch: { overdue: true } },
+  { label: "Blocked", patch: { status: "blocked", awake: true } },
+  { label: "Overdue", patch: { overdue: true, awake: true } },
   { label: "Due this week", patch: { due: "week" } },
   { label: "Mine", patch: { mine: true } },
   { label: "Unassigned", patch: { unassigned: true } },
@@ -88,6 +91,7 @@ function fromParams(p: Record<string, string | undefined>): Filters {
   f.due = p.due === "today" || p.due === "week" ? p.due : "";
   f.mine = p.mine === "1";
   f.unassigned = p.unassigned === "1";
+  f.awake = p.awake === "1";
   f.q = p.q ?? "";
   if (p.group && ["project", "milestone", "agent", "priority", "status", "due", "none"].includes(p.group)) f.group = p.group as Filters["group"];
   if (p.sort && ["priority", "due", "updated", "created", "title", "estimate"].includes(p.sort)) f.sort = p.sort as Filters["sort"];
@@ -121,7 +125,25 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
   const [rows, setRows] = useState(initialRows);
   useEffect(() => setRows(initialRows), [initialRows]);
   const [f, setF] = useState<Filters>(() => fromParams(initial));
+  // Follow the live URL: a client-side navigation to any /queue link resets the filters to it,
+  // while the page's own replaceState keeps the URL equal to the filters, so nothing loops.
+  const searchParams = useSearchParams();
+  const urlKey = searchParams.toString();
+  useEffect(() => {
+    const fromUrl = fromParams(Object.fromEntries(searchParams.entries()));
+    setF((cur) => (toParams(cur) === toParams(fromUrl) ? cur : fromUrl));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlKey]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // A selection only holds tasks that are still listed.
+  useEffect(() => {
+    setSelected((s) => {
+      if (!s.size) return s;
+      const ids = new Set(rows.map((r) => r.id));
+      const kept = new Set(Array.from(s).filter((id) => ids.has(id)));
+      return kept.size === s.size ? s : kept;
+    });
+  }, [rows]);
   const [peek, setPeek] = useState(true);
   const [busy, setBusy] = useState(false);
   const day = today();
@@ -150,6 +172,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
       .filter((t) => !f.due || (!!t.due_date && t.status !== "done" && (f.due === "today" ? t.due_date <= day : t.due_date <= week)))
       .filter((t) => !f.mine || t.mine)
       .filter((t) => !f.unassigned || !t.agent)
+      .filter((t) => !f.awake || !isSnoozed(t, day))
       .filter((t) => !q || `${t.title} ${t.notes} ${t.project_name} ${t.labels.join(" ")} ${t.agent ?? ""}`.toLowerCase().includes(q))
       .sort((a, b) => {
         switch (f.sort) {
@@ -203,10 +226,12 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
 
   const applyLocal = (ids: string[], patch: Partial<Task>) =>
     setRows((xs) => xs.map((t) => (ids.includes(t.id) ? { ...t, ...patch, updated_at: new Date().toISOString() } : t)));
+  // On failure, put back only the rows this request touched; edits made meanwhile to other rows stay.
+  const revert = (before: Row[]) => setRows((xs) => xs.map((x) => before.find((b) => b.id === x.id) ?? x));
 
   const patchOne = useCallback(
     async (t: Row, patch: Partial<Task>, note?: string) => {
-      const prev = rows;
+      const before = rows.filter((r) => r.id === t.id);
       applyLocal([t.id], patch);
       try {
         const res = await api<{ task: Task; spawned: Task | null }>(`/api/tasks/${t.id}`, "PATCH", patch);
@@ -216,7 +241,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
         invalidateIndex();
         router.refresh();
       } catch (e) {
-        setRows(prev);
+        revert(before);
         toast({ message: (e as Error).message, tone: "error" });
       }
     },
@@ -227,16 +252,17 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
     const ids = Array.from(selected);
     if (!ids.length) return;
     setBusy(true);
-    const prev = rows;
+    const before = rows.filter((r) => ids.includes(r.id));
     applyLocal(ids, patch);
     try {
-      await api("/api/tasks", "PATCH", { items: ids.map((id) => ({ id, ...patch })) });
+      const res = await api<{ tasks: Task[] }>("/api/tasks", "PATCH", { items: ids.map((id) => ({ id, ...patch })) });
+      setRows((xs) => xs.map((x) => ({ ...x, ...(res.tasks.find((u) => u.id === x.id) ?? {}) })));
       toast({ message: `${label} on ${ids.length} task${ids.length > 1 ? "s" : ""}.`, tone: "success" });
       setSelected(new Set());
       invalidateIndex();
       router.refresh();
     } catch (e) {
-      setRows(prev);
+      revert(before);
       toast({ message: (e as Error).message, tone: "error" });
     } finally {
       setBusy(false);
@@ -358,6 +384,10 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
             </option>
           ))}
           <option value="all">all, including paused projects</option>
+        </select>
+        <select value={f.awake ? "awake" : "all"} onChange={(e) => set({ awake: e.target.value === "awake" })} className={inputBase} aria-label="Snoozed tasks">
+          <option value="all">with snoozed</option>
+          <option value="awake">without snoozed</option>
         </select>
         <span className="text-fg-ghost ml-2">group</span>
         <select value={f.group} onChange={(e) => set({ group: e.target.value as Filters["group"] })} className={inputBase} aria-label="Group by">
@@ -491,7 +521,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
         {peek ? (
           <aside className="hidden lg:block">
             <div className="sticky top-6">
-              {current ? <Peek t={current} agents={agents} projects={projects} onPatch={(p, note) => patchOne(current, p, note)} /> : <p className="text-fg-ghost text-sm">Move the cursor onto a task to see its details.</p>}
+              {current ? <Peek key={current.id} t={current} agents={agents} projects={projects} onPatch={(p, note) => patchOne(current, p, note)} /> : <p className="text-fg-ghost text-sm">Move the cursor onto a task to see its details.</p>}
             </div>
           </aside>
         ) : null}

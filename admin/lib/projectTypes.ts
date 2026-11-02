@@ -10,8 +10,8 @@ export const STATUS_META: Record<
   { label: string; hint: string; dot: string }
 > = {
   active: { label: "Active", hint: "Live and being worked on", dot: "#8b7355" },
-  building: { label: "Building", hint: "Under construction, not live yet", dot: "#c4a882" },
-  planned: { label: "Planned", hint: "Scoped, not started", dot: "#a09a94" },
+  building: { label: "Building", hint: "Under construction", dot: "#c4a882" },
+  planned: { label: "Planned", hint: "Scoped and waiting to start", dot: "#a09a94" },
   paused: { label: "Paused", hint: "On hold", dot: "#d8d2c8" },
 };
 
@@ -49,6 +49,8 @@ export const DEFAULT_POINTS = 2;
 
 export const RECURRENCES = ["daily", "weekdays", "weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
 export type Recurrence = (typeof RECURRENCES)[number];
+/** The rules that aim for a day of the month, and so carry `recurrence_day` on their occurrences. */
+export const MONTH_RULES: readonly Recurrence[] = ["monthly", "quarterly", "yearly"];
 export const RECURRENCE_META: Record<Recurrence, { label: string; short: string }> = {
   daily: { label: "Every day", short: "daily" },
   weekdays: { label: "Every weekday", short: "weekdays" },
@@ -162,6 +164,10 @@ export type Task = {
   labels: string[];
   /** Hidden from Today, My tasks and attention until this day (YYYY-MM-DD). */
   snoozed_until: string | null;
+  /** The day of the month a month-based rule aims for; set on spawned occurrences so a clamped February date does not move the chore. */
+  recurrence_day: number | null;
+  /** The finished task this occurrence was spawned from, so an undo can take it back. */
+  spawned_from: string | null;
   claimed_at: string | null;
   done_at: string | null;
   sort_order: number;
@@ -211,6 +217,8 @@ export type InboxItem = {
   agent: string | null;
   priority: Priority | null;
   due_date: string | null;
+  planned_for: string | null;
+  recurrence: Recurrence | null;
   estimate: number | null;
   labels: string[];
   created_at: string;
@@ -225,7 +233,7 @@ export const HEALTH_META: Record<HealthLevel, { label: string; hint: string }> =
   on_track: { label: "On track", hint: "Work is moving and nothing is late or stuck" },
   at_risk: { label: "At risk", hint: "Something is late, blocked, stalled or quiet" },
   off_track: { label: "Off track", hint: "Dates have passed or several tasks are stuck" },
-  idle: { label: "Idle", hint: "Planned, not started" },
+  idle: { label: "Idle", hint: "Planned and waiting to start" },
   paused: { label: "Paused", hint: "On hold by choice" },
 };
 
@@ -244,6 +252,8 @@ export function normalizeTask(t: Task): Task {
     recurrence: (RECURRENCES as readonly string[]).includes(t.recurrence as string) ? t.recurrence : null,
     labels: Array.isArray(t.labels) ? t.labels.filter((l): l is string => typeof l === "string" && !!l) : [],
     depends_on: Array.isArray(t.depends_on) ? t.depends_on : [],
+    recurrence_day: typeof t.recurrence_day === "number" && t.recurrence_day >= 1 && t.recurrence_day <= 31 ? Math.round(t.recurrence_day) : null,
+    spawned_from: typeof t.spawned_from === "string" && t.spawned_from ? t.spawned_from : null,
   };
 }
 
@@ -256,9 +266,21 @@ export function normalizeEntry(e: Entry): Entry {
 }
 
 export function normalizeDetail(d: ProjectDetail): ProjectDetail {
+  const p = d.project;
+  const strings = (xs: unknown) => (Array.isArray(xs) ? xs.filter((x): x is string => typeof x === "string" && !!x) : []);
   return {
     ...d,
-    project: { ...d.project, last_reviewed_at: typeof d.project.last_reviewed_at === "string" ? d.project.last_reviewed_at : null },
+    project: {
+      ...p,
+      last_reviewed_at: typeof p.last_reviewed_at === "string" ? p.last_reviewed_at : null,
+      // An older or hand-edited file may lack these lists; the pages and the Markdown render index them.
+      links: Array.isArray(p.links)
+        ? p.links.filter((l): l is ProjectLink => !!l && typeof l === "object" && typeof (l as ProjectLink).label === "string" && typeof (l as ProjectLink).url === "string")
+        : [],
+      tags: strings(p.tags),
+      tools: strings(p.tools),
+      agents: strings(p.agents),
+    },
     tasks: d.tasks.map(normalizeTask),
     entries: d.entries.map(normalizeEntry),
   };
@@ -379,15 +401,31 @@ export function weekStart(date: string): string {
   return addDays(date, -shift);
 }
 
-/** The next date a recurring task is due, counted from its current due date (or today). */
-export function nextOccurrence(rule: Recurrence, from: string): string {
+/** The last day of the month that holds the date. */
+export function endOfMonth(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 12)).toISOString().slice(0, 10);
+}
+
+/** The day of the month a date falls on. */
+export function dayOfMonth(date: string): number {
+  return new Date(`${date}T12:00:00Z`).getUTCDate();
+}
+
+/**
+ * The next date a recurring task is due, counted from its current due date (or today).
+ * Month-based rules aim for `anchorDay` (by default the day of `from`) and clamp it in
+ * shorter months. The server keeps the anchor on the task (`recurrence_day`), so a chore
+ * due Jan 31 is next due Feb 28 and then Mar 31, and one due Jan 30 stays on the 30th.
+ */
+export function nextOccurrence(rule: Recurrence, from: string, anchorDay?: number): string {
   const base = from || today();
   const d = new Date(`${base}T12:00:00Z`);
+  const anchor = anchorDay ?? dayOfMonth(base);
   const months = (n: number) => {
-    const day = d.getUTCDate();
     const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1, 12));
     const last = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 0, 12)).getUTCDate();
-    m.setUTCDate(Math.min(day, last));
+    m.setUTCDate(Math.min(anchor, last));
     return m.toISOString().slice(0, 10);
   };
   switch (rule) {
@@ -409,6 +447,19 @@ export function nextOccurrence(rule: Recurrence, from: string): string {
     case "yearly":
       return months(12);
   }
+}
+
+/**
+ * The first occurrence after `day` (today by default). A chore finished more than one
+ * period late skips the occurrences already missed instead of spawning one in the past,
+ * and a monthly chore keeps its day of the month across the skipped months.
+ */
+export function nextOccurrenceAfter(rule: Recurrence, from: string, day = today(), anchorDay?: number): string {
+  const base = from || day;
+  const anchor = anchorDay ?? dayOfMonth(base);
+  let next = nextOccurrence(rule, base, anchor);
+  while (next <= day) next = nextOccurrence(rule, next, anchor);
+  return next;
 }
 
 export function isUpcoming(dueDate: string | null, status: TaskStatus, through: string, from = today()): boolean {
@@ -460,7 +511,8 @@ export function dueLabel(date: string | null): string {
  * are the work; the parent becomes ready for wrap-up once they're finished).
  */
 export function isReady(t: Task, all: Task[]): boolean {
-  if (t.status !== "todo") return false;
+  // A snoozed (deferred) task is not available to anyone until its day.
+  if (t.status !== "todo" || isSnoozed(t)) return false;
   const byId = new Map(all.map((x) => [x.id, x]));
   if (t.depends_on.some((id) => byId.get(id) && byId.get(id)!.status !== "done")) return false;
   return openDescendants(t, all).length === 0;
@@ -537,9 +589,10 @@ export function computeStats(
     total: tasks.length,
     done: tasks.filter((t) => t.status === "done").length,
     doing: tasks.filter((t) => t.status === "doing").length,
-    blocked: tasks.filter((t) => t.status === "blocked").length,
+    // Snoozed tasks are deferred on purpose: like the attention engine, the counts leave them out until their day.
+    blocked: tasks.filter((t) => t.status === "blocked" && !isSnoozed(t)).length,
     ready: tasks.filter((t) => isReady(t, tasks)).length,
-    overdue: tasks.filter((t) => isOverdue(t.due_date, t.status === "done")).length,
+    overdue: tasks.filter((t) => !isSnoozed(t) && isOverdue(t.due_date, t.status === "done")).length,
     points: {
       done: tasks.filter((t) => t.status === "done").reduce((n, t) => n + pointsOf(t), 0),
       total: tasks.reduce((n, t) => n + pointsOf(t), 0),
@@ -592,8 +645,10 @@ export function computeAttention(d: ProjectDetail, lastActivity: string | null):
   }
   if (workable) {
     const open = tasks.filter((t) => t.status !== "done");
+    // Deferred work (snoozed, or a recurring task waiting for its next date) is not stuck; it is waiting on purpose.
+    const awake = open.filter((t) => !isSnoozed(t));
     if (!open.length) add("medium", "empty", "No open tasks", "plan the next milestone or change status");
-    else if (!tasks.some((t) => isReady(t, tasks)) && !tasks.some((t) => t.status === "doing"))
+    else if (awake.length && !tasks.some((t) => isReady(t, tasks)) && !tasks.some((t) => t.status === "doing"))
       add("medium", "stuck", "Nothing is ready to work on", "every open task is blocked or waiting on a dependency");
     if (!p.next_action.trim()) add("low", "next", "No next action set", "one line keeps you and the agents pointed");
     if (daysSince(lastActivity) >= STALE_DAYS)

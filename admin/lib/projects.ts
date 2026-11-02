@@ -1,5 +1,5 @@
 import { ME, isMine } from "./taskMap";
-import { PLAN_TEMPLATES } from "./templates";
+import { PLAN_TEMPLATES, type PlanTemplate } from "./templates";
 import {
   listHistory,
   mutate,
@@ -11,7 +11,10 @@ import {
   type Snapshot,
 } from "./store";
 import {
+  CHANGE_TYPES,
+  DECISION_STATUSES,
   HEALTH_LEVELS,
+  MONTH_RULES,
   PRIORITIES,
   PRIORITY_RANK,
   RECURRENCES,
@@ -23,12 +26,13 @@ import {
   addDays,
   computeAttention,
   computeStats,
+  dayOfMonth,
   daysFromNow,
   groupAttention,
   isReady,
   isSnoozed,
   isUpcoming,
-  nextOccurrence,
+  nextOccurrenceAfter,
   normalizeDetail,
   normalizeTask,
   openDescendants,
@@ -37,6 +41,7 @@ import {
   sortAttention,
   sortProjects,
   type Entry,
+  type EntryKind,
   type Hub,
   type InboxItem,
   type Milestone,
@@ -68,9 +73,80 @@ const ENTRY_FIELDS = [
   "kind", "task_id", "title", "body", "entry_date", "author", "version", "change_type", "source_url", "evidence_url",
   "decision_status", "health", "context", "alternatives", "consequences",
 ] as const;
-const INBOX_FIELDS = ["title", "notes", "source", "project_id", "agent", "priority", "due_date", "estimate", "labels"] as const;
+const INBOX_FIELDS = ["title", "notes", "source", "project_id", "agent", "priority", "due_date", "planned_for", "recurrence", "estimate", "labels"] as const;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar date in YYYY-MM-DD form; the Date parser alone would roll 2026-02-30 into March and choke on month 13 later. */
+const isDate = (v: unknown): v is string => {
+  if (typeof v !== "string" || !DATE_RE.test(v)) return false;
+  const d = new Date(`${v}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+};
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const ENTRY_KINDS: readonly EntryKind[] = ["changelog", "decision", "note", "status", "progress", "update"];
+
+/** Reject malformed project fields before they reach the store. Mutates `clean` into canonical shape. */
+function validateProjectFields(clean: Record<string, unknown>) {
+  if ("status" in clean && !STATUSES.includes(clean.status as ProjectStatus)) throw new Invalid(`status must be one of ${STATUSES.join(", ")}`);
+  if ("priority" in clean && !(PRIORITIES as readonly string[]).includes(String(clean.priority))) throw new Invalid(`priority must be one of ${PRIORITIES.join(", ")}`);
+  for (const f of ["start_date", "target_date"] as const) {
+    if (f in clean && clean[f] !== null && !isDate(clean[f])) throw new Invalid(`${f} must be a real date (YYYY-MM-DD) or null`);
+  }
+  for (const f of ["owner", "repo"] as const) {
+    if (f in clean && clean[f] !== null && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string or null`);
+  }
+  if ("links" in clean) {
+    const links = clean.links;
+    if (!Array.isArray(links) || links.some((l) => !l || typeof l !== "object" || typeof (l as { label?: unknown }).label !== "string" || typeof (l as { url?: unknown }).url !== "string")) {
+      throw new Invalid("links must be an array of { label, url }");
+    }
+    clean.links = (links as Array<{ label: string; url: string }>).map((l) => ({ label: l.label, url: l.url }));
+  }
+  if ("last_reviewed_at" in clean) {
+    if (!clean.last_reviewed_at) clean.last_reviewed_at = null;
+    else if (!(typeof clean.last_reviewed_at === "string" && ISO_RE.test(clean.last_reviewed_at) && !Number.isNaN(Date.parse(clean.last_reviewed_at)))) {
+      throw new Invalid("last_reviewed_at must be an ISO timestamp or null");
+    }
+  }
+  for (const f of ["tags", "agents", "tools"] as const) {
+    if (!(f in clean)) continue;
+    if (!Array.isArray(clean[f])) throw new Invalid(`${f} must be an array of strings`);
+    clean[f] = Array.from(new Set((clean[f] as unknown[]).map((x) => String(x).trim()).filter(Boolean)));
+  }
+  for (const f of ["name", "summary", "description", "next_action", "agent_instructions"] as const) {
+    if (f in clean && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string`);
+  }
+  if ("sort_order" in clean && typeof clean.sort_order !== "number") throw new Invalid("sort_order must be a number");
+}
+
+/** Reject malformed entry fields before they reach the store. Shared by create and edit. */
+function validateEntryFields(d: ProjectDetail, clean: Record<string, unknown>) {
+  if ("kind" in clean && !ENTRY_KINDS.includes(clean.kind as EntryKind)) throw new Invalid(`kind must be one of ${ENTRY_KINDS.join(", ")}`);
+  if ("task_id" in clean) {
+    if (!clean.task_id) clean.task_id = null;
+    else if (typeof clean.task_id !== "string" || !d.tasks.some((t) => t.id === clean.task_id)) throw new NotFound("task not found in this project");
+  }
+  if ("health" in clean && clean.health !== null && !(HEALTH_LEVELS as readonly string[]).includes(String(clean.health))) {
+    throw new Invalid(`health must be one of ${HEALTH_LEVELS.join(", ")}, or null`);
+  }
+  if ("decision_status" in clean && clean.decision_status !== null && !(DECISION_STATUSES as readonly string[]).includes(String(clean.decision_status))) {
+    throw new Invalid(`decision_status must be one of ${DECISION_STATUSES.join(", ")}, or null`);
+  }
+  if ("change_type" in clean && clean.change_type !== null && !(CHANGE_TYPES as readonly string[]).includes(String(clean.change_type))) {
+    throw new Invalid(`change_type must be one of ${CHANGE_TYPES.join(", ")}, or null`);
+  }
+  if ("entry_date" in clean) {
+    // An empty date means today on create and no change on edit.
+    if (!clean.entry_date) delete clean.entry_date;
+    else if (!isDate(clean.entry_date)) throw new Invalid("entry_date must be a real date (YYYY-MM-DD)");
+  }
+  for (const f of ["title", "body", "context", "alternatives", "consequences"] as const) {
+    if (f in clean && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string`);
+  }
+  for (const f of ["author", "version", "source_url", "evidence_url"] as const) {
+    if (f in clean && clean[f] !== null && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string or null`);
+  }
+}
 
 /** Reject malformed task fields before they reach the store. Mutates `clean` into canonical shape. */
 function validateTaskFields(clean: Record<string, unknown>) {
@@ -81,8 +157,8 @@ function validateTaskFields(clean: Record<string, unknown>) {
     throw new Invalid(`priority must be one of ${PRIORITIES.join(", ")}`);
   }
   for (const f of ["due_date", "planned_for", "snoozed_until"] as const) {
-    if (f in clean && clean[f] !== null && !(typeof clean[f] === "string" && DATE_RE.test(clean[f] as string))) {
-      throw new Invalid(`${f} must be YYYY-MM-DD or null`);
+    if (f in clean && clean[f] !== null && !isDate(clean[f])) {
+      throw new Invalid(`${f} must be a real date (YYYY-MM-DD) or null`);
     }
   }
   if ("estimate" in clean) {
@@ -152,13 +228,26 @@ function touch(d: ProjectDetail) {
   d.project.updated_at = now();
 }
 
+/**
+ * Every record id in the store: projects, their milestones, tasks and entries,
+ * tracked repositories and inbox items. The store refuses to read a snapshot
+ * with a duplicate anywhere, so a restore must check all of them.
+ */
+function allRecordIds(s: Snapshot): Set<string> {
+  const ids = new Set<string>(s.inbox.items.map((i) => i.id));
+  for (const r of s.repos.repos) ids.add(r.id);
+  for (const [pid, d] of Array.from(s.projects.entries())) {
+    ids.add(pid);
+    ids.add(d.project.id);
+    for (const x of [...d.tasks, ...d.milestones, ...d.entries]) ids.add(x.id);
+  }
+  return ids;
+}
+
 function addEntry(d: ProjectDetail, input: Record<string, unknown>): Entry {
   const clean = pick(input, ENTRY_FIELDS);
   if (!String(clean.title || "").trim()) throw new Invalid("title required");
-  if (clean.task_id && !d.tasks.some((t) => t.id === clean.task_id)) throw new NotFound("task not found in this project");
-  if ("health" in clean && clean.health !== null && !(HEALTH_LEVELS as readonly string[]).includes(String(clean.health))) {
-    throw new Invalid(`health must be one of ${HEALTH_LEVELS.join(", ")}, or null`);
-  }
+  validateEntryFields(d, clean);
   if (clean.kind === "update" && !clean.health) throw new Invalid("a status update needs a health call");
   const entry: Entry = {
     id: newId(),
@@ -225,10 +314,14 @@ export function summarize(d: ProjectDetail) {
   return { ...d.project, stats, attention, health: projectHealth(d, stats, attention) };
 }
 
-/** Today's plan for one project: planned for today or earlier, yours and due by today, or yours and in progress. */
+/**
+ * Today's plan for one project: planned for today or earlier, yours and due by today, or
+ * yours and in progress. A plan date decides on its own, so a task moved to tomorrow
+ * leaves today even when it is due or in progress.
+ */
 export function isToday(t: Task, day: string): boolean {
   if (t.status === "done" || isSnoozed(t, day)) return false;
-  if (t.planned_for && t.planned_for <= day) return true;
+  if (t.planned_for) return t.planned_for <= day;
   if (!isMine(t)) return false;
   return t.status === "doing" || (!!t.due_date && t.due_date <= day);
 }
@@ -386,8 +479,16 @@ export async function createProjects(
           failed.push({ name: "(blank)", reason: "name required" });
           continue;
         }
-        if (clean.status && !STATUSES.includes(clean.status as ProjectStatus)) {
-          failed.push({ name: pname, reason: `status must be one of ${STATUSES.join(", ")}` });
+        try {
+          validateProjectFields(clean);
+        } catch (e) {
+          failed.push({ name: pname, reason: (e as Error).message });
+          continue;
+        }
+        // A plan template is laid down in the same commit, so a failure cannot leave a half-made project.
+        const template = typeof row.template === "string" && row.template ? PLAN_TEMPLATES.find((t) => t.id === row.template) : undefined;
+        if (typeof row.template === "string" && row.template && !template) {
+          failed.push({ name: pname, reason: `no template ${row.template}` });
           continue;
         }
         const k = key(clean.owner, clean.repo);
@@ -429,7 +530,9 @@ export async function createProjects(
           updated_at: t,
         };
         project.name = pname;
-        s.projects.set(project.id, { project, milestones: [], tasks: [], entries: [] });
+        const detail: ProjectDetail = { project, milestones: [], tasks: [], entries: [] };
+        s.projects.set(project.id, detail);
+        if (template) layTemplate(detail, template, today());
         created.push(project);
       }
       return { created, failed };
@@ -442,9 +545,8 @@ export async function updateProject(
   patch: Record<string, unknown>
 ): Promise<{ project: Project; entry: Entry | null }> {
   const clean = pick(patch, PROJECT_FIELDS);
-  if (clean.status && !STATUSES.includes(clean.status as ProjectStatus)) {
-    throw new Invalid(`status must be one of ${STATUSES.join(", ")}`);
-  }
+  validateProjectFields(clean);
+  if ("name" in clean && !String(clean.name).trim()) throw new Invalid("name required");
   return mutate(
     (r) => `${r.project.name}: ${r.entry ? `status ${r.entry.title}` : `edit ${Object.keys(clean).join(", ")}`}`,
     (s) => {
@@ -496,49 +598,64 @@ export async function applyTemplate(projectId: string, templateId: string, start
   const from = start && DATE_RE.test(start) ? start : today();
   return mutate(
     (_r, s) => `${pfx(s, projectId)}start from the ${template.name} template`,
-    (s) => {
-      const d = projectIn(s, projectId);
-      const made: { milestones: Milestone[]; tasks: Task[] } = { milestones: [], tasks: [] };
-      let cursor = from;
-      for (const tm of template.milestones) {
-        cursor = addDays(cursor, tm.weeks * 7);
-        const m: Milestone = {
-          id: newId(),
-          project_id: projectId,
-          title: tm.title,
-          description: tm.description ?? "",
-          start_date: null,
-          target_date: cursor,
-          done: false,
-          done_at: null,
-          sort_order: d.milestones.length,
-          created_at: now(),
-        };
-        d.milestones.push(m);
-        made.milestones.push(m);
-        for (const tt of tm.tasks) {
-          made.tasks.push(
-            newTask(d, {
-              title: tt.title,
-              acceptance: tt.acceptance ?? "",
-              labels: tt.labels ?? [],
-              estimate: tt.estimate ?? null,
-              priority: tt.priority ?? "medium",
-              agent: tt.agent ?? null,
-              milestone_id: m.id,
-            })
-          );
-        }
-      }
-      touch(d);
-      return made;
-    }
+    (s) => layTemplate(projectIn(s, projectId), template, from)
   );
+}
+
+/** Draft helper: add a template's milestones and tasks to a project. Runs inside mutate(). */
+function layTemplate(d: ProjectDetail, template: PlanTemplate, from: string): { milestones: Milestone[]; tasks: Task[] } {
+  const made: { milestones: Milestone[]; tasks: Task[] } = { milestones: [], tasks: [] };
+  let cursor = from;
+  for (const tm of template.milestones) {
+    cursor = addDays(cursor, tm.weeks * 7);
+    const m: Milestone = {
+      id: newId(),
+      project_id: d.project.id,
+      title: tm.title,
+      description: tm.description ?? "",
+      start_date: null,
+      target_date: cursor,
+      done: false,
+      done_at: null,
+      sort_order: d.milestones.length,
+      created_at: now(),
+    };
+    d.milestones.push(m);
+    made.milestones.push(m);
+    for (const tt of tm.tasks) {
+      made.tasks.push(
+        newTask(d, {
+          title: tt.title,
+          acceptance: tt.acceptance ?? "",
+          labels: tt.labels ?? [],
+          estimate: tt.estimate ?? null,
+          priority: tt.priority ?? "medium",
+          agent: tt.agent ?? null,
+          milestone_id: m.id,
+        })
+      );
+    }
+  }
+  touch(d);
+  return made;
+}
+
+/** Reject malformed milestone fields before they reach the store. */
+function validateMilestoneFields(clean: Record<string, unknown>) {
+  for (const f of ["title", "description"] as const) {
+    if (f in clean && typeof clean[f] !== "string") throw new Invalid(`${f} must be a string`);
+  }
+  for (const f of ["start_date", "target_date"] as const) {
+    if (f in clean && clean[f] !== null && !isDate(clean[f])) throw new Invalid(`${f} must be a real date (YYYY-MM-DD) or null`);
+  }
+  if ("done" in clean && typeof clean.done !== "boolean") throw new Invalid("done must be true or false");
+  if ("sort_order" in clean && typeof clean.sort_order !== "number") throw new Invalid("sort_order must be a number");
 }
 
 export async function createMilestone(projectId: string, input: Record<string, unknown>): Promise<Milestone> {
   const clean = pick(input, MILESTONE_FIELDS);
   if (!String(clean.title || "").trim()) throw new Invalid("title required");
+  validateMilestoneFields(clean);
   return mutate(
     (m, s) => `${pfx(s, m.project_id)}milestone ${clip(m.title)} added`,
     (s) => {
@@ -565,6 +682,8 @@ export async function createMilestone(projectId: string, input: Record<string, u
 
 export async function updateMilestone(id: string, patch: Record<string, unknown>): Promise<Milestone> {
   const clean = pick(patch, MILESTONE_FIELDS);
+  if ("title" in clean && !String(clean.title ?? "").trim()) throw new Invalid("title required");
+  validateMilestoneFields(clean);
   return mutate(
     (m, s) => `${pfx(s, m.project_id)}milestone ${clip(m.title)} ${"done" in clean ? (clean.done ? "reached" : "reopened") : "edited"}`,
     (s) => {
@@ -628,6 +747,8 @@ function newTask(d: ProjectDetail, clean: Record<string, unknown>): Task {
     recurrence: null,
     labels: [],
     snoozed_until: null,
+    recurrence_day: null,
+    spawned_from: null,
     claimed_at: null,
     done_at: null,
     sort_order: d.tasks.length,
@@ -661,8 +782,18 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
     if (clean.parent_id === task.id) throw new Invalid("a task cannot be its own parent");
     const parent = d.tasks.find((t) => t.id === clean.parent_id);
     if (!parent) throw new NotFound("parent task not found in this project");
-    if (openDescendants(task, d.tasks).some((x) => x.id === parent.id) || d.tasks.some((x) => x.parent_id === task.id && x.id === parent.id)) {
+    // Every descendant counts, finished ones too; a cycle through a done subtask is still a cycle.
+    if (subtree(d, [task.id]).has(parent.id)) {
       throw new Invalid("a task cannot be moved under its own subtask");
+    }
+    // A subtask lives in its parent's milestone.
+    if (!("milestone_id" in clean)) clean.milestone_id = parent.milestone_id;
+  }
+  if ("milestone_id" in clean && clean.milestone_id !== task.milestone_id) {
+    // Subtasks at any depth follow their root task between milestones.
+    for (const id of Array.from(subtree(d, [task.id]))) {
+      const kid = d.tasks.find((t) => t.id === id);
+      if (kid && kid.id !== task.id) kid.milestone_id = (clean.milestone_id as string | null) ?? null;
     }
   }
   let spawned: Task | null = null;
@@ -672,12 +803,24 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
     if (clean.status === "done" && task.recurrence) {
       const rule = task.recurrence as Recurrence;
       const t = now();
+      const day = today();
+      // The day of the month a month-based rule aims for travels with the chore, so a clamped
+      // February date does not turn a "30th" chore into a month-end one.
+      const anchor = task.recurrence_day ?? dayOfMonth(task.due_date ?? day);
+      // Always after today: a chore finished weeks late skips the occurrences it missed.
+      const nextDue = nextOccurrenceAfter(rule, task.due_date ?? day, day, anchor);
       spawned = normalizeTask({
         ...task,
         id: newId(),
+        // An import identity belongs to one task; the store refuses duplicates.
+        source_key: null,
+        spawned_from: task.id,
+        recurrence_day: MONTH_RULES.includes(rule) ? anchor : null,
         status: "todo",
-        due_date: nextOccurrence(rule, task.due_date ?? today()),
+        due_date: nextDue,
         planned_for: null,
+        // Deferred until it is due, so an agent does not pick the same chore up again right away.
+        snoozed_until: nextDue,
         claimed_at: null,
         done_at: null,
         sort_order: d.tasks.length,
@@ -688,6 +831,9 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
       task.recurrence = null;
     }
   }
+  // A new due date, or a change from one rule to another, restarts the month anchor from the new date.
+  // Handing a rule back to a reopened occurrence (whose rule was cleared when it was finished) keeps its anchor.
+  if (("due_date" in clean && clean.due_date !== task.due_date) || ("recurrence" in clean && task.recurrence && clean.recurrence !== task.recurrence)) task.recurrence_day = null;
   Object.assign(task, clean, { updated_at: now() });
   if (spawned && "recurrence" in clean) task.recurrence = null;
   touch(d);
@@ -791,10 +937,13 @@ export async function updateTasks(items: Array<Record<string, unknown>>): Promis
 }
 
 /** Reorder tasks: `order` lists task ids in their new sequence; each may also move to a milestone or parent. */
+/** What a reorder changes on each task; the client merges it, and the idempotency receipt stays small. */
+export type TaskPlacement = Pick<Task, "id" | "sort_order" | "milestone_id" | "parent_id" | "updated_at">;
+
 export async function reorderTasks(
   projectId: string,
   order: Array<{ id: string; milestone_id?: string | null; parent_id?: string | null }>
-): Promise<Task[]> {
+): Promise<TaskPlacement[]> {
   return mutate(
     (_r, s) => `${pfx(s, projectId)}reorder plan`,
     (s) => {
@@ -806,15 +955,27 @@ export async function reorderTasks(
         const patch: Record<string, unknown> = { sort_order: i };
         if (o.milestone_id !== undefined) patch.milestone_id = o.milestone_id;
         if (o.parent_id !== undefined) patch.parent_id = o.parent_id;
+        // Moving a task is not progress on it: keep updated_at, which drives the stalled and aging signals.
+        const stamp = t.updated_at;
         applyTaskPatch(d, t, patch);
+        t.updated_at = stamp;
       });
-      // Subtasks follow their parent's milestone.
+      // Subtasks at any depth follow the milestone of their root task.
+      const rootOf = (t: Task): Task => {
+        let cur = t;
+        const seen = new Set<string>();
+        while (cur.parent_id && byId.has(cur.parent_id) && !seen.has(cur.id)) {
+          seen.add(cur.id);
+          cur = byId.get(cur.parent_id)!;
+        }
+        return cur;
+      };
       for (const t of d.tasks) {
         if (!t.parent_id) continue;
-        const parent = byId.get(t.parent_id);
-        if (parent && t.milestone_id !== parent.milestone_id) t.milestone_id = parent.milestone_id;
+        const root = rootOf(t);
+        if (root.id !== t.id && t.milestone_id !== root.milestone_id) t.milestone_id = root.milestone_id;
       }
-      return d.tasks;
+      return d.tasks.map(({ id, sort_order, milestone_id, parent_id, updated_at }) => ({ id, sort_order, milestone_id, parent_id, updated_at }));
     }
   );
 }
@@ -877,17 +1038,31 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
     (s) => {
       const restored: Task[] = [];
       const incoming = new Set(tasks.map((t) => t.id));
+      // Every id and import key in the store, so a stale or crafted payload cannot write a snapshot parse() refuses.
+      const everyId = allRecordIds(s);
+      const everyKey = new Map<string, string>();
+      for (const [pid, other] of Array.from(s.projects.entries())) {
+        for (const t of other.tasks) if (normalizeSourceKey(t.source_key)) everyKey.set(normalizeSourceKey(t.source_key), pid);
+      }
       for (const raw of tasks) {
         if (!raw || typeof raw.id !== "string" || typeof raw.project_id !== "string" || typeof raw.title !== "string") {
           throw new Invalid("each task needs id, project_id and title");
         }
+        for (const f of ["claimed_at", "done_at", "created_at"] as const) {
+          if (raw[f] !== null && raw[f] !== undefined && !(typeof raw[f] === "string" && ISO_RE.test(raw[f] as string))) throw new Invalid(`${f} must be an ISO timestamp or null`);
+        }
         const d = projectIn(s, raw.project_id);
         if (d.tasks.some((t) => t.id === raw.id)) continue;
+        if (everyId.has(raw.id)) throw new Conflict(`record id ${raw.id} already exists elsewhere`);
         const clean = pick(raw as unknown as Record<string, unknown>, TASK_FIELDS.filter((f) => f !== "source_key"));
         validateTaskFields(clean);
         const ids = new Set([...d.tasks.map((t) => t.id), ...incoming]);
+        // Keep the import identity unless another task has taken it meanwhile.
+        const key = normalizeSourceKey(raw.source_key);
+        const keepKey = key && !everyKey.has(key);
         const task = normalizeTask({
           ...(clean as Partial<Task>),
+          ...(keepKey ? { source_key: key } : {}),
           id: raw.id,
           project_id: d.project.id,
           title: raw.title,
@@ -902,6 +1077,9 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
           recurrence: (clean.recurrence as Recurrence | null) ?? null,
           labels: (clean.labels as string[]) ?? [],
           snoozed_until: (clean.snoozed_until as string | null) ?? null,
+          // An occurrence keeps its month anchor and its origin, so its own undo paths still work after a restore.
+          recurrence_day: raw.recurrence_day ?? null,
+          spawned_from: typeof raw.spawned_from === "string" && ids.has(raw.spawned_from) ? raw.spawned_from : null,
           depends_on: ((clean.depends_on as string[]) ?? []).filter((x) => x !== raw.id && ids.has(x)),
           parent_id: clean.parent_id && ids.has(clean.parent_id as string) ? (clean.parent_id as string) : null,
           milestone_id: clean.milestone_id && d.milestones.some((m) => m.id === clean.milestone_id) ? (clean.milestone_id as string) : null,
@@ -913,6 +1091,8 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
         });
         d.tasks.push(task);
         restored.push(task);
+        everyId.add(task.id);
+        if (keepKey) everyKey.set(key, d.project.id);
         touch(d);
       }
       return { restored };
@@ -937,7 +1117,7 @@ export async function createEntries(
       const created: Entry[] = [];
       let skipped = 0;
       for (const input of inputs) {
-        // Same source_url imported twice: skip quietly.
+        // Same source_url imported twice: skip it and count it.
         if (input.source_url && d.entries.some((e) => e.source_url === input.source_url)) {
           skipped++;
           continue;
@@ -970,18 +1150,109 @@ export async function createAgentTask(projectId: string, agent: string, input: R
   );
 }
 
-/** A comment or progress note on one task, from you or an agent. */
-export async function commentOnTask(taskId: string, author: string, body: string): Promise<Entry> {
+/**
+ * A comment or progress note on one task, from you or an agent. With `status`
+ * the reply and the status change (for example unblocking) land in one commit.
+ * An agent's comment (`asAgent`) is checked against the project like every
+ * other agent write, and never changes status.
+ */
+export async function commentOnTask(
+  taskId: string,
+  author: string,
+  body: string,
+  opts: { status?: TaskStatus; asAgent?: boolean } = {}
+): Promise<{ entry: Entry; task: Task; spawned: Task | null }> {
   if (!body.trim()) throw new Invalid("say something");
+  const status = opts.asAgent ? undefined : opts.status;
+  if (status && !(TASK_STATUSES as readonly string[]).includes(status)) throw new Invalid(`status must be one of ${TASK_STATUSES.join(", ")}`);
+  // Read before the patch, so the commit message can say what changed.
+  let changed = false;
   return mutate(
-    (e, s) => `${pfx(s, e.project_id)}comment on ${clip(s.projects.get(e.project_id)?.tasks.find((t) => t.id === taskId)?.title ?? "task")}${by(author)}`,
+    (r, s) => `${pfx(s, r.task.project_id)}${changed ? "reply and set " + status + " on" : "comment on"} ${clip(r.task.title)}${by(author)}`,
     (s) => {
       const { d, item } = findIn(s, "tasks", taskId);
       const task = item as Task;
+      if (opts.asAgent) assertAgentProject(d, author);
+      changed = !!status && status !== task.status;
       const entry = addEntry(d, { kind: "progress", task_id: task.id, title: body.trim().split("\n")[0].slice(0, 140), body: body.trim(), author });
+      const { spawned } = status && status !== task.status ? applyTaskPatch(d, task, { status }) : { spawned: null };
       task.updated_at = now();
       touch(d);
-      return entry;
+      return { entry, task, spawned };
+    }
+  );
+}
+
+/**
+ * Undo finishing a task in one commit: reopen it, give its recurrence rule
+ * back, and remove the occurrence that finishing it spawned, as long as nobody
+ * has started that occurrence meanwhile. While a live occurrence still carries
+ * the rule, the reopened task does not get it back (one chore, one rule); an
+ * occurrence that is gone leaves nothing to keep it, so the rule comes back.
+ * Only the occurrence this task spawned (`spawned_from`) can be taken back.
+ */
+export async function reopenTask(
+  id: string,
+  input: { status?: TaskStatus; recurrence?: Recurrence | null; planned_for?: string | null; spawned_id?: string }
+): Promise<{ task: Task; removed: Task[] }> {
+  const status = input.status ?? "todo";
+  if (status === "done") throw new Invalid("reopen needs an open status");
+  return mutate(
+    (r, s) => `${pfx(s, r.task.project_id)}reopen ${clip(r.task.title)}`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", id);
+      const task = item as Task;
+      const removed: Task[] = [];
+      const spawned = input.spawned_id ? d.tasks.find((t) => t.id === input.spawned_id) : undefined;
+      if (spawned && spawned.spawned_from !== task.id) throw new Invalid("spawned_id is not an occurrence of this task");
+      if (spawned && spawned.status === "todo" && spawned.recurrence) {
+        const drop = subtree(d, [spawned.id]);
+        removed.push(...d.tasks.filter((t) => drop.has(t.id)));
+        d.tasks = d.tasks.filter((t) => !drop.has(t.id));
+        for (const t of d.tasks) t.depends_on = t.depends_on.filter((x) => !drop.has(x));
+      }
+      // An occurrence left in place was started by someone, or was finished and spawned its own successor: the chain lives on without this task.
+      const occurrenceKeepsRule = !!spawned && !removed.length;
+      const patch: Record<string, unknown> = { status };
+      if ("recurrence" in input && !occurrenceKeepsRule) patch.recurrence = input.recurrence ?? null;
+      if ("planned_for" in input) patch.planned_for = input.planned_for ?? null;
+      applyTaskPatch(d, task, patch);
+      return { task, removed };
+    }
+  );
+}
+
+/**
+ * One review pass over a project in one commit: stamp it reviewed, and
+ * optionally set the next action, change status, and post a status update.
+ */
+export async function reviewProject(
+  id: string,
+  input: { next_action?: string; status?: ProjectStatus; status_note?: string; update?: { health: string; body: string } }
+): Promise<{ project: Project; entries: Entry[] }> {
+  if (input.status && !STATUSES.includes(input.status)) throw new Invalid(`status must be one of ${STATUSES.join(", ")}`);
+  if (input.update && (!(HEALTH_LEVELS as readonly string[]).includes(input.update.health) || !String(input.update.body ?? "").trim())) {
+    throw new Invalid("an update needs a health call and a few words");
+  }
+  return mutate(
+    (r) => `${r.project.name}: reviewed${input.status ? `, now ${input.status}` : ""}${input.update ? ", update posted" : ""}`,
+    (s) => {
+      const d = projectIn(s, id);
+      const entries: Entry[] = [];
+      const stamp = now();
+      d.project.last_reviewed_at = stamp;
+      if (typeof input.next_action === "string") d.project.next_action = input.next_action.trim();
+      if (input.status && input.status !== d.project.status) {
+        const before = d.project.status;
+        d.project.status = input.status;
+        d.project.status_changed_at = stamp;
+        entries.push(addEntry(d, { kind: "status", title: `${STATUS_META[before].label} → ${STATUS_META[input.status].label}`, body: input.status_note ?? "" }));
+      }
+      if (input.update) {
+        entries.push(addEntry(d, { kind: "update", title: `Review ${today()}`, body: input.update.body.trim(), health: input.update.health, author: ME, entry_date: today() }));
+      }
+      touch(d);
+      return { project: d.project, entries };
     }
   );
 }
@@ -1015,10 +1286,14 @@ export async function updateAgentNextAction(projectId: string, agent: string, ne
 
 export async function updateEntry(id: string, patch: Record<string, unknown>): Promise<Entry> {
   const clean = pick(patch, ENTRY_FIELDS);
+  if ("title" in clean && !String(clean.title ?? "").trim()) throw new Invalid("title required");
   return mutate(
     (e, s) => `${pfx(s, e.project_id)}${clip(e.title)} → ${clean.decision_status ?? "edited"}`,
     (s) => {
       const { d, item } = findIn(s, "entries", id);
+      validateEntryFields(d, clean);
+      const next = { ...(item as Entry), ...clean } as Entry;
+      if (next.kind === "update" && !next.health) throw new Invalid("a status update needs a health call");
       Object.assign(item, clean);
       touch(d);
       return item as Entry;
@@ -1132,7 +1407,7 @@ function cleanInbox(input: Record<string, unknown>): Record<string, unknown> {
   if ("source" in clean) clean.source = clean.source ? String(clean.source).slice(0, 64) : null;
   if ("project_id" in clean) clean.project_id = clean.project_id ? String(clean.project_id) : null;
   const taskish: Record<string, unknown> = {};
-  for (const f of ["agent", "priority", "due_date", "estimate", "labels"] as const) if (f in clean) taskish[f] = clean[f];
+  for (const f of ["agent", "priority", "due_date", "planned_for", "recurrence", "estimate", "labels"] as const) if (f in clean) taskish[f] = clean[f];
   if ("priority" in taskish && taskish.priority === null) delete taskish.priority;
   validateTaskFields(taskish);
   Object.assign(clean, taskish);
@@ -1156,6 +1431,8 @@ export async function captureInbox(input: Record<string, unknown>): Promise<Inbo
         agent: null,
         priority: null,
         due_date: null,
+        planned_for: null,
+        recurrence: null,
         estimate: null,
         labels: [],
         created_at: now(),
@@ -1207,12 +1484,15 @@ export async function triageInbox(id: string, input: Record<string, unknown>): P
       const projectId = String(input.project_id ?? item.project_id ?? "");
       if (!projectId) throw new Invalid("pick a project");
       const d = projectIn(s, projectId);
+      // Every hint the capture carried comes along; items written before a field existed read as null.
       const fields: Record<string, unknown> = {
         title: item.title,
         notes: item.notes,
         agent: item.agent,
         priority: item.priority ?? "medium",
         due_date: item.due_date,
+        planned_for: item.planned_for ?? null,
+        recurrence: item.recurrence ?? null,
         estimate: item.estimate,
         labels: item.labels,
       };
@@ -1247,16 +1527,38 @@ export async function getProjectAt(id: string, sha: string): Promise<ProjectDeta
   if (!/^[0-9a-f]{7,40}$/.test(sha)) throw new Invalid("bad commit id");
   const text = await readFileAt(sha, `projects/${id}.json`);
   if (text === null) return null;
-  let parsed: ProjectDetail;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(text) as ProjectDetail;
+    parsed = JSON.parse(text);
   } catch {
     throw new Invalid("that version is not valid JSON");
   }
-  if (!parsed?.project || parsed.project.id !== id || !Array.isArray(parsed.tasks) || !Array.isArray(parsed.milestones) || !Array.isArray(parsed.entries)) {
+  checkDetailShape(parsed, id);
+  return ordered(normalizeDetail(parsed));
+}
+
+/** The checks the store applies when it reads a project file, for a version pulled from history. */
+function checkDetailShape(parsed: unknown, id: string): asserts parsed is ProjectDetail {
+  const d = parsed as (ProjectDetail & { schemaVersion?: unknown }) | null;
+  if (
+    !d || typeof d !== "object" || !d.project || typeof d.project !== "object" || d.project.id !== id || typeof d.project.name !== "string" ||
+    !Array.isArray(d.project.agents) || !Array.isArray(d.tasks) || !Array.isArray(d.milestones) || !Array.isArray(d.entries) ||
+    (d.schemaVersion !== undefined && d.schemaVersion !== 1)
+  ) {
     throw new Invalid("that version is not a project record");
   }
-  return ordered(normalizeDetail(parsed));
+  const ids = new Set<string>([id]);
+  for (const row of [...d.milestones, ...d.tasks, ...d.entries] as Array<{ id?: unknown; project_id?: unknown } | null>) {
+    if (!row || typeof row.id !== "string" || row.project_id !== id || ids.has(row.id)) throw new Invalid("that version holds an invalid or duplicate record");
+    ids.add(row.id);
+  }
+  const keys = new Set<string>();
+  for (const t of d.tasks as Array<{ source_key?: unknown }>) {
+    const key = t.source_key;
+    if (key === null || key === undefined) continue;
+    if (typeof key !== "string" || !key.trim() || key !== key.trim() || keys.has(key)) throw new Invalid("that version holds an invalid or duplicate task source_key");
+    keys.add(key);
+  }
 }
 
 /** Put a project back the way it was at a commit. Logged on the project itself. */
@@ -1267,12 +1569,19 @@ export async function restoreProject(id: string, sha: string): Promise<ProjectDe
     (d) => `${d.project.name}: restore version ${sha.slice(0, 7)}`,
     (s) => {
       const current = s.projects.get(id);
-      // Other projects may hold tasks with the same ids only if the file was copied; refuse that.
+      // Another record may hold the same id or import key only if a file was copied; refuse that,
+      // because the store refuses to read a snapshot with duplicates. The project's own current
+      // rows are being replaced, so they do not count.
+      const taken = allRecordIds(s);
+      if (current) for (const x of [...current.tasks, ...current.milestones, ...current.entries]) taken.delete(x.id);
+      if ([...past.tasks, ...past.milestones, ...past.entries].some((x) => taken.has(x.id))) {
+        throw new Conflict("that version shares record ids with another record in the store");
+      }
+      const pastKeys = new Set(past.tasks.map((t) => normalizeSourceKey(t.source_key)).filter(Boolean));
       for (const [otherId, other] of Array.from(s.projects.entries())) {
         if (otherId === id) continue;
-        const ids = new Set([...other.tasks, ...other.milestones, ...other.entries].map((x) => x.id));
-        if ([...past.tasks, ...past.milestones, ...past.entries].some((x) => ids.has(x.id))) {
-          throw new Conflict("that version shares record ids with another project");
+        if (other.tasks.some((t) => pastKeys.has(normalizeSourceKey(t.source_key)))) {
+          throw new Conflict("that version shares task source keys with another project");
         }
       }
       const restored: ProjectDetail = structuredClone(past);

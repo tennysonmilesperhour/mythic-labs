@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtDate, relTime, type ProjectDetail } from "@/lib/projectTypes";
 import { projectHref } from "@/lib/taskMap";
 import { Chip, api, btnGhost, btnPrimary, inputBase } from "@/components/ProjectBits";
@@ -10,7 +10,7 @@ import { useToast } from "@/components/Toast";
 
 export type Commit = { sha: string; message: string; date: string | null };
 
-type Preview = { sha: string; detail: ProjectDetail };
+type Preview = { sha: string; projectId: string; detail: ProjectDetail };
 
 export default function HistoryClient({ commits, projects, projectId }: { commits: Commit[]; projects: Array<{ id: string; name: string }>; projectId: string }) {
   const router = useRouter();
@@ -18,13 +18,17 @@ export default function HistoryClient({ commits, projects, projectId }: { commit
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const project = projects.find((p) => p.id === projectId);
+  // A preview shows one project's version; switching projects closes it, and a preview that
+  // arrives after the switch is never shown for the new project.
+  useEffect(() => setPreview((p) => (p && p.projectId !== projectId ? null : p)), [projectId]);
+  const shown = preview && preview.projectId === projectId ? preview : null;
 
   const open = async (sha: string) => {
     if (!projectId) return;
     setBusy(sha);
     try {
       const detail = await api<ProjectDetail>(`/api/projects/${projectId}/history/${sha}`, "GET");
-      setPreview({ sha, detail });
+      setPreview({ sha, projectId, detail });
     } catch (e) {
       toast({ message: (e as Error).message, tone: "error" });
     } finally {
@@ -56,7 +60,7 @@ export default function HistoryClient({ commits, projects, projectId }: { commit
   }
 
   return (
-    <div className={`grid grid-cols-1 gap-10 ${preview ? "lg:grid-cols-[1fr_24rem]" : ""}`}>
+    <div className={`grid grid-cols-1 gap-10 ${shown ? "lg:grid-cols-[1fr_24rem]" : ""}`}>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-3 mb-6 font-mono text-[0.62rem]">
           <select
@@ -85,7 +89,7 @@ export default function HistoryClient({ commits, projects, projectId }: { commit
                 {list.map((c) => {
                   const [head, ...rest] = c.message.split("\n");
                   return (
-                    <li key={c.sha} className={`flex flex-wrap md:flex-nowrap items-baseline gap-3 px-4 py-2.5 ${preview?.sha === c.sha ? "bg-[rgba(139,115,85,0.08)]" : ""}`}>
+                    <li key={c.sha} className={`flex flex-wrap md:flex-nowrap items-baseline gap-3 px-4 py-2.5 ${shown?.sha === c.sha ? "bg-[rgba(139,115,85,0.08)]" : ""}`}>
                       <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0 w-14" title={c.sha}>{c.sha.slice(0, 7)}</span>
                       <span className="flex-1 min-w-[12rem] text-[0.88rem] text-fg">
                         {head}
@@ -109,27 +113,27 @@ export default function HistoryClient({ commits, projects, projectId }: { commit
         )}
       </div>
 
-      {preview ? (
+      {shown ? (
         <aside>
           <div className="sticky top-6 border border-line bg-bg/85 p-4 max-h-[calc(100vh-4rem)] overflow-y-auto">
             <div className="flex items-baseline justify-between mb-3">
-              <span className="mono-label">Version {preview.sha.slice(0, 7)}</span>
+              <span className="mono-label">Version {shown.sha.slice(0, 7)}</span>
               <button onClick={() => setPreview(null)} className="font-mono text-[0.6rem] text-fg-ghost hover:text-fg">close</button>
             </div>
-            <div className="serif-display text-[1.4rem] leading-tight mb-1">{preview.detail.project.name}</div>
+            <div className="serif-display text-[1.4rem] leading-tight mb-1">{shown.detail.project.name}</div>
             <div className="font-mono text-[0.6rem] text-fg-dim mb-3">
-              {preview.detail.project.status} · {preview.detail.project.priority} · updated {fmtDate(preview.detail.project.updated_at)}
+              {shown.detail.project.status} · {shown.detail.project.priority} · updated {fmtDate(shown.detail.project.updated_at)}
             </div>
-            {preview.detail.project.next_action ? <p className="text-[0.85rem] text-fg mb-3">Next: {preview.detail.project.next_action}</p> : null}
+            {shown.detail.project.next_action ? <p className="text-[0.85rem] text-fg mb-3">Next: {shown.detail.project.next_action}</p> : null}
             <div className="flex flex-wrap gap-1.5 mb-4">
-              <Chip>{preview.detail.milestones.length} milestones</Chip>
-              <Chip>{preview.detail.tasks.length} tasks</Chip>
-              <Chip>{preview.detail.tasks.filter((t) => t.status === "done").length} done</Chip>
-              <Chip>{preview.detail.entries.length} entries</Chip>
+              <Chip>{shown.detail.milestones.length} milestones</Chip>
+              <Chip>{shown.detail.tasks.length} tasks</Chip>
+              <Chip>{shown.detail.tasks.filter((t) => t.status === "done").length} done</Chip>
+              <Chip>{shown.detail.entries.length} entries</Chip>
             </div>
             <div className="mono-label-dim mb-1">Open tasks then</div>
             <ul className="flex flex-col mb-4 max-h-64 overflow-y-auto">
-              {preview.detail.tasks
+              {shown.detail.tasks
                 .filter((t) => t.status !== "done")
                 .slice(0, 30)
                 .map((t) => (
@@ -140,7 +144,7 @@ export default function HistoryClient({ commits, projects, projectId }: { commit
                 ))}
             </ul>
             <div className="flex gap-2">
-              <button onClick={() => restore(preview.sha)} disabled={busy === preview.sha} className={btnPrimary}>Restore this version</button>
+              <button onClick={() => restore(shown.sha)} disabled={busy === shown.sha} className={btnPrimary}>Restore this version</button>
               <Link href={projectHref(projectId)} className={btnGhost}>Current →</Link>
             </div>
           </div>

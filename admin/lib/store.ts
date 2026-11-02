@@ -7,7 +7,7 @@ import { gh } from "./github";
 import { normalizeDetail, renderProjectMarkdown, type InboxFile, type ProjectDetail } from "./projectTypes";
 
 /**
- * The dashboard's data lives as files in git, not a database.
+ * The dashboard's data lives as files in git; there is no database.
  *
  *   projects/<id>.json   one project: its plan, log and settings
  *   projects/<id>.md     the same project rendered for humans and agents
@@ -41,7 +41,9 @@ export type ReposFile = {
   plugins: Record<string, Record<string, boolean>>;
 };
 
-export type OperationReceipt = { payloadHash: string; result: unknown };
+/** An idempotency receipt. `at` is when it was written; receipts older than RECEIPT_DAYS are dropped on the next write. */
+export type OperationReceipt = { payloadHash: string; result: unknown; at?: string };
+export const RECEIPT_DAYS = 30;
 
 export type Snapshot = {
   head: string | null;
@@ -359,7 +361,8 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
     throw new Error("Project data file operations.json has an incompatible operation receipt collection.");
   }
   for (const receipt of Object.values(parsedOperations.items as Record<string, unknown>)) {
-    if (!receipt || typeof receipt !== "object" || Array.isArray(receipt) || typeof (receipt as OperationReceipt).payloadHash !== "string" || !("result" in receipt)) {
+    if (!receipt || typeof receipt !== "object" || Array.isArray(receipt) || typeof (receipt as OperationReceipt).payloadHash !== "string" || !("result" in receipt) ||
+        ((receipt as OperationReceipt).at !== undefined && typeof (receipt as OperationReceipt).at !== "string")) {
       throw new Error("Project data file operations.json contains an invalid operation receipt.");
     }
   }
@@ -431,10 +434,19 @@ export async function mutate<T>(
     }
     const draft: Snapshot = structuredClone(base);
     const result = fn(draft);
+    // A receipt protects the retry of a recent request; an old one only grows the file.
+    // Receipts written before timestamps existed start their clock now.
+    const stamp = new Date().toISOString();
+    const cutoff = Date.now() - RECEIPT_DAYS * 86_400_000;
+    for (const [id, receipt] of Object.entries(draft.operations)) {
+      if (!receipt.at) receipt.at = stamp;
+      else if (Date.parse(receipt.at) < cutoff) delete draft.operations[id];
+    }
     if (operation) {
       draft.operations[operation.id] = {
         payloadHash: operation.payloadHash,
         result: result === undefined ? null : structuredClone(result),
+        at: stamp,
       };
     }
 

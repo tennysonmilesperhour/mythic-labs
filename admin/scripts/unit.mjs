@@ -17,7 +17,8 @@ const types = await load('../lib/projectTypes.ts');
 const { addDays, nextOccurrence, projectHealth, computeStats, computeAttention, weekStart, daysBetween, renderDigestMarkdown, EMPTY_HUB } = types.mod;
 const quick = await load('../lib/quick.ts', { './projectTypes': types.url });
 const { parseDate, parseQuick, matchProject, fuzzyScore } = quick.mod;
-const ical = await load('../lib/ical.ts', { './projectTypes': types.url });
+const taskMap = await load('../lib/taskMap.ts', { './projectTypes': types.url });
+const ical = await load('../lib/ical.ts', { './projectTypes': types.url, './taskMap': taskMap.url });
 const { calendarEvents, renderIcs } = ical.mod;
 
 let n = 0;
@@ -137,7 +138,7 @@ t('two overdue tasks take a project off track', () => {
   const late = '2020-01-01';
   assert.equal(health([task({ due_date: late }), task({ due_date: late })]).level, 'off_track');
 });
-t('paused and planned projects report their state, not a verdict', () => {
+t('paused and planned projects report their state instead of a verdict', () => {
   assert.equal(health([task({})], { ...base, status: 'paused' }).level, 'paused');
   assert.equal(health([task({})], { ...base, status: 'planned' }).level, 'idle');
 });
@@ -242,6 +243,184 @@ t('aging lists claimed open work oldest first and skips paused projects', () => 
 });
 t('estimate coverage reports what the forecast assumes', () => {
   assert.deepEqual(estimateCoverage(details), { open: 3, estimated: 3, assumed_points: 0 });
+});
+
+
+// ── fixes from the review ──
+const { isReady, isSnoozed } = types.mod;
+const { fold } = ical.mod;
+t('a snoozed task is not ready, so agents leave it alone until its day', () => {
+  const a = task({ id: 'r1', snoozed_until: '2999-01-01' });
+  assert.equal(isSnoozed(a), true);
+  assert.equal(isReady(a, [a]), false);
+  assert.equal(isReady(task({ id: 'r2', snoozed_until: '2000-01-01' }), []), true);
+});
+t('a project whose open work is all deferred is not flagged stuck', () => {
+  const d = { project: base, tasks: [task({ snoozed_until: '2999-01-01' })], milestones: [], entries: [] };
+  const kinds = computeAttention(d, new Date().toISOString()).map((a) => a.key.split(':')[1]);
+  assert.ok(!kinds.includes('stuck') && !kinds.includes('empty'), kinds.join(','));
+});
+t('calendar folding counts octets and never splits a character', () => {
+  const line = 'SUMMARY:' + 'é'.repeat(60); // 2 bytes each: 128 octets
+  const folded = fold(line);
+  const parts = folded.split('\r\n');
+  assert.ok(parts.length >= 2);
+  for (const part of parts) assert.ok(Buffer.byteLength(part, 'utf8') <= 75, `${Buffer.byteLength(part, 'utf8')} octets`);
+  assert.equal(parts.slice(1).every((x) => x.startsWith(' ')), true);
+  assert.equal(parts.map((x, i) => (i ? x.slice(1) : x)).join(''), line);
+  const emoji = 'SUMMARY:' + '🙂'.repeat(30);
+  assert.equal(fold(emoji).split('\r\n').map((x, i) => (i ? x.slice(1) : x)).join(''), emoji);
+  assert.equal(fold('short'), 'short');
+});
+t('the personal calendar feed uses the same "mine" rule as Today and My tasks', () => {
+  const detail = {
+    project: { ...base, id: 'p', name: 'P', status: 'active', target_date: null, summary: '' },
+    tasks: [
+      task({ id: 'o1', title: 'Owner step by note', due_date: '2026-11-20', agent: null, notes: 'Owner step: paste the key' }),
+      task({ id: 'a1', title: 'Agent work', due_date: '2026-11-21', agent: 'claude-code' }),
+    ],
+    milestones: [],
+    entries: [],
+  };
+  assert.deepEqual(calendarEvents([detail], 'https://x.test', { mine: true }).map((e) => e.uid), ['task-o1']);
+});
+
+// ── fixes from the second review ──
+const { nextOccurrenceAfter, endOfMonth } = types.mod;
+const { esc } = ical.mod;
+const templates = await load('../lib/templates.ts', { './projectTypes': types.url });
+const { PLAN_TEMPLATES } = templates.mod;
+t('month-based recurrence keeps month ends and catches up after a late finish', () => {
+  assert.equal(endOfMonth('2026-02-10'), '2026-02-28');
+  assert.equal(nextOccurrence('monthly', '2026-02-28'), '2026-03-28'); // without an anchor, the day of the date
+  assert.equal(nextOccurrence('monthly', '2026-02-28', 31), '2026-03-31'); // the anchor the server keeps on the chore
+  assert.equal(nextOccurrence('monthly', '2026-02-28', 30), '2026-03-30');
+  assert.equal(nextOccurrence('yearly', '2026-02-28'), '2027-02-28');
+  assert.equal(nextOccurrenceAfter('monthly', '2026-01-31', '2026-03-15'), '2026-03-31'); // within one call the anchor is the start day
+  assert.equal(nextOccurrenceAfter('monthly', '2026-02-28', '2026-03-01', 30), '2026-03-30');
+  // Across spawns the server passes the stored anchor, so a "30th" chore never turns into a month-end chore.
+  const chain = [];
+  let due = '2026-01-30';
+  for (let i = 0; i < 4; i++) chain.push((due = nextOccurrence('monthly', due, 30)));
+  assert.deepEqual(chain, ['2026-02-28', '2026-03-30', '2026-04-30', '2026-05-30']);
+  assert.equal(nextOccurrenceAfter('weekly', '2026-10-01', '2026-11-01'), '2026-11-05'); // a month late: skip the missed weeks
+  assert.equal(nextOccurrenceAfter('daily', '2026-11-01', '2026-11-01'), '2026-11-02');
+  assert.equal(nextOccurrenceAfter('weekly', '', '2026-11-01'), '2026-11-08'); // no due date: count from today
+  assert.equal(nextOccurrenceAfter('weekly', '2026-11-20', '2026-11-01'), '2026-11-27'); // finished early: one period on
+});
+t('parseDate reads only real weekday spellings', () => {
+  assert.equal(parseDate('friend', from), null);
+  assert.equal(parseDate('monitor', from), null);
+  assert.equal(parseDate('sunk', from), null);
+  assert.equal(parseDate('thurs', from), '2026-11-12');
+  assert.equal(parseDate('tues', from), '2026-11-10');
+  assert.equal(parseDate('next monday', from), '2026-11-16');
+});
+t('parseQuick reads dates of up to three words after due: and plan: and keeps the leftover words', () => {
+  const a = parseQuick('Send invoice due:nov 20 #brand', projects, from);
+  assert.equal(a.due_date, '2026-11-20');
+  assert.equal(a.title, 'Send invoice');
+  assert.equal(a.project?.id, 'p2');
+  const b = parseQuick('Prep deck plan:next fri for the board', projects, from);
+  assert.equal(b.planned_for, '2026-11-13');
+  assert.equal(b.title, 'Prep deck for the board');
+  const c = parseQuick('Renew cert due:in 3 days +ops', projects, from);
+  assert.equal(c.due_date, '2026-11-08');
+  assert.deepEqual(c.labels, ['ops']);
+  assert.equal(c.title, 'Renew cert');
+  const d = parseQuick('Call Bob due:fri 3 times', projects, from);
+  assert.equal(d.due_date, '2026-11-06');
+  assert.equal(d.title, 'Call Bob 3 times');
+  const e = parseQuick('Meet my friend tomorrow', projects, from);
+  assert.equal(e.planned_for, '2026-11-06');
+  assert.equal(e.title, 'Meet my friend');
+  const f = parseQuick('Fix the monitor', projects, from);
+  assert.equal(f.planned_for, null);
+  assert.equal(f.title, 'Fix the monitor');
+  const g = parseQuick('Pay rent due:whenever it suits', projects, from);
+  assert.equal(g.due_date, null);
+  assert.ok(g.tokens.some((x) => x.kind === 'due?'));
+  assert.equal(g.title, 'Pay rent it suits');
+});
+t('parseDate ignores inherited object keys and reads a year after month and day', () => {
+  assert.equal(parseDate('constructor', from), null);
+  assert.equal(parseDate('next constructor', from), null);
+  assert.equal(parseDate('dec 1 2027', from), '2027-12-01');
+  assert.equal(parseDate('1 dec 2027', from), '2027-12-01');
+  assert.equal(parseDate('12/1/2027', from), '2027-12-01');
+  assert.equal(parseDate('feb 30 2027', from), null);
+});
+t('parseQuick cuts tokens where they matched and reads every due: form', () => {
+  const a = parseQuick('Plan wedding wed', projects, from);
+  assert.equal(a.title, 'Plan wedding');
+  assert.equal(a.planned_for, '2026-11-11');
+  const a2 = parseQuick('Call monica mon', projects, from);
+  assert.equal(a2.title, 'Call monica');
+  assert.equal(a2.planned_for, '2026-11-09');
+  const b = parseQuick('Dinner due:fri $& budget', projects, from);
+  assert.equal(b.title, 'Dinner $& budget');
+  assert.equal(b.due_date, '2026-11-06');
+  assert.equal(b.tokens.filter((x) => x.kind === 'due').length, 1);
+  const c = parseQuick('Pay rent due: fri', projects, from);
+  assert.equal(c.due_date, '2026-11-06');
+  assert.equal(c.planned_for, null);
+  assert.equal(c.title, 'Pay rent');
+  const d = parseQuick('Pay rent due:', projects, from);
+  assert.equal(d.title, 'Pay rent');
+  assert.ok(d.tokens.some((x) => x.kind === 'due?'));
+  const e = parseQuick('Focus on: launch prep', projects, from);
+  assert.equal(e.title, 'Focus on: launch prep');
+  assert.equal(e.planned_for, null);
+  const f = parseQuick('Release due:dec 1 2027 at noon', projects, from);
+  assert.equal(f.due_date, '2027-12-01');
+  assert.equal(f.title, 'Release at noon');
+  const g = parseQuick('Review copy #café +déco', [{ id: 'p4', name: 'Café' }], from);
+  assert.equal(g.project?.id, 'p4');
+  assert.deepEqual(g.labels, ['déco']);
+  assert.equal(g.title, 'Review copy');
+  const h = parseQuick('Refactor the class due:constructor', projects, from);
+  assert.equal(h.due_date, null);
+  assert.equal(h.title, 'Refactor the class');
+});
+t('parseQuick leaves "due: " and "plan: " prose alone when no date follows', () => {
+  assert.equal(parseQuick('Plan: holiday', projects, from).title, 'Plan: holiday');
+  const a = parseQuick('Pay rent due: every month', projects, from);
+  assert.equal(a.recurrence, 'monthly');
+  assert.equal(a.title, 'Pay rent due:');
+  const b = parseQuick('Pay rent due: +bills', projects, from);
+  assert.deepEqual(b.labels, ['bills']);
+  assert.equal(b.due_date, null);
+  assert.equal(parseQuick('Review due: Q3 numbers', projects, from).title, 'Review due: Q3 numbers');
+  const c = parseQuick('Plan: wedding fri', projects, from);
+  assert.equal(c.title, 'Plan: wedding');
+  assert.equal(c.planned_for, '2026-11-06');
+  const d = parseQuick('Ship it due:whenever', projects, from);
+  assert.equal(d.title, 'Ship it');
+  assert.ok(d.tokens.some((x) => x.kind === 'due?'));
+  const e = parseQuick('Pay rent due: fri due: sat', projects, from);
+  assert.equal(e.due_date, '2026-11-07');
+  assert.equal(e.title, 'Pay rent');
+});
+t('snoozed tasks are not counted as overdue or blocked', () => {
+  const s = computeStats([task({ status: 'blocked', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01', snoozed_until: '2999-01-01' }), task({ due_date: '2000-01-01' })], []);
+  assert.equal(s.blocked, 0);
+  assert.equal(s.overdue, 1);
+});
+t('calendar text escaping drops control characters and writes every line break as \\n', () => {
+  assert.equal(esc('a\rb\u0007c'), 'a\\nbc');
+  assert.equal(esc('one\r\ntwo\nthree'), 'one\\ntwo\\nthree');
+  assert.equal(esc('x, y; z\\'), 'x\\, y\\; z\\\\');
+});
+t('plan templates are well formed', () => {
+  assert.ok(PLAN_TEMPLATES.length >= 3);
+  assert.equal(new Set(PLAN_TEMPLATES.map((x) => x.id)).size, PLAN_TEMPLATES.length);
+  for (const tpl of PLAN_TEMPLATES) {
+    assert.ok(/^[a-z0-9-]+$/.test(tpl.id) && tpl.name && tpl.summary && tpl.milestones.length, tpl.id);
+    for (const m of tpl.milestones) {
+      assert.ok(m.title && m.weeks > 0 && m.tasks.length, `${tpl.id}: ${m.title}`);
+      for (const task of m.tasks) assert.ok(typeof task.title === 'string' && task.title.trim() && (task.estimate === undefined || task.estimate > 0), `${tpl.id}: ${task.title}`);
+    }
+  }
 });
 
 console.log(`unit checks passed (${n})`);

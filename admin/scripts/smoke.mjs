@@ -34,6 +34,10 @@ const logTabsSource = await readFile(new URL('../app/projects/[id]/LogTabs.tsx',
 check('evidence links render on decision and note cards as well as changelog', (logTabsSource.match(/<EvidenceSource href=\{e\.evidence_url\} \/>/g) || []).length === 2);
 
 const stamp = Date.now().toString(36);
+// Dates relative to today (UTC, like the server), so the checks hold on any day.
+const dayPlus = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+const commitCount = async () => (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const fileAtHead = async (path) => (await (await fetch(`http://localhost:4010/__test/file?path=${encodeURIComponent(path)}`)).json()).content;
 const sourceKeyOne = await call('/projects', 'POST', { name: `Life one ${stamp}`, source_key: ' life:inventory-1 ' });
 const sourceKeyDuplicate = await call('/projects', 'POST', { name: `Life duplicate ${stamp}`, source_key: 'life:inventory-1' });
 check('repo-less project source keys are trimmed and deduplicated', sourceKeyOne.body.created?.length === 1 && sourceKeyDuplicate.body.created?.length === 0 && sourceKeyDuplicate.body.failed?.length === 1);
@@ -47,6 +51,8 @@ const replayReceipt = await call('/projects', 'POST', idempotentPayload, { ...js
 check('same idempotency key replays the original result', firstReceipt.body.created?.[0]?.id === replayReceipt.body.created?.[0]?.id);
 const reusedKey = await call('/projects', 'POST', { ...idempotentPayload, name: `Different ${stamp}` }, { ...json, 'Idempotency-Key': idem });
 check('same key with different payload is rejected', reusedKey.status === 409);
+const receipts = JSON.parse(await fileAtHead('operations.json')).items;
+check('receipts carry the time they were written, so old ones can be dropped', typeof receipts[idem]?.at === 'string' && !Number.isNaN(Date.parse(receipts[idem].at)));
 const { body: made } = await call('/projects', 'POST', { name: `Smoke ${stamp}`, status: 'active', agents: [] });
 const pid = made.created[0].id;
 const { body: importProject } = await call('/projects', 'POST', { name: `Import smoke ${stamp}`, status: 'active', agents: [] });
@@ -158,12 +164,12 @@ const badEstimate = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'B
 const badRecurrence = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bad recurrence', recurrence: 'fortnightly' });
 const badDate = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Bad date', planned_for: 'tomorrow' });
 check('invalid estimate, recurrence and planned_for are rejected', badEstimate.status === 400 && badRecurrence.status === 400 && badDate.status === 400);
-const { body: weekly } = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Weekly dependency update', recurrence: 'weekly', due_date: '2026-11-02', estimate: 3, labels: ['chore', '#ops', 'chore'] });
+const { body: weekly } = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Weekly dependency update', recurrence: 'weekly', due_date: dayPlus(1), estimate: 3, labels: ['chore', '#ops', 'chore'] });
 check('labels are deduplicated and stripped of #', JSON.stringify(weekly.task.labels) === JSON.stringify(['chore', 'ops']) && weekly.task.estimate === 3);
 const finished = await call(`/tasks/${weekly.task.id}`, 'PATCH', { status: 'done' });
 check('finishing a recurring task spawns the next occurrence a week later',
   finished.status === 200 && finished.body.task.status === 'done' && finished.body.task.recurrence === null &&
-  finished.body.spawned?.status === 'todo' && finished.body.spawned.due_date === '2026-11-09' && finished.body.spawned.recurrence === 'weekly' && finished.body.spawned.estimate === 3);
+  finished.body.spawned?.status === 'todo' && finished.body.spawned.due_date === dayPlus(8) && finished.body.spawned.recurrence === 'weekly' && finished.body.spawned.estimate === 3);
 const reopened = await call(`/tasks/${weekly.task.id}`, 'PATCH', { status: 'todo' });
 const refinished = await call(`/tasks/${weekly.task.id}`, 'PATCH', { status: 'done' });
 check('a reopened occurrence does not spawn twice', reopened.status === 200 && refinished.body.spawned === null);
@@ -176,8 +182,14 @@ const commitsAfterBulk = (await (await fetch('http://localhost:4010/__stats')).j
 check('bulk patch edits several tasks in one commit', bulk.status === 200 && bulk.body.tasks.length === 2 && bulk.body.tasks[0].priority === 'high' && bulk.body.tasks[1].agent === 'claude-code' && commitsAfterBulk === commitsBeforeBulk + 1);
 const bulkInvalid = await call('/tasks', 'PATCH', { items: [{ id: a.task.id, priority: 'low' }, { id: 'missing-task', priority: 'low' }] });
 check('bulk patch with one bad id writes nothing', bulkInvalid.status === 404 && (await call(`/projects/${planPid}`)).body.tasks.find((t) => t.id === a.task.id).priority === 'high');
-const snoozed = await call(`/tasks/${a.task.id}`, 'PATCH', { snoozed_until: '2999-01-01' });
-check('snoozed tasks leave today and the attention list', snoozed.status === 200 && snoozed.body.task.snoozed_until === '2999-01-01');
+const { body: ownerLate } = await call(`/projects/${planPid}/tasks`, 'POST', { title: 'Owner step, overdue', agent: 'me', due_date: dayPlus(-2) });
+const hubAwake = (await call('/projects')).body;
+const snoozed = await call(`/tasks/${ownerLate.task.id}`, 'PATCH', { snoozed_until: dayPlus(5) });
+const hubSnoozed = (await call('/projects')).body;
+const inHub = (hub, id) => ({ today: hub.today.some((t) => t.id === id), mine: hub.mine.some((t) => t.id === id), attention: hub.attention.some((x) => x.task_id === id), overdue: hub.projects.find((p) => p.id === planPid).stats.overdue });
+check('an overdue owner step is on today, in my tasks and in attention until it is snoozed',
+  JSON.stringify(inHub(hubAwake, ownerLate.task.id)) === JSON.stringify({ today: true, mine: true, attention: true, overdue: 1 }) && snoozed.status === 200 &&
+  JSON.stringify(inHub(hubSnoozed, ownerLate.task.id)) === JSON.stringify({ today: false, mine: false, attention: false, overdue: 0 }), JSON.stringify([inHub(hubAwake, ownerLate.task.id), inHub(hubSnoozed, ownerLate.task.id)]));
 const comment = await call(`/tasks/${bTask.task.id}/comments`, 'POST', { body: 'Owner note: ship behind a flag' });
 check('owner comments attach to the task', comment.status === 200 && comment.body.entry.task_id === bTask.task.id && comment.body.entry.author === 'me');
 const agentComment = await call(`/agent/tasks/${bTask.task.id}/comments`, 'POST', { body: 'Which flag name?' }, agent('claude-code'));
@@ -197,7 +209,7 @@ const restoredAgain = await call('/tasks/restore', 'POST', { tasks: removed.body
 check('restoring twice is a no-op', restoredAgain.body.restored.length === 0);
 const reorder = await call(`/projects/${planPid}/reorder`, 'POST', { order: [{ id: bTask.task.id }, { id: a.task.id }] });
 const ordered = (await call(`/projects/${planPid}`)).body.tasks.filter((t) => [a.task.id, bTask.task.id].includes(t.id)).sort((x, y) => x.sort_order - y.sort_order).map((t) => t.title);
-check('reorder writes the new sequence', reorder.status === 200 && JSON.stringify(ordered) === JSON.stringify(['Bulk B', 'Bulk A']));
+check('reorder writes the new sequence and answers with placements only', reorder.status === 200 && JSON.stringify(ordered) === JSON.stringify(['Bulk B', 'Bulk A']) && reorder.body.tasks.every((t) => typeof t.sort_order === 'number' && !('title' in t)));
 
 const captured = await call('/inbox', 'POST', { title: 'Try the new build pipeline', priority: 'high', labels: ['ops'], due_date: '2026-11-20' });
 const proposed = await call('/agent/inbox', 'POST', { title: 'Consider rate limiting', project_id: planPid }, agent('claude-code'));
@@ -239,6 +251,155 @@ check('restoring a version rewrites nothing and adds one commit', restoredProjec
 const badSha = await call(`/projects/${planPid}/history/not-a-sha`);
 check('malformed commit ids are rejected', badSha.status === 400);
 await call(`/projects/${planPid}`, 'DELETE');
+
+// ─── fixes from the review: identities, cycles, hints, threads, review passes ───
+const { body: fixProject } = await call('/projects', 'POST', { name: `Fixes ${stamp}`, status: 'active', agents: [] });
+const fixPid = fixProject.created[0].id;
+const imported2 = await call(`/projects/${fixPid}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:recurring`, title: 'Imported weekly chore', recurrence: 'weekly', due_date: dayPlus(1), agent: 'claude-code' }] });
+const choreId = imported2.body.created[0].id;
+const choreDone = await call(`/tasks/${choreId}`, 'PATCH', { status: 'done' });
+const storeStillReads = await call('/projects');
+check('finishing an imported recurring task spawns a copy without the import key, and the store still reads',
+  choreDone.status === 200 && choreDone.body.spawned && !choreDone.body.spawned.source_key && storeStillReads.status === 200);
+check('the next occurrence is deferred until it is due, so an agent cannot pick it up again at once',
+  choreDone.body.spawned.snoozed_until === dayPlus(8) && (await call(`/agent/next?project=${fixPid}`, 'GET', undefined, agent('claude-code'))).body.task === null);
+const { body: top } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Top' });
+const { body: mid } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Mid', parent_id: top.task.id });
+await call(`/tasks/${mid.task.id}`, 'PATCH', { status: 'done' });
+const cycle = await call(`/tasks/${top.task.id}`, 'PATCH', { parent_id: mid.task.id });
+check('a task cannot be moved under its own finished subtask', cycle.status === 400);
+const hinted = await call('/inbox', 'POST', { title: 'Water the plants', planned_for: '2026-11-03', recurrence: 'weekly', priority: 'low' });
+const hintedTask = await call(`/inbox/${hinted.body.item.id}/triage`, 'POST', { project_id: fixPid });
+check('plan-for and repeat hints survive capture and triage', hinted.body.item.planned_for === '2026-11-03' && hintedTask.body.task.planned_for === '2026-11-03' && hintedTask.body.task.recurrence === 'weekly');
+const keyed = await call(`/projects/${fixPid}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:keyed`, title: 'Keyed task' }] });
+const keyedId = keyed.body.created[0].id;
+const keyedRemoved = await call(`/tasks/${keyedId}`, 'DELETE');
+const keyedBack = await call('/tasks/restore', 'POST', { tasks: keyedRemoved.body.removed });
+check('undoing a delete keeps the task\'s import identity', keyedBack.body.restored[0]?.source_key === `inventory:${stamp}:keyed`);
+const reimport = await call(`/projects/${fixPid}/tasks`, 'POST', { items: [{ source_key: `inventory:${stamp}:keyed`, title: 'Keyed task again' }] });
+check('so a repeated import does not duplicate it', reimport.body.created.length === 0 && reimport.body.skipped === 1);
+const { body: otherProject } = await call('/projects', 'POST', { name: `Other ${stamp}`, status: 'active', agents: [] });
+const { body: otherTask } = await call(`/projects/${otherProject.created[0].id}/tasks`, 'POST', { title: 'Lives elsewhere' });
+const crafted = await call('/tasks/restore', 'POST', { tasks: [{ ...otherTask.task, project_id: fixPid }] });
+check('a restore payload cannot plant an id that already exists in another project', crafted.status === 409);
+const before = (await call(`/projects/${fixPid}`)).body.tasks.find((t) => t.id === top.task.id).updated_at;
+await new Promise((r) => setTimeout(r, 20));
+const { body: child2 } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Child of top', parent_id: top.task.id });
+const { body: grandchild } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Grandchild', parent_id: child2.task.id });
+const { body: ms } = await call(`/projects/${fixPid}/milestones`, 'POST', { title: 'Later' });
+await call(`/projects/${fixPid}/reorder`, 'POST', { order: [{ id: top.task.id, milestone_id: ms.milestone.id }] });
+const afterReorder = (await call(`/projects/${fixPid}`)).body.tasks;
+check('reordering keeps updated_at and moves grandchildren with their root', afterReorder.find((t) => t.id === top.task.id).updated_at === before && afterReorder.find((t) => t.id === grandchild.task.id).milestone_id === ms.milestone.id);
+const { body: blockedTask } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Stuck on a key', status: 'blocked', agent: 'claude-code' });
+const commitsBeforeReply = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const replied = await call(`/tasks/${blockedTask.task.id}/comments`, 'POST', { body: 'Key is in the vault', status: 'todo' });
+const commitsAfterReply = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+check('reply and unblock is one commit', replied.status === 200 && replied.body.task.status === 'todo' && replied.body.entry.task_id === blockedTask.task.id && commitsAfterReply === commitsBeforeReply + 1);
+const commitsBeforeReview = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const reviewed = await call(`/projects/${fixPid}/review`, 'POST', { next_action: 'Ship the chore', update: { health: 'at_risk', body: 'Behind on the chore' } });
+const commitsAfterReview = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+check('a review pass with an update is one commit', reviewed.status === 200 && reviewed.body.project.last_reviewed_at && reviewed.body.project.next_action === 'Ship the chore' && reviewed.body.entries.some((e) => e.kind === 'update' && e.health === 'at_risk') && commitsAfterReview === commitsBeforeReview + 1);
+const badReview = await call(`/projects/${fixPid}/review`, 'POST', { update: { health: 'fine', body: 'x' } });
+check('a review update needs a real health call', badReview.status === 400);
+const commitsBeforeTemplate = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+const templated = await call('/projects', 'POST', { name: `Templated ${stamp}`, status: 'planned', template: 'research-spike' });
+const templatedDetail = await call(`/projects/${templated.body.created[0].id}`);
+const commitsAfterTemplate = (await (await fetch('http://localhost:4010/__stats')).json()).commits;
+check('a project created from a template is one commit with its plan', templatedDetail.body.milestones.length === 1 && templatedDetail.body.tasks.length === 4 && commitsAfterTemplate === commitsBeforeTemplate + 1);
+const badTemplate = await call('/projects', 'POST', { name: `Bad template ${stamp}`, template: 'nope' });
+check('an unknown template creates nothing', badTemplate.body.created.length === 0 && badTemplate.body.failed[0].reason === 'no template nope');
+
+// ─── fixes from the second review: late chores, one-commit undo, identities, agent gates, validation ───
+const { body: lateChore } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Late weekly chore', recurrence: 'weekly', due_date: dayPlus(-30) });
+const lateDone = await call(`/tasks/${lateChore.task.id}`, 'PATCH', { status: 'done' });
+check('a recurring task finished a month late spawns its next occurrence in the coming week, never in the past',
+  lateDone.status === 200 && !!lateDone.body.spawned && lateDone.body.spawned.due_date > dayPlus(0) && lateDone.body.spawned.due_date <= dayPlus(7) && lateDone.body.spawned.snoozed_until === lateDone.body.spawned.due_date);
+const commitsBeforeReopen = await commitCount();
+const reopened2 = await call(`/tasks/${lateChore.task.id}/reopen`, 'POST', { status: 'todo', recurrence: 'weekly', spawned_id: lateDone.body.spawned.id });
+const commitsAfterReopen = await commitCount();
+const afterReopen = (await call(`/projects/${fixPid}`)).body.tasks;
+check('undoing a finish reopens the task, gives the rule back and removes the spawned occurrence in one commit',
+  reopened2.status === 200 && reopened2.body.task.status === 'todo' && reopened2.body.task.recurrence === 'weekly' && reopened2.body.task.done_at === null && reopened2.body.removed.length === 1 &&
+  !afterReopen.some((t) => t.id === lateDone.body.spawned.id) && commitsAfterReopen === commitsBeforeReopen + 1);
+check('reopen refuses a closed status', (await call(`/tasks/${lateChore.task.id}/reopen`, 'POST', { status: 'done' })).status === 400);
+const plantedProject = await call('/tasks/restore', 'POST', { tasks: [{ ...top.task, id: fixPid }] });
+await call('/repos', 'POST', { input: `fixture-owner/fixture-repo-${stamp}` });
+const trackedRepo = (await call('/repos')).body.repos.find((r) => r.repo === `fixture-repo-${stamp}`);
+const plantedRepo = await call('/tasks/restore', 'POST', { tasks: [{ ...top.task, id: trackedRepo?.id }] });
+check('a restore payload cannot reuse a project id or a tracked repository id', plantedProject.status === 409 && !!trackedRepo && plantedRepo.status === 409);
+const badStamp = await call('/tasks/restore', 'POST', { tasks: [{ ...otherTask.task, id: `${otherTask.task.id}-x`, project_id: fixPid, done_at: 'yesterday' }] });
+check('a restore payload with a malformed timestamp is rejected', badStamp.status === 400);
+const { body: gated } = await call('/projects', 'POST', { name: `Gated ${stamp}`, status: 'active', agents: ['other-agent'] });
+const gatedPid = gated.created[0].id;
+const { body: gatedTask } = await call(`/projects/${gatedPid}/tasks`, 'POST', { title: 'Gated task' });
+const gatedComment = await call(`/agent/tasks/${gatedTask.task.id}/comments`, 'POST', { body: 'Can I help?' }, agent('claude-code'));
+const allowedComment = await call(`/agent/tasks/${gatedTask.task.id}/comments`, 'POST', { body: 'On it' }, agent('other-agent'));
+check('agent comments are checked against the project like every other agent write', gatedComment.status === 409 && allowedComment.status === 200 && allowedComment.body.entry.author === 'other-agent');
+await call(`/projects/${gatedPid}`, 'PATCH', { status: 'paused' });
+check('agent comments are refused on a paused project', (await call(`/agent/tasks/${gatedTask.task.id}/comments`, 'POST', { body: 'Still here' }, agent('other-agent'))).status === 409);
+const agentTask = await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Agent subtask', estimate: 3, labels: ['ops', '#ops'], due_date: dayPlus(3), assign_self: true }, agent('claude-code'));
+check('agents set estimate, labels and due date on the tasks they add',
+  agentTask.status === 200 && agentTask.body.task.estimate === 3 && JSON.stringify(agentTask.body.task.labels) === JSON.stringify(['ops']) && agentTask.body.task.due_date === dayPlus(3) && agentTask.body.task.agent === 'claude-code');
+check('agent task fields are validated', (await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Bad', estimate: -1 }, agent('claude-code'))).status === 400);
+const { body: msB } = await call(`/projects/${fixPid}/milestones`, 'POST', { title: 'Cascade' });
+const { body: parentT } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Parent to move' });
+const { body: childT } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Child that follows', parent_id: parentT.task.id });
+await call(`/tasks/${parentT.task.id}`, 'PATCH', { milestone_id: msB.milestone.id });
+const cascaded = (await call(`/projects/${fixPid}`)).body.tasks.find((t) => t.id === childT.task.id);
+check('moving a task to a milestone moves its subtasks with it', cascaded?.milestone_id === msB.milestone.id);
+const badKind = await call(`/projects/${fixPid}/entries`, 'POST', { kind: 'rumor', title: 'x' });
+const badDecision = await call(`/projects/${fixPid}/entries`, 'POST', { kind: 'decision', title: 'x', decision_status: 'maybe' });
+const badEntryDate = await call(`/projects/${fixPid}/entries`, 'POST', { kind: 'note', title: 'x', entry_date: 'yesterday' });
+check('entry kind, decision status and date are validated', badKind.status === 400 && badDecision.status === 400 && badEntryDate.status === 400);
+const { body: noteEntry } = await call(`/projects/${fixPid}/entries`, 'POST', { kind: 'note', title: 'Plain note', body: 'b' });
+const badEdit = await call(`/entries/${noteEntry.created[0].id}`, 'PATCH', { kind: 'update' });
+const badEditTitle = await call(`/entries/${noteEntry.created[0].id}`, 'PATCH', { title: '  ' });
+check('editing an entry is validated like creating one', badEdit.status === 400 && badEditTitle.status === 400);
+const badTarget = await call(`/projects/${fixPid}`, 'PATCH', { target_date: 'next week' });
+const badReviewed = await call(`/projects/${fixPid}`, 'PATCH', { last_reviewed_at: 'yesterday' });
+const badPriority = await call(`/projects/${fixPid}`, 'PATCH', { priority: 'urgent' });
+check('project dates, review stamps and priority are validated', badTarget.status === 400 && badReviewed.status === 400 && badPriority.status === 400);
+const ownerTomorrow = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Owner step due today, moved on', agent: 'me', due_date: dayPlus(0), planned_for: dayPlus(1) });
+check('a task planned for tomorrow is off today even when it is due today', ownerTomorrow.status === 200 && !(await call('/projects')).body.today.some((t) => t.id === ownerTomorrow.body.task.id));
+// ─── third round: anchors, reopen identity, real dates, commit messages ───
+const { body: monthly } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Monthly chore', recurrence: 'monthly', due_date: dayPlus(-45) });
+const monthlyDone = await call(`/tasks/${monthly.task.id}`, 'PATCH', { status: 'done' });
+check('a spawned occurrence records what spawned it and the day of the month it aims for',
+  monthlyDone.body.spawned?.spawned_from === monthly.task.id && monthlyDone.body.spawned.recurrence_day === Number(dayPlus(-45).slice(8, 10)) && monthlyDone.body.spawned.due_date > dayPlus(0));
+const { body: otherChore } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Other daily chore', recurrence: 'daily' });
+const wrongReopen = await call(`/tasks/${monthly.task.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: otherChore.task.id });
+const otherStill = (await call(`/projects/${fixPid}`)).body.tasks.some((t) => t.id === otherChore.task.id);
+check('reopen refuses a spawned_id this task did not spawn, and deletes nothing', wrongReopen.status === 400 && otherStill);
+await call(`/tasks/${monthlyDone.body.spawned.id}`, 'DELETE');
+const goneReopen = await call(`/tasks/${monthly.task.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: monthlyDone.body.spawned.id });
+check('reopen gives the rule back when the spawned occurrence is already gone', goneReopen.status === 200 && goneReopen.body.task.recurrence === 'monthly' && goneReopen.body.removed.length === 0);
+const badMonth = await call(`/tasks/${monthly.task.id}`, 'PATCH', { due_date: '2026-13-01' });
+const badDay = await call(`/tasks/${monthly.task.id}`, 'PATCH', { planned_for: '2026-02-30' });
+const badMsDate = await call(`/projects/${fixPid}/milestones`, 'POST', { title: 'Bad date', target_date: '2026-02-30' });
+const badLinks = await call(`/projects/${fixPid}`, 'PATCH', { links: {} });
+const badOwner = await call(`/projects/${fixPid}`, 'PATCH', { owner: 42 });
+check('impossible dates, malformed links and a numeric owner are refused', badMonth.status === 400 && badDay.status === 400 && badMsDate.status === 400 && badLinks.status === 400 && badOwner.status === 400);
+const fakeLog = (await (await fetch('http://localhost:4010/__stats')).json()).log;
+check('a reply that changes status says so in the commit message', fakeLog.some((m) => /reply and set todo on Stuck on a key/.test(m)));
+check('a weekly occurrence carries no month anchor', lateDone.body.spawned.recurrence_day === null);
+const { body: m2 } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Monthly chain', recurrence: 'monthly', due_date: dayPlus(-40) });
+const occ = (await call(`/tasks/${m2.task.id}`, 'PATCH', { status: 'done' })).body.spawned;
+const grand = (await call(`/tasks/${occ.id}`, 'PATCH', { status: 'done' })).body.spawned;
+const chainReopen = await call(`/tasks/${m2.task.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: occ.id });
+const grandNow = (await call(`/projects/${fixPid}`)).body.tasks.find((t) => t.id === grand.id);
+check('undoing the first finish after its occurrence was finished too leaves the rule with the live chain',
+  chainReopen.status === 200 && chainReopen.body.task.recurrence === null && chainReopen.body.removed.length === 0 && grandNow?.recurrence === 'monthly');
+const occBack = await call(`/tasks/${occ.id}/reopen`, 'POST', { status: 'todo', recurrence: 'monthly', spawned_id: grand.id });
+check('undoing a finish keeps the month anchor on the reopened occurrence',
+  occBack.status === 200 && occBack.body.removed.length === 1 && occBack.body.task.recurrence === 'monthly' && occ.recurrence_day === Number(dayPlus(-40).slice(8, 10)) && occBack.body.task.recurrence_day === occ.recurrence_day);
+const occRemoved = await call(`/tasks/${occ.id}`, 'DELETE');
+const occRestored = await call('/tasks/restore', 'POST', { tasks: occRemoved.body.removed });
+check('undoing a delete keeps an occurrence\'s anchor and origin', occRestored.body.restored[0]?.recurrence_day === occ.recurrence_day && occRestored.body.restored[0]?.spawned_from === m2.task.id);
+await call(`/repos/${trackedRepo?.id}`, 'DELETE');
+await call(`/projects/${gatedPid}`, 'DELETE');
+await call(`/projects/${templated.body.created[0].id}`, 'DELETE');
+await call(`/projects/${otherProject.created[0].id}`, 'DELETE');
+await call(`/projects/${fixPid}`, 'DELETE');
 
 await fetch('http://localhost:4010/__test/legacy');
 const legacyRead = await call('/projects');
