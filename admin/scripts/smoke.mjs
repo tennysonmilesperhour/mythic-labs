@@ -457,7 +457,7 @@ await call(`/agent/tasks/${apBuilt.task.id}/claim`, 'POST', undefined, agent('cl
 await call(`/agent/tasks/${apBuilt.task.id}`, 'PATCH', { status: 'done', note: 'Shipped in https://github.com/o/r/pull/9' }, agent('claude-code'));
 const apProposal = await call('/agent/inbox', 'POST', { title: 'Add a retry to the sync job', project_id: apPid, estimate: 2 }, agent('claude-code'));
 const apLoose = await call('/agent/inbox', 'POST', { title: 'Loose idea without a project' }, agent('claude-code'));
-const { body: apDecision } = await call(`/agent/projects/${apPid}/entries`, 'POST', { kind: 'decision', title: 'Retry three times' }, agent('claude-code'));
+const { body: apDecision } = await call(`/agent/projects/${apPid}/entries`, 'POST', { kind: 'decision', title: 'Retry three times', task_id: apBuilt.task.id }, agent('claude-code'));
 const apQueue = (await call('/approvals')).body.items;
 const mineKeys = [`proposal:${apProposal.body.item.id}`, `offer:${apOpen.task.id}`, `decision:${apDecision.created[0].id}`, `finished:${apBuilt.task.id}`];
 check('approvals collect proposals, offers, decisions and finished work',
@@ -473,12 +473,50 @@ const fromProposal = apAfter.tasks.find((t) => t.title === 'Add a retry to the s
 check('approved items take effect: offer assigned, proposal handed to its agent, decision accepted, work signed off',
   apAfter.tasks.find((t) => t.id === apOpen.task.id).agent === 'claude-code' && fromProposal?.agent === 'claude-code' && fromProposal?.estimate === 2 &&
   apAfter.entries.find((e) => e.id === apDecision.created[0].id).decision_status === 'accepted' && !!apAfter.tasks.find((t) => t.id === apBuilt.task.id).approved_at);
+const commitsBeforeUndo = await commitCount();
 const apUndoResult = await call('/approvals/undo', 'POST', { undo: apBulk.body.undo });
 const apUndone = (await call(`/projects/${apPid}`)).body;
-check('undo puts every approval back',
-  apUndoResult.body.restored === 4 && !apUndone.tasks.some((t) => t.title === 'Add a retry to the sync job') && apUndone.tasks.find((t) => t.id === apOpen.task.id).agent === null &&
+check('undo puts every approval back including a decision linked to finished work',
+  apUndoResult.body.restored === 4 && apUndoResult.body.skipped.length === 0 && (await commitCount()) === commitsBeforeUndo + 1 && !apUndone.tasks.some((t) => t.title === 'Add a retry to the sync job') && apUndone.tasks.find((t) => t.id === apOpen.task.id).agent === null &&
   apUndone.tasks.find((t) => t.id === apOpen.task.id).offer?.agent === 'claude-code' && apUndone.entries.find((e) => e.id === apDecision.created[0].id).decision_status === 'proposed' &&
   apUndone.tasks.find((t) => t.id === apBuilt.task.id).approved_at === null && (await call('/inbox')).body.items.some((i) => i.id === apProposal.body.item.id));
+// Reversals within one batch must not invalidate another item's guard.
+for (const action of ['approve', 'reject']) {
+  for (const reverse of [false, true]) {
+    const ops = [
+      { kind: 'decision', id: apDecision.created[0].id, action },
+      { kind: 'finished', id: apBuilt.task.id, action, note: 'Review batch test' },
+    ];
+    if (reverse) ops.reverse();
+    const batch = await call('/approvals', 'POST', { items: ops });
+    const undo = await call('/approvals/undo', 'POST', { undo: batch.body.undo });
+    const state = (await call(`/projects/${apPid}`)).body;
+    const task = state.tasks.find((t) => t.id === apBuilt.task.id);
+    check(`linked decision and finished-work ${action} undo together (${reverse ? 'task first' : 'decision first'})`,
+      batch.body.results.every((r) => r.ok) && undo.body.restored === 2 && undo.body.skipped.length === 0 &&
+      task.status === 'done' && task.approved_at === null &&
+      state.entries.find((e) => e.id === apDecision.created[0].id).decision_status === 'proposed' &&
+      !state.entries.some((e) => e.body === 'Review batch test'));
+  }
+}
+// Genuine changes before undo still block affected items, even in a mixed batch.
+const changedBatch = await call('/approvals', 'POST', { items: [
+  { kind: 'decision', id: apDecision.created[0].id, action: 'approve' },
+  { kind: 'finished', id: apBuilt.task.id, action: 'approve' },
+] });
+await call(`/tasks/${apBuilt.task.id}`, 'PATCH', { notes: 'Keep the latest owner edit' });
+const changedBatchUndo = await call('/approvals/undo', 'POST', { undo: changedBatch.body.undo });
+const changedBatchState = (await call(`/projects/${apPid}`)).body;
+check('mixed undo preserves later task edits while restoring an unchanged decision',
+  changedBatchUndo.body.restored === 1 && changedBatchUndo.body.skipped.length === 1 &&
+  changedBatchState.tasks.find((t) => t.id === apBuilt.task.id).notes === 'Keep the latest owner edit' &&
+  !!changedBatchState.tasks.find((t) => t.id === apBuilt.task.id).approved_at &&
+  changedBatchState.entries.find((e) => e.id === apDecision.created[0].id).decision_status === 'proposed');
+await call(`/tasks/${apBuilt.task.id}/reopen`, 'POST', { status: 'todo' });
+await call(`/tasks/${apBuilt.task.id}`, 'PATCH', { status: 'done' });
+const duplicateBatch = await call('/approvals', 'POST', { items: [{ kind: 'decision', id: apDecision.created[0].id, action: 'approve' }] });
+const duplicateUndo = await call('/approvals/undo', 'POST', { undo: [...duplicateBatch.body.undo, ...duplicateBatch.body.undo] });
+check('a repeated item in one undo batch restores at most once', duplicateUndo.body.restored === 1 && duplicateUndo.body.skipped.length === 1);
 const apSentBack = await call('/approvals', 'POST', { items: [{ kind: 'finished', id: apBuilt.task.id, action: 'reject', note: 'Tests fail on Node 22' }, { kind: 'offer', id: apOpen.task.id, action: 'reject' }] });
 const sweepAfter = await fetch(`${B}/agent/sweep`, { headers: agent('claude-code') }).then((r) => r.text());
 const declinedAgain = await call(`/agent/tasks/${apOpen.task.id}/offer`, 'POST', { note: 'please' }, agent('claude-code'));
