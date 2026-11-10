@@ -40,6 +40,7 @@ import {
   rankReady,
   sortAttention,
   sortProjects,
+  type DecisionStatus,
   type Entry,
   type EntryKind,
   type Hub,
@@ -54,6 +55,16 @@ import {
   type TaskRef,
   type TaskStatus,
 } from "./projectTypes";
+import {
+  APPROVAL_KINDS,
+  agentAllowed,
+  collectApprovals,
+  type ApprovalItem,
+  type ApprovalKind,
+  type ApprovalOp,
+  type ApprovalResult,
+  type ApprovalUndo,
+} from "./approvals";
 
 // Data lives in git via store.ts: one JSON file per project.
 
@@ -395,6 +406,7 @@ export async function getHub(): Promise<Hub> {
       .flatMap((d) => d.tasks.filter((t) => t.status !== "done" && t.due_date).map((t) => ref(d, t)))
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!) || PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]),
     inbox,
+    approvals: collectApprovals(all, inbox).length,
     recent: all
       .flatMap((d) =>
         d.entries
@@ -749,6 +761,8 @@ function newTask(d: ProjectDetail, clean: Record<string, unknown>): Task {
     snoozed_until: null,
     recurrence_day: null,
     spawned_from: null,
+    approved_at: null,
+    offer: null,
     claimed_at: null,
     done_at: null,
     sort_order: d.tasks.length,
@@ -823,6 +837,8 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
         // An import identity belongs to one task; the store refuses duplicates.
         source_key: null,
         spawned_from: task.id,
+        approved_at: null,
+        offer: null,
         recurrence: rule,
         recurrence_day: MONTH_RULES.includes(rule) ? anchor : null,
         status: "todo",
@@ -1093,6 +1109,8 @@ export async function restoreTasks(tasks: Task[]): Promise<{ restored: Task[] }>
           sort_order: typeof clean.sort_order === "number" ? clean.sort_order : d.tasks.length,
           claimed_at: raw.claimed_at ?? null,
           done_at: raw.done_at ?? null,
+          approved_at: typeof raw.approved_at === "string" && ISO_RE.test(raw.approved_at) ? raw.approved_at : null,
+          offer: raw.offer ?? null,
           created_at: raw.created_at || now(),
           updated_at: now(),
         });
@@ -1329,7 +1347,8 @@ export async function deleteEntry(id: string): Promise<void> {
  */
 export async function nextTask(
   agent: string,
-  projectId?: string
+  projectId?: string,
+  opts: { assignedOnly?: boolean } = {}
 ): Promise<{ task: Task; detail: ProjectDetail } | null> {
   const all = sortProjects((await loadAll()).map((d) => ({ ...d.project, d }))).map((x) => x.d);
   for (const d of all) {
@@ -1339,7 +1358,8 @@ export async function nextTask(
     // explicitly assigned to an agent. Keep selection aligned with claimTask.
     if (d.project.agents.length && !d.project.agents.includes(agent)) continue;
     // Unassigned work is available when the project lists this agent (or none).
-    const open = !d.project.agents.length || d.project.agents.includes(agent);
+    // The daily run asks for assigned work only: unassigned work goes through an offer you approve.
+    const open = !opts.assignedOnly && (!d.project.agents.length || d.project.agents.includes(agent));
     const task = rankReady(d.tasks, d.milestones).find((t) => t.agent === agent || (!t.agent && open));
     if (task) return { task, detail: d };
   }
@@ -1488,26 +1508,266 @@ export async function triageInbox(id: string, input: Record<string, unknown>): P
     (s) => {
       const item = s.inbox.items.find((x) => x.id === id);
       if (!item) throw new NotFound("inbox item not found");
-      const projectId = String(input.project_id ?? item.project_id ?? "");
-      if (!projectId) throw new Invalid("pick a project");
-      const d = projectIn(s, projectId);
-      // Every hint the capture carried comes along; items written before a field existed read as null.
-      const fields: Record<string, unknown> = {
-        title: item.title,
-        notes: item.notes,
-        agent: item.agent,
-        priority: item.priority ?? "medium",
-        due_date: item.due_date,
-        planned_for: item.planned_for ?? null,
-        recurrence: item.recurrence ?? null,
-        estimate: item.estimate,
-        labels: item.labels,
+      return { task: taskFromInbox(s, item, input) };
+    }
+  );
+}
+
+/** Add an inbox item to its project as a task and remove it from the inbox, on the draft. */
+function taskFromInbox(s: Snapshot, item: InboxItem, input: Record<string, unknown>): Task {
+  const projectId = String(input.project_id ?? item.project_id ?? "");
+  if (!projectId) throw new Invalid("pick a project");
+  const d = projectIn(s, projectId);
+  // Every hint the capture carried comes along; items written before a field existed read as null.
+  const fields: Record<string, unknown> = {
+    title: item.title,
+    notes: item.notes,
+    agent: item.agent,
+    priority: item.priority ?? "medium",
+    due_date: item.due_date,
+    planned_for: item.planned_for ?? null,
+    recurrence: item.recurrence ?? null,
+    estimate: item.estimate,
+    labels: item.labels,
+  };
+  const overrides = pick(input, TASK_FIELDS.filter((f) => f !== "source_key"));
+  for (const [k, v] of Object.entries(overrides)) if (v !== undefined) fields[k] = v;
+  const task = newTask(d, fields);
+  s.inbox.items = s.inbox.items.filter((x) => x.id !== item.id);
+  return task;
+}
+
+// ─────────── approvals ───────────
+
+export async function listApprovals(): Promise<ApprovalItem[]> {
+  const s = await readSnapshot();
+  return collectApprovals(Array.from(s.projects.values()), s.inbox.items);
+}
+
+const MAX_APPROVALS = 200;
+
+/**
+ * Approve or reject many items in one commit. Each item succeeds or fails on
+ * its own; a failure (already handled, project missing) skips that item and the
+ * rest still land. Returns what changed and what it takes to undo it.
+ */
+export async function applyApprovals(input: unknown): Promise<{ results: ApprovalResult[]; undo: ApprovalUndo[] }> {
+  if (!Array.isArray(input) || !input.length) throw new Invalid("send at least one item");
+  if (input.length > MAX_APPROVALS) throw new Invalid(`at most ${MAX_APPROVALS} items at once`);
+  const ops = input.map((raw): ApprovalOp => {
+    const o = (raw ?? {}) as Record<string, unknown>;
+    if (!(APPROVAL_KINDS as readonly string[]).includes(o.kind as string)) throw new Invalid(`kind must be one of ${APPROVAL_KINDS.join(", ")}`);
+    if (o.action !== "approve" && o.action !== "reject") throw new Invalid("action must be approve or reject");
+    if (typeof o.id !== "string" || !o.id) throw new Invalid("each item needs an id");
+    return {
+      kind: o.kind as ApprovalKind,
+      id: o.id,
+      action: o.action,
+      project_id: typeof o.project_id === "string" && o.project_id ? o.project_id : null,
+      note: typeof o.note === "string" ? o.note.trim().slice(0, 2000) : "",
+    };
+  });
+  let approved = 0;
+  let rejected = 0;
+  return mutate(
+    () => `Approvals: ${[approved && `${approved} approved`, rejected && `${rejected} declined`].filter(Boolean).join(", ") || "nothing changed"}`,
+    (s) => {
+      approved = 0;
+      rejected = 0;
+      const results: ApprovalResult[] = [];
+      const undo: ApprovalUndo[] = [];
+      const seen = new Set<string>();
+      for (const op of ops) {
+        const key = `${op.kind}:${op.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        try {
+          const r = applyOne(s, op);
+          undo.push(r.undo);
+          results.push({ key, ok: true, ...(r.task_id ? { task_id: r.task_id } : {}) });
+          if (op.action === "approve") approved++;
+          else rejected++;
+        } catch (err) {
+          results.push({ key, ok: false, error: (err as Error).message });
+        }
+      }
+      return { results, undo };
+    }
+  );
+}
+
+/** One approval on the draft. Validates before it changes anything, so a throw leaves the draft as it was. */
+function applyOne(s: Snapshot, op: ApprovalOp): { undo: ApprovalUndo; task_id?: string } {
+  const stamp = now();
+  switch (op.kind) {
+    case "proposal": {
+      const item = s.inbox.items.find((x) => x.id === op.id);
+      if (!item) throw new NotFound("already sorted or dropped");
+      const before = structuredClone(item);
+      if (op.action === "reject") {
+        s.inbox.items = s.inbox.items.filter((x) => x.id !== item.id);
+        return { undo: { kind: "proposal", item: before, task_id: null } };
+      }
+      const projectId = op.project_id || item.project_id;
+      if (!projectId || !s.projects.has(projectId)) throw new Invalid("pick a project first");
+      const d = s.projects.get(projectId)!;
+      // Approving a proposal hands it to the agent that proposed it, when the project lets that agent work.
+      const agent = item.agent ?? (item.source && item.source !== ME && agentAllowed(d, item.source) ? item.source : null);
+      const task = taskFromInbox(s, item, { project_id: projectId, agent });
+      return { undo: { kind: "proposal", item: before, task_id: task.id }, task_id: task.id };
+    }
+    case "offer": {
+      const { d, item } = findIn(s, "tasks", op.id);
+      const task = item as Task;
+      const offer = task.offer;
+      if (!offer || offer.declined_at) throw new Conflict("no open offer on this task");
+      if (task.status !== "todo" || task.agent) throw new Conflict("the task was picked up or assigned meanwhile");
+      if (op.action === "approve") {
+        if (!agentAllowed(d, offer.agent)) throw new Conflict(`@${offer.agent} is not enabled for ${d.project.name}`);
+        applyTaskPatch(d, task, { agent: offer.agent });
+        task.offer = null;
+        return { undo: { kind: "offer", task_id: task.id, offer, assigned: true }, task_id: task.id };
+      }
+      task.offer = { ...offer, declined_at: stamp };
+      task.updated_at = stamp;
+      touch(d);
+      return { undo: { kind: "offer", task_id: task.id, offer, assigned: false }, task_id: task.id };
+    }
+    case "decision": {
+      const { d, item } = findIn(s, "entries", op.id);
+      const entry = item as Entry;
+      if (entry.kind !== "decision" || entry.decision_status !== "proposed") throw new Conflict("this decision was already decided");
+      const set: DecisionStatus = op.action === "approve" ? "accepted" : "rejected";
+      entry.decision_status = set;
+      touch(d);
+      return { undo: { kind: "decision", entry_id: entry.id, set } };
+    }
+    case "finished": {
+      const { d, item } = findIn(s, "tasks", op.id);
+      const task = item as Task;
+      if (task.status !== "done" || task.approved_at) throw new Conflict("already reviewed or reopened");
+      if (op.action === "approve") {
+        task.approved_at = stamp;
+        touch(d);
+        return { undo: { kind: "finished", task_id: task.id, approved: true, done_at: task.done_at, entry_id: null }, task_id: task.id };
+      }
+      const doneAt = task.done_at;
+      const note = op.note || "Sent back from Approvals. Read the thread and try again.";
+      const entry = addEntry(d, { kind: "progress", task_id: task.id, title: `Sent back: ${note.split("\n")[0].slice(0, 120)}`, body: note, author: ME });
+      // Back to todo with the same agent, so the next daily run picks it up again.
+      applyTaskPatch(d, task, { status: "todo" });
+      return { undo: { kind: "finished", task_id: task.id, approved: false, done_at: doneAt, entry_id: entry.id }, task_id: task.id };
+    }
+  }
+}
+
+/** Put approvals back, as far as nothing has moved on since. Items that moved on are reported, not forced. */
+export async function undoApprovals(input: unknown): Promise<{ restored: number; skipped: string[] }> {
+  if (!Array.isArray(input) || !input.length) throw new Invalid("nothing to undo");
+  if (input.length > MAX_APPROVALS) throw new Invalid(`at most ${MAX_APPROVALS} items at once`);
+  const steps = input as ApprovalUndo[];
+  return mutate(
+    (r) => `Approvals: undo ${r.restored} item${r.restored === 1 ? "" : "s"}`,
+    (s) => {
+      let restored = 0;
+      const skipped: string[] = [];
+      const findTask = (id: string) => {
+        for (const d of Array.from(s.projects.values())) {
+          const t = d.tasks.find((x) => x.id === id);
+          if (t) return { d, t };
+        }
+        return null;
       };
-      const overrides = pick(input, TASK_FIELDS.filter((f) => f !== "source_key"));
-      for (const [k, v] of Object.entries(overrides)) if (v !== undefined) fields[k] = v;
-      const task = newTask(d, fields);
-      s.inbox.items = s.inbox.items.filter((x) => x.id !== id);
-      return { task };
+      for (const step of steps) {
+        if (!step || typeof step !== "object") continue;
+        if (step.kind === "proposal") {
+          const item = step.item;
+          if (!item || typeof item.id !== "string" || typeof item.title !== "string") continue;
+          if (step.task_id) {
+            const hit = findTask(step.task_id);
+            if (hit && (hit.t.status !== "todo" || hit.t.claimed_at)) {
+              skipped.push(`${item.title}: the task was already started`);
+              continue;
+            }
+            if (hit) {
+              hit.d.tasks = hit.d.tasks.filter((x) => x.id !== hit.t.id);
+              for (const x of hit.d.tasks) x.depends_on = x.depends_on.filter((y) => y !== hit.t.id);
+              touch(hit.d);
+            }
+          }
+          if (!s.inbox.items.some((x) => x.id === item.id) && !allRecordIds(s).has(item.id)) {
+            const clean = cleanInbox({ title: item.title, notes: item.notes, source: item.source, project_id: item.project_id && s.projects.has(item.project_id) ? item.project_id : null,
+              agent: item.agent, priority: item.priority, due_date: item.due_date, planned_for: item.planned_for, recurrence: item.recurrence, estimate: item.estimate, labels: item.labels });
+            s.inbox.items.push({ ...(clean as unknown as InboxItem), id: item.id, created_at: typeof item.created_at === "string" ? item.created_at : now() });
+          }
+          restored++;
+        } else if (step.kind === "offer") {
+          const hit = findTask(step.task_id);
+          if (!hit || !step.offer) continue;
+          const { d, t } = hit;
+          if (step.assigned) {
+            if (t.status !== "todo" || t.agent !== step.offer.agent) {
+              skipped.push(`${t.title}: the agent already started it`);
+              continue;
+            }
+            t.agent = null;
+          }
+          t.offer = { ...step.offer, declined_at: null };
+          t.updated_at = now();
+          touch(d);
+          restored++;
+        } else if (step.kind === "decision") {
+          const hit = Array.from(s.projects.values()).flatMap((d) => d.entries.map((e) => ({ d, e }))).find((x) => x.e.id === step.entry_id);
+          if (!hit || hit.e.decision_status !== step.set) continue;
+          hit.e.decision_status = "proposed";
+          touch(hit.d);
+          restored++;
+        } else if (step.kind === "finished") {
+          const hit = findTask(step.task_id);
+          if (!hit) continue;
+          const { d, t } = hit;
+          if (step.approved) {
+            if (!t.approved_at) continue;
+            t.approved_at = null;
+          } else {
+            if (t.status !== "todo") {
+              skipped.push(`${t.title}: the agent already picked it up again`);
+              continue;
+            }
+            t.status = "done";
+            t.done_at = step.done_at ?? now();
+            if (step.entry_id) d.entries = d.entries.filter((e) => e.id !== step.entry_id);
+          }
+          t.updated_at = now();
+          touch(d);
+          restored++;
+        }
+      }
+      return { restored, skipped };
+    }
+  );
+}
+
+/**
+ * An agent asks to take an unassigned task. The owner approves or declines it
+ * on the Approvals page; a declined offer is not repeated.
+ */
+export async function offerTask(id: string, agent: string, note: string): Promise<Task> {
+  return mutate(
+    (t, s) => `${pfx(s, t.project_id)}@${agent} offers to take ${clip(t.title)}`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", id);
+      const task = item as Task;
+      assertAgentProject(d, agent);
+      if (task.agent) throw new Conflict(task.agent === agent ? "already assigned to you" : `assigned to @${task.agent}`);
+      if (isMine(task)) throw new Conflict("this is an owner step");
+      if (task.status !== "todo") throw new Conflict(`task is ${task.status}`);
+      if (task.offer?.declined_at) throw new Conflict("the owner declined an offer for this task; do not ask again");
+      if (task.offer && task.offer.agent !== agent) throw new Conflict(`@${task.offer.agent} already offered`);
+      task.offer = { agent, note: note.trim().slice(0, 2000), at: now(), declined_at: null };
+      task.updated_at = now();
+      touch(d);
+      return task;
     }
   );
 }

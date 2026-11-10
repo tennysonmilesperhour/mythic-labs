@@ -2,14 +2,16 @@ import { agentName, handle, requireAgent } from "@/lib/api";
 import { nextTask } from "@/lib/projects";
 import { renderProjectMarkdown, taskPath, waitingOn } from "@/lib/projectTypes";
 
-// GET /api/agent/next?agent=<name>[&project=<id>] · the next ready task, with
-// everything needed to start it. Read-only; claim it with POST .../claim.
+// GET /api/agent/next?agent=<name>[&project=<id>][&assigned=1] · the next ready task, with
+// everything needed to start it. Read-only; claim it with POST .../claim. With assigned=1
+// only tasks assigned to you count (the daily run uses this).
 export async function GET(req: Request) {
   return handle(async () => {
     requireAgent(req);
     const agent = agentName(req);
-    const project = new URL(req.url).searchParams.get("project") || undefined;
-    const found = await nextTask(agent, project);
+    const params = new URL(req.url).searchParams;
+    const project = params.get("project") || undefined;
+    const found = await nextTask(agent, project, { assignedOnly: params.get("assigned") === "1" });
     if (!found) return { task: null, message: "Nothing ready for you. Stop and report back." };
     const { task, detail } = found;
     const p = detail.project;

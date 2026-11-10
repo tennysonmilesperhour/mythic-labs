@@ -13,6 +13,7 @@ export const NAV_GROUPS: Array<{ title: string; items: Array<{ href: string; lab
       { href: "/", label: "Overview", key: "o" },
       { href: "/today", label: "Today", key: "t" },
       { href: "/inbox", label: "Inbox", key: "i" },
+      { href: "/approvals", label: "Approvals", key: "v" },
       { href: "/tasks", label: "My tasks", key: "m" },
       { href: "/queue", label: "All tasks", key: "q" },
       { href: "/projects", label: "Projects", key: "p" },

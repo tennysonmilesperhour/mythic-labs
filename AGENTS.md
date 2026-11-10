@@ -36,6 +36,7 @@ Rules for changing it:
 - **Health:** `projectHealth()` turns stats and attention into on track, at risk, off track, idle or paused, with reasons.
 - **Recurrence:** `nextOccurrence()` and `nextOccurrenceAfter()`; the server spawns the next occurrence when a recurring task is finished (without the import `source_key`, snoozed until it is due, always after today even when the task was finished weeks late) and clears the rule on the finished copy. The occurrence records `spawned_from` and, for month-based rules, `recurrence_day` (the day of the month to aim for, so a clamped February date does not move the chore). `POST /api/tasks/:id/reopen` undoes a finish in one commit and only takes back the occurrence the task spawned.
 - **The Markdown renderers** for `PROJECT.md`, the roadmap and the daily digest.
+- **Approvals** live in `lib/approvals.ts`: what counts as waiting (agent proposals in the inbox, open offers on todo unassigned tasks, proposed decisions, agent work done in the last 14 days without `approved_at`) and the daily run's checklist (`renderSweepMarkdown`).
 
 The same rule applies to `lib/insights.ts` (throughput, cycle time, velocity, forecasts), `lib/quick.ts` (natural-language dates and the capture grammar), `lib/templates.ts` and `lib/ical.ts`. `scripts/unit.mjs` tests them by transpiling the TypeScript in place; add a check there when you change a rule.
 
@@ -54,10 +55,11 @@ Colors are CSS variables (`app/globals.css`) consumed through Tailwind's config;
 - `blocked` requires a note.
 - `done` is refused while subtasks are open.
 - Claims 409 if another agent holds the task or the task isn't ready.
-- Agent comments attach to the task's thread (`task_id`), never change status, and are checked against the project (status, enabled agents) like every other agent write; proposals through `/api/agent/inbox` land in the inbox and touch no plan. The owner's comment route may carry a `status` so a reply and an unblock are one commit.
+- Agent comments attach to the task's thread (`task_id`), never change status, and are checked against the project (status, enabled agents) like every other agent write; proposals through `/api/agent/inbox` land in the inbox and touch no plan.
+- An agent never assigns itself unassigned work: it offers (`POST /api/agent/tasks/:id/offer`) and the owner approves. Offers are refused on assigned, owner-step or non-todo tasks, and a declined offer is final. The owner's comment route may carry a `status` so a reply and an unblock are one commit.
 - Anything the store would refuse to read back (duplicate record ids, duplicate task `source_key`s) must be refused on write: restores and spawned occurrences check the whole snapshot (every project and its rows, tracked repositories and the inbox), and a version pulled from history gets the same shape checks as a file the store reads.
 
-`dev-workflows/skills/roadmap/SKILL.md` teaches agents this loop. If you change the API, update the skill and `admin/README.md` with it, and bump the plugin version.
+`dev-workflows/skills/roadmap/SKILL.md` teaches agents this loop, and `dev-workflows/skills/daily-run/SKILL.md` the scheduled morning pass. If you change the API, update the skill and `admin/README.md` with it, and bump the plugin version.
 
 ## Verify before pushing
 
@@ -67,7 +69,7 @@ npm run typecheck && npm test && npx next build
 node scripts/fake-github.mjs &   # fake GitHub Git Data API on :4010
 GITHUB_TOKEN=fake PM_GITHUB_API_URL=http://localhost:4010 PM_DATA_OWNER=o PM_DATA_REPO=r PM_DATA_BRANCH=main \
   PM_AGENT_API_ENABLED=true PM_AGENT_TOKEN=smoke-token npx next start &
-npm run smoke                    # agent loop, claim race, parallel writes, recurrence, inbox, undo, history
+npm run smoke                    # agent loop, claim race, parallel writes, recurrence, inbox, approvals, undo, history
 ```
 
 `.github/workflows/admin.yml` runs the same steps in CI. `claude plugin validate ./dev-workflows` checks the plugin. Use fictional names in fixtures and tests.

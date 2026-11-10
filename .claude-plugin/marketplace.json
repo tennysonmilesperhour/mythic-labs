@@ -16,7 +16,7 @@
     {
       "name": "dev-workflows",
       "source": "./dev-workflows",
-      "description": "PR review, security audit, deploy helpers, CI autofix patterns, and the roadmap loop autonomous build agents use to take, build, report and discuss tasks from the dashboard, and to propose work to its inbox. Bundles MCP access to GitHub, Supabase, and Vercel where applicable."
+      "description": "PR review, security audit, deploy helpers, CI autofix patterns, and the roadmap loop autonomous build agents use to take, build, report and discuss tasks from the dashboard, to propose work to its inbox, and the scheduled daily run that builds assigned work and leaves the rest for bulk approval. Bundles MCP access to GitHub, Supabase, and Vercel where applicable."
     },
     {
       "name": "content-ops",

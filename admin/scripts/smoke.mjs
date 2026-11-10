@@ -412,6 +412,58 @@ await call(`/projects/${templated.body.created[0].id}`, 'DELETE');
 await call(`/projects/${otherProject.created[0].id}`, 'DELETE');
 await call(`/projects/${fixPid}`, 'DELETE');
 
+// ── approvals and the daily run ──
+const { body: apMade } = await call('/projects', 'POST', { name: `Approvals ${stamp}`, status: 'active', agents: [] });
+const apPid = apMade.created[0].id;
+const { body: apOpen } = await call(`/projects/${apPid}/tasks`, 'POST', { title: 'Unassigned work', acceptance: 'it works' });
+const { body: apBuilt } = await call(`/projects/${apPid}/tasks`, 'POST', { title: 'Agent work', agent: 'claude-code' });
+const apSweep = await fetch(`${B}/agent/sweep`, { headers: agent('claude-code') }).then((r) => r.text());
+check('the daily run lists assigned work to build and unassigned work to offer',
+  /## 2\. Build what is assigned to you[\s\S]*Agent work[\s\S]*## 3\./.test(apSweep) && /## 3\. Offer[\s\S]*Unassigned work[\s\S]*## 4\./.test(apSweep));
+const apNextAssigned = await call(`/agent/next?project=${apPid}&assigned=1`, 'GET', undefined, agent('claude-code'));
+const apNextOther = await call(`/agent/next?project=${apPid}&assigned=1`, 'GET', undefined, agent('codex'));
+check('assigned=1 returns only work assigned to the caller', apNextAssigned.body.task?.id === apBuilt.task.id && apNextOther.body.task === null, JSON.stringify([apNextAssigned.status, apNextAssigned.body.task?.title, apNextOther.body.task?.title]));
+const apOffered = await call(`/agent/tasks/${apOpen.task.id}/offer`, 'POST', { note: 'Small change, I can test it' }, agent('claude-code'));
+const offeredAgain = await call(`/agent/tasks/${apOpen.task.id}/offer`, 'POST', { note: 'me too' }, agent('codex'));
+check('an agent can offer to take an unassigned task, once', apOffered.status === 200 && apOffered.body.task.offer.agent === 'claude-code' && offeredAgain.status === 409);
+check('an agent cannot offer for assigned work', (await call(`/agent/tasks/${apBuilt.task.id}/offer`, 'POST', { note: 'x' }, agent('codex'))).status === 409);
+await call(`/agent/tasks/${apBuilt.task.id}/claim`, 'POST', undefined, agent('claude-code'));
+await call(`/agent/tasks/${apBuilt.task.id}`, 'PATCH', { status: 'done', note: 'Shipped in https://github.com/o/r/pull/9' }, agent('claude-code'));
+const apProposal = await call('/agent/inbox', 'POST', { title: 'Add a retry to the sync job', project_id: apPid, estimate: 2 }, agent('claude-code'));
+const apLoose = await call('/agent/inbox', 'POST', { title: 'Loose idea without a project' }, agent('claude-code'));
+const { body: apDecision } = await call(`/agent/projects/${apPid}/entries`, 'POST', { kind: 'decision', title: 'Retry three times' }, agent('claude-code'));
+const apQueue = (await call('/approvals')).body.items;
+const mineKeys = [`proposal:${apProposal.body.item.id}`, `offer:${apOpen.task.id}`, `decision:${apDecision.created[0].id}`, `finished:${apBuilt.task.id}`];
+check('approvals collect proposals, offers, decisions and finished work',
+  mineKeys.every((k) => apQueue.some((i) => i.key === k)) && apQueue.find((i) => i.key === `finished:${apBuilt.task.id}`).link === 'https://github.com/o/r/pull/9' &&
+  apQueue.find((i) => i.key === `proposal:${apLoose.body.item.id}`)?.needs_project === true);
+const commitsBeforeApprovals = await commitCount();
+const apOps = apQueue.filter((i) => mineKeys.includes(i.key)).map((i) => ({ kind: i.kind, id: i.id, action: 'approve' }));
+const apBulk = await call('/approvals', 'POST', { items: [...apOps, { kind: 'proposal', id: apLoose.body.item.id, action: 'approve' }, { kind: 'offer', id: 'missing', action: 'approve' }] });
+check('bulk approval applies every valid item in one commit and reports the rest',
+  apBulk.status === 200 && apBulk.body.results.filter((r) => r.ok).length === 4 && apBulk.body.results.filter((r) => !r.ok).length === 2 && (await commitCount()) === commitsBeforeApprovals + 1);
+const apAfter = (await call(`/projects/${apPid}`)).body;
+const fromProposal = apAfter.tasks.find((t) => t.title === 'Add a retry to the sync job');
+check('approved items take effect: offer assigned, proposal handed to its agent, decision accepted, work signed off',
+  apAfter.tasks.find((t) => t.id === apOpen.task.id).agent === 'claude-code' && fromProposal?.agent === 'claude-code' && fromProposal?.estimate === 2 &&
+  apAfter.entries.find((e) => e.id === apDecision.created[0].id).decision_status === 'accepted' && !!apAfter.tasks.find((t) => t.id === apBuilt.task.id).approved_at);
+const apUndoResult = await call('/approvals/undo', 'POST', { undo: apBulk.body.undo });
+const apUndone = (await call(`/projects/${apPid}`)).body;
+check('undo puts every approval back',
+  apUndoResult.body.restored === 4 && !apUndone.tasks.some((t) => t.title === 'Add a retry to the sync job') && apUndone.tasks.find((t) => t.id === apOpen.task.id).agent === null &&
+  apUndone.tasks.find((t) => t.id === apOpen.task.id).offer?.agent === 'claude-code' && apUndone.entries.find((e) => e.id === apDecision.created[0].id).decision_status === 'proposed' &&
+  apUndone.tasks.find((t) => t.id === apBuilt.task.id).approved_at === null && (await call('/inbox')).body.items.some((i) => i.id === apProposal.body.item.id));
+const apSentBack = await call('/approvals', 'POST', { items: [{ kind: 'finished', id: apBuilt.task.id, action: 'reject', note: 'Tests fail on Node 22' }, { kind: 'offer', id: apOpen.task.id, action: 'reject' }] });
+const sweepAfter = await fetch(`${B}/agent/sweep`, { headers: agent('claude-code') }).then((r) => r.text());
+const declinedAgain = await call(`/agent/tasks/${apOpen.task.id}/offer`, 'POST', { note: 'please' }, agent('claude-code'));
+check('sent-back work returns to its agent with the note, and a declined offer is final',
+  apSentBack.body.results.every((r) => r.ok) && /Agent work · .* sent back, read the thread first/.test(sweepAfter) && declinedAgain.status === 409 &&
+  (await call(`/projects/${apPid}`)).body.entries.some((e) => e.task_id === apBuilt.task.id && e.title === 'Sent back: Tests fail on Node 22'));
+const apDigest = await fetch(`${B}/agent/digest`, { headers: agent('claude-code') }).then((r) => r.text());
+check('the digest counts approvals waiting', /## Waiting for your approval \(\d+\)/.test(apDigest));
+await call('/approvals', 'POST', { items: [{ kind: 'proposal', id: apProposal.body.item.id, action: 'reject' }, { kind: 'proposal', id: apLoose.body.item.id, action: 'reject' }] });
+await call(`/projects/${apPid}`, 'DELETE');
+
 await fetch('http://localhost:4010/__test/legacy');
 const legacyRead = await call('/projects');
 check('validated pre-versioned records remain readable', legacyRead.status === 200 && legacyRead.body.projects?.some((p) => p.id === 'legacy-fixture'));

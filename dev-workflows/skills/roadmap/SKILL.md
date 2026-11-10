@@ -37,14 +37,16 @@ pm() { # pm METHOD PATH [JSON]
 | `GET /api/agent/roadmap` | All projects as Markdown: status, ready work, what needs attention |
 | `GET /api/agent/digest` | Today's brief: what needs the owner, today's plan, due soon, recent changes |
 | `GET /api/agent/projects/<id>` | One project as Markdown with task ids (`?format=json` for raw) |
-| `GET /api/agent/next[?project=<id>]` | Next ready task for you, with build instructions, acceptance criteria, decisions |
+| `GET /api/agent/next[?project=<id>][&assigned=1]` | Next ready task for you, with build instructions, acceptance criteria, decisions. `assigned=1` returns only tasks assigned to you |
+| `GET /api/agent/sweep` | The daily run's checklist (see the daily-run skill) |
+| `POST /api/agent/tasks/<id>/offer` | `{"note":"…"}`: ask to take an unassigned task; the owner approves it in bulk. A declined offer is final |
 | `GET /api/agent/tasks/<id>` | One task with its thread (your reports, the owner's replies), subtasks and what it waits on |
 | `POST /api/agent/tasks/<id>/claim` | Mark it doing and assign it to you. 409 means someone else has it or it isn't ready |
 | `PATCH /api/agent/tasks/<id>` | `{"status":"doing"\|"blocked"\|"done"\|"todo","note":"…"}` |
 | `POST /api/agent/tasks/<id>/comments` | `{"body":"…"}`: a question or checkpoint on the task's thread, without changing status. 409 if the project is paused or you are not enabled on it |
 | `POST /api/agent/projects/<id>/tasks` | Add a subtask or follow-up: `{"title","parent_id?","acceptance?","estimate?","labels?","due_date?","depends_on?":[ids]}` |
 | `POST /api/agent/projects/<id>/entries` | `{"kind":"changelog"\|"decision"\|"progress"\|"note","title","body?"}` |
-| `POST /api/agent/inbox` | `{"title","notes?","project_id?","priority?","labels?"}`: propose work the owner sorts later; touches no plan |
+| `POST /api/agent/inbox` | `{"title","notes?","project_id?","priority?","labels?","estimate?","assign?"}`: propose work the owner approves later; touches no plan. Approved, it is assigned to you (or to the owner with `"assign":"me"`) |
 | `PATCH /api/agent/projects/<id>` | `{"next_action":"…"}` only |
 
 ## The loop

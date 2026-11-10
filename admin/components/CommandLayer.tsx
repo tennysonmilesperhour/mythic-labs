@@ -30,6 +30,7 @@ export const GO: Array<{ key: string; href: string; label: string }> = [
   { key: "o", href: "/", label: "Overview" },
   { key: "t", href: "/today", label: "Today" },
   { key: "i", href: "/inbox", label: "Inbox" },
+  { key: "v", href: "/approvals", label: "Approvals" },
   { key: "m", href: "/tasks", label: "My tasks" },
   { key: "q", href: "/queue", label: "All tasks" },
   { key: "p", href: "/projects", label: "Projects" },
