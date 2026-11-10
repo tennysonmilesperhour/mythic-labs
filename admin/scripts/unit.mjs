@@ -451,4 +451,76 @@ t('plan templates are well formed', () => {
   }
 });
 
+// ── approvals and the daily run ──
+const approvals = await load('../lib/approvals.ts', { './projectTypes': types.url, './taskMap': taskMap.url });
+const { collectApprovals, renderSweepMarkdown, defaultAgentFor, REVIEW_WINDOW_DAYS } = approvals.mod;
+const aproj = (over = {}) => ({ id: 'p', name: 'Lanternfish', status: 'active', priority: 'medium', agents: [], sort_order: 0, next_action: '', ...over });
+const daysAgo = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
+t('approvals collect proposals, open offers, proposed decisions and recent agent work', () => {
+  const offer = { agent: 'claude-code', note: 'can do', at: daysAgo(0), declined_at: null };
+  const d = {
+    project: aproj(), milestones: [],
+    tasks: [
+      task({ id: 'o1', offer }),
+      task({ id: 'o2', offer: { ...offer, declined_at: daysAgo(0) } }),
+      task({ id: 'o3', offer, agent: 'claude-code' }),
+      task({ id: 'f1', status: 'done', agent: 'claude-code', done_at: daysAgo(1) }),
+      task({ id: 'f2', status: 'done', agent: 'claude-code', done_at: daysAgo(1), approved_at: daysAgo(0) }),
+      task({ id: 'f3', status: 'done', agent: 'me', done_at: daysAgo(1) }),
+      task({ id: 'f4', status: 'done', agent: 'claude-code', done_at: daysAgo(REVIEW_WINDOW_DAYS + 1) }),
+    ],
+    entries: [
+      { id: 'e1', project_id: 'p', task_id: 'f1', kind: 'progress', title: 'Finished: t', body: 'PR https://github.com/o/r/pull/7.', author: 'claude-code', created_at: daysAgo(1) },
+      { id: 'd1', project_id: 'p', task_id: null, kind: 'decision', decision_status: 'proposed', title: 'Use SQLite', body: '', context: '', alternatives: '', author: 'claude-code', created_at: daysAgo(0) },
+      { id: 'd2', project_id: 'p', task_id: null, kind: 'decision', decision_status: 'accepted', title: 'Old', body: '', context: '', alternatives: '', author: null, created_at: daysAgo(3) },
+    ],
+  };
+  const inbox = [
+    { id: 'i1', title: 'Add caching', notes: '', source: 'claude-code', project_id: 'p', created_at: daysAgo(0) },
+    { id: 'i2', title: 'Mine', notes: '', source: 'me', project_id: null, created_at: daysAgo(0) },
+    { id: 'i3', title: 'Loose idea', notes: '', source: 'claude-code', project_id: 'gone', created_at: daysAgo(0) },
+  ];
+  const got = collectApprovals([d], inbox);
+  assert.deepEqual(got.map((x) => x.key), ['proposal:i1', 'proposal:i3', 'offer:o1', 'decision:d1', 'finished:f1']);
+  assert.equal(got.find((x) => x.key === 'proposal:i3').needs_project, true);
+  assert.equal(got.find((x) => x.key === 'finished:f1').link, 'https://github.com/o/r/pull/7');
+});
+t('paused projects keep finished work and decisions but hide offers', () => {
+  const offer = { agent: 'claude-code', note: '', at: daysAgo(0), declined_at: null };
+  const d = { project: aproj({ status: 'paused' }), milestones: [], entries: [], tasks: [task({ id: 'o1', offer })] };
+  assert.equal(collectApprovals([d], []).length, 0);
+});
+t('the default agent skips a project only you work on', () => {
+  assert.equal(defaultAgentFor([]), 'claude-code');
+  assert.equal(defaultAgentFor(['me', 'codex']), 'codex');
+  assert.equal(defaultAgentFor(['me']), null);
+});
+t('the daily run builds only assigned work and offers the rest', () => {
+  const d = {
+    project: aproj(), milestones: [], entries: [
+      { id: 'c1', project_id: 'p', task_id: 'a2', kind: 'progress', title: 'Sent back: tests fail', body: '', author: 'me', created_at: daysAgo(0) },
+    ],
+    tasks: [
+      task({ id: 'a1', title: 'Assigned', agent: 'claude-code' }),
+      task({ id: 'a2', title: 'Returned', agent: 'claude-code' }),
+      task({ id: 'u1', title: 'Unassigned', acceptance: 'works' }),
+      task({ id: 'm1', title: 'Owner only', agent: 'me' }),
+      task({ id: 'o1', title: 'Offered', offer: { agent: 'codex', note: '', at: daysAgo(0), declined_at: null } }),
+    ],
+  };
+  const closed = { project: aproj({ id: 'q', name: 'Closed', agents: ['codex'] }), milestones: [], entries: [], tasks: [task({ id: 'x1', project_id: 'q', title: 'Not mine', agent: 'claude-code' })] };
+  const md = renderSweepMarkdown([d, closed], [], 'claude-code', '2026-11-10');
+  const build = md.split('## 2.')[1].split('## 3.')[0];
+  const offer = md.split('## 3.')[1].split('## 4.')[0];
+  assert.match(build, /Assigned/);
+  assert.match(build, /Returned.*sent back/);
+  assert.doesNotMatch(build, /Not mine/);
+  assert.match(offer, /Unassigned/);
+  assert.doesNotMatch(offer, /Owner only|Offered|Assigned/);
+});
+t('the digest points at the approvals waiting', () => {
+  assert.doesNotMatch(renderDigestMarkdown(EMPTY_HUB, '2026-11-05'), /approval/);
+  assert.match(renderDigestMarkdown({ ...EMPTY_HUB, approvals: 3 }, '2026-11-05'), /Waiting for your approval \(3\)/);
+});
+
 console.log(`unit checks passed (${n})`);

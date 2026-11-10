@@ -12,6 +12,7 @@ A Next.js app for the Mythic Labs central brain (this repo's plugin marketplace)
 |---|---|
 | **Overview** | The home page: today's plan, inbox and review counts, what only you can do, what needs a decision (blocked, overdue, critical, late milestones, proposed decisions, stalled and quiet work), task flow across agents, projects by status and by health, the brain and repo exceptions, and recent changes. Every number links to the list it counts. |
 | **Today** | The daily plan: tasks planned for the day (or carried over), your tasks due by today, and anything you have in progress, with story points against a daily capacity. Pull ready work in, start or finish with keys, send leftovers to tomorrow, end the day in one step, copy the brief as Markdown. |
+| **Approvals** | Everything agents want a yes or no on, across every project: work they proposed, unassigned tasks they offer to take, decisions they logged, and work they finished in the last 14 days (with the PR link). Filter by kind, project or agent, select, and approve or decline in bulk; each batch is one commit with undo. Approving a proposal or an offer assigns the work to that agent, so the next daily run builds it. Sending finished work back reopens it for the same agent with your note. |
 | **Inbox** | Quick captures (press `c` anywhere) and agent proposals, each with the hints it carried. Sort one into a project and milestone as a task in one commit, or drop it with undo. |
 | **My tasks** | Everything only you can do: tasks assigned to @me or noted as an owner step, decisions waiting on your call, agents stuck on a blocker. Each row opens a task map with the steps, links and text to paste. |
 | **All tasks** | Every task across every project: preset views (open, ready, in progress, blocked, overdue, due this week, mine, unassigned, done), filters, grouping, sorting, keyboard navigation, multi-select with bulk edits in one commit, delete with undo, and a details panel. The state lives in the URL. |
@@ -27,7 +28,7 @@ A Next.js app for the Mythic Labs central brain (this repo's plugin marketplace)
 
 ### Keyboard and capture
 
-`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g i` Inbox, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `↵` opens, `d` finishes, `s` starts, and `t` plans a task for today or takes it off today. On Today, `n` moves a task to tomorrow. On All tasks, `x` selects, `b` blocks, `e` edits in place and `p` toggles the details panel. In the Inbox, `↵` adds the item as a task and `⌫` drops it. Shortcuts are off while you type in a field, and the second key of a `g` chord never reaches a list.
+`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g i` Inbox, `g v` Approvals, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `↵` opens, `d` finishes, `s` starts, and `t` plans a task for today or takes it off today. On Today, `n` moves a task to tomorrow. On All tasks, `x` selects, `b` blocks, `e` edits in place and `p` toggles the details panel. In the Inbox, `↵` adds the item as a task and `⌫` drops it. On Approvals, `x` selects, `a` approves, `r` declines and `↵` expands. Shortcuts are off while you type in a field, and the second key of a `g` chord never reaches a list.
 
 Quick capture reads one line the way Todoist and Things do, and shows every recognized token before saving:
 
@@ -123,19 +124,32 @@ The dashboard doubles as the roadmap agents work from. The API is disabled unles
 | `GET /api/agent/roadmap` | All projects as Markdown (or `?format=json`): status, ready work, attention flags |
 | `GET /api/agent/digest` | Today's brief as Markdown: what needs the owner, today's plan, agent work, due soon, recent changes |
 | `GET /api/agent/projects/:id` | One project as Markdown with task ids |
-| `GET /api/agent/next[?project=]` | Next ready task for this agent, with build instructions, acceptance criteria and active decisions |
+| `GET /api/agent/next[?project=][&assigned=1]` | Next ready task assigned to this agent, with build instructions, acceptance criteria and active decisions. Every call is assigned-only; `assigned=1` remains compatible |
+| `GET /api/agent/sweep` | The daily run's checklist as Markdown: claimed work, assigned ready work (sent-back tasks flagged), unassigned work to offer for, blocked tasks, projects with nothing ready, proposals still waiting |
+| `POST /api/agent/tasks/:id/offer` | `{note}`: ask to take an unassigned task. It shows on Approvals; approving assigns it. A declined offer is final (409 on a repeat) |
 | `GET /api/agent/tasks/:id` | One task with its thread (reports and the owner's replies, oldest first), subtasks and what it waits on |
-| `POST /api/agent/tasks/:id/claim` | Mark doing and assign. 409 if another agent holds it or it isn't ready |
+| `POST /api/agent/tasks/:id/claim` | Mark assigned work doing. 409 if unassigned, assigned to another agent, or not ready |
 | `PATCH /api/agent/tasks/:id` | `{status, note}`; blocked needs a note; done is refused while subtasks are open |
 | `POST /api/agent/tasks/:id/comments` | `{body}`: a question or checkpoint on the thread without changing status. Checked against the project like every agent write |
-| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up (title, parent_id, acceptance, estimate, labels, due_date, depends_on) |
+| `POST /api/agent/projects/:id/tasks` | Add an unassigned task, or a subtask of claimed work with `parent_id` and `assign_self: true`. Self-assigned top-level work is refused; use the inbox for proposals |
 | `POST /api/agent/projects/:id/entries` | Changelog, progress, note, or decision (always lands as *proposed*) |
-| `POST /api/agent/inbox` | Propose work into the owner's inbox; touches no plan |
+| `POST /api/agent/inbox` | Propose work (`title, notes?, project_id?, priority?, labels?, estimate?, due_date?, assign?`) into the inbox and onto Approvals; touches no plan. Approving it adds the task assigned to the proposing agent, or to the owner with `"assign":"me"` |
 | `PATCH /api/agent/projects/:id` | `{next_action}` only |
 
-**Ready** means: todo, not snoozed, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence, snoozed until it is due, so the same chore is not picked up again at once.
+**Ready** means: todo, not snoozed, every dependency done, every subtask done, in an Active or Building project. Agents take only tasks assigned to them in projects that enable them. Unassigned work requires an offer and owner approval before claiming. Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence, snoozed until it is due, so the same chore is not picked up again at once.
 
-The `roadmap` skill in `dev-workflows` teaches any agent this loop. Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
+The `roadmap` skill in `dev-workflows` teaches any agent this loop, and the `daily-run` skill teaches the scheduled morning pass (see Daily run below). Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
+
+### Daily run
+
+A scheduled agent can work the whole portfolio each morning with the `daily-run` skill. It builds only tasks assigned to it (`/api/agent/next?assigned=1`), opens draft pull requests, offers to take unassigned work it can finish alone, and proposes work for projects with nothing ready. You approve in bulk on Approvals; approved items are assigned to the agent and the next run builds them. Setup:
+
+Deploying this app does not create a schedule. The Approvals page reports API configuration separately from the unverified schedule and last successful run. Verify those in the runner service. Shared-token access and scheduling need the owner's separate approval; keep the API disabled until then.
+
+1. After approval, turn on the agent API: `PM_AGENT_API_ENABLED=true` and a `PM_AGENT_TOKEN` on Vercel, then redeploy.
+2. If Deployment Protection is on, create a Protection Bypass for Automation secret.
+3. Give the scheduled agent `MYTHIC_PM_URL`, `MYTHIC_PM_TOKEN` and, if needed, `MYTHIC_PM_BYPASS`, and network access to the dashboard host.
+4. Schedule it (for example a Claude Code routine on claude.ai/code) with a prompt like: "Read `dev-workflows/skills/daily-run/SKILL.md` and do the daily run."
 
 ### Dashboard routes
 
@@ -152,6 +166,8 @@ The dashboard's own pages and `/api/*` routes are no-auth (single-admin mode), s
 | `POST /api/projects/:id/review` | `{next_action?, status?, status_note?, update?: {health, body}}`: one review pass in one commit |
 | `GET /api/projects/:id/history/:sha` | The project as it was at a commit; `POST` restores it |
 | `GET /api/history[?project=]` | Recent commits to the data store |
+| `GET` `POST /api/approvals` | The approvals queue; `POST {items: [{kind, id, action: "approve"\|"reject", project_id?, note?}]}` applies many in one commit and returns `{results, undo}` |
+| `POST /api/approvals/undo` | `{undo}`: reverse a batch, skipping items that moved on since (a task an agent already started) |
 | `GET` `POST /api/inbox`, `PATCH` `DELETE /api/inbox/:id`, `POST /api/inbox/:id/triage` | Captures and turning one into a task |
 | `GET /api/search` | The index the command palette searches |
 | `GET /api/calendar.ics` | The calendar feed |

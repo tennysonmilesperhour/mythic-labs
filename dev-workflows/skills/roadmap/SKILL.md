@@ -37,14 +37,16 @@ pm() { # pm METHOD PATH [JSON]
 | `GET /api/agent/roadmap` | All projects as Markdown: status, ready work, what needs attention |
 | `GET /api/agent/digest` | Today's brief: what needs the owner, today's plan, due soon, recent changes |
 | `GET /api/agent/projects/<id>` | One project as Markdown with task ids (`?format=json` for raw) |
-| `GET /api/agent/next[?project=<id>]` | Next ready task for you, with build instructions, acceptance criteria, decisions |
+| `GET /api/agent/next[?project=<id>][&assigned=1]` | Next ready task assigned to you, with build instructions, acceptance criteria, decisions. Assigned-only for every call; `assigned=1` is compatible |
+| `GET /api/agent/sweep` | The daily run's checklist (see the daily-run skill) |
+| `POST /api/agent/tasks/<id>/offer` | `{"note":"…"}`: ask to take an unassigned task; the owner approves it in bulk. A declined offer is final |
 | `GET /api/agent/tasks/<id>` | One task with its thread (your reports, the owner's replies), subtasks and what it waits on |
-| `POST /api/agent/tasks/<id>/claim` | Mark it doing and assign it to you. 409 means someone else has it or it isn't ready |
+| `POST /api/agent/tasks/<id>/claim` | Mark your assigned task doing. 409 means owner approval is missing, someone else has it, or it is not ready |
 | `PATCH /api/agent/tasks/<id>` | `{"status":"doing"\|"blocked"\|"done"\|"todo","note":"…"}` |
 | `POST /api/agent/tasks/<id>/comments` | `{"body":"…"}`: a question or checkpoint on the task's thread, without changing status. 409 if the project is paused or you are not enabled on it |
-| `POST /api/agent/projects/<id>/tasks` | Add a subtask or follow-up: `{"title","parent_id?","acceptance?","estimate?","labels?","due_date?","depends_on?":[ids]}` |
+| `POST /api/agent/projects/<id>/tasks` | Add a subtask of claimed work (`assign_self: true` to inherit your assignment), or unassigned follow-up: `{"title","parent_id?","acceptance?","estimate?","labels?","due_date?","depends_on?":[ids]}` |
 | `POST /api/agent/projects/<id>/entries` | `{"kind":"changelog"\|"decision"\|"progress"\|"note","title","body?"}` |
-| `POST /api/agent/inbox` | `{"title","notes?","project_id?","priority?","labels?"}`: propose work the owner sorts later; touches no plan |
+| `POST /api/agent/inbox` | `{"title","notes?","project_id?","priority?","labels?","estimate?","assign?"}`: propose work the owner approves later; touches no plan. Approved, it is assigned to you (or to the owner with `"assign":"me"`) |
 | `PATCH /api/agent/projects/<id>` | `{"next_action":"…"}` only |
 
 ## The loop
@@ -53,7 +55,7 @@ pm() { # pm METHOD PATH [JSON]
 2. **Pick.** `GET /api/agent/next?project=<id>`. If `task` is null, nothing is ready: say so and stop.
 3. **Claim.** `POST /api/agent/tasks/<id>/claim`. On 409, go back to step 2 once, then stop.
 4. **Read before building.** Follow `project.build_instructions` exactly: branch naming, checks, definition of done. Respect every entry in `active_decisions`. The task's `acceptance` is the bar. Read the thread (`GET /api/agent/tasks/<id>`): the owner may have left instructions there.
-5. **Build.** Split large work into subtasks via `POST .../tasks` with `parent_id` and an `estimate`, so progress and forecasts stay visible. Post a short `PATCH` note at meaningful checkpoints (PR opened, tests passing).
+5. **Build.** Split large work into subtasks via `POST .../tasks` with `parent_id`, `assign_self: true` and an `estimate`, so progress and forecasts stay visible. Post a short `PATCH` note at meaningful checkpoints (PR opened, tests passing).
 6. **Finish.** When the acceptance criteria are met and checks pass:
    - `PATCH` the task `{"status":"done","note":"<what shipped, PR link>"}`
    - log a changelog entry: `{"kind":"changelog","change_type":"added|changed|fixed|removed|security","title":"…"}`
@@ -83,7 +85,8 @@ End each session with a short punch list: tasks finished (with PR links), tasks 
 
 ## Guardrails
 
-- Only change tasks you claimed, plus subtasks you created.
+- Build only work assigned to you. Offer for unassigned tasks and wait for owner approval. Claim each assigned subtask before reporting it.
+- Create self-assigned subtasks only to split work you currently hold. Propose unrelated work in the inbox.
 - Never mark a task done without meeting its acceptance criteria. If there are none, write them into a progress note before you start.
 - Never set a decision to accepted. Only the user can.
 - Don't log noise: one progress note per real checkpoint, one changelog entry per user-visible change, one inbox proposal per distinct idea.

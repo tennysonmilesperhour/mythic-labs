@@ -168,12 +168,19 @@ export type Task = {
   recurrence_day: number | null;
   /** The finished task this occurrence was spawned from, so an undo can take it back. */
   spawned_from: string | null;
+  /** When you signed off an agent's finished work on the Approvals page. */
+  approved_at: string | null;
+  /** An agent asking to take this unassigned task; you approve or decline it on the Approvals page. */
+  offer: TaskOffer | null;
   claimed_at: string | null;
   done_at: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
 };
+
+/** An agent's request to take an unassigned task. A declined offer stays so the agent does not ask again. */
+export type TaskOffer = { agent: string; note: string; at: string; declined_at: string | null };
 
 export type Entry = {
   id: string;
@@ -254,7 +261,16 @@ export function normalizeTask(t: Task): Task {
     depends_on: Array.isArray(t.depends_on) ? t.depends_on : [],
     recurrence_day: typeof t.recurrence_day === "number" && t.recurrence_day >= 1 && t.recurrence_day <= 31 ? Math.round(t.recurrence_day) : null,
     spawned_from: typeof t.spawned_from === "string" && t.spawned_from ? t.spawned_from : null,
+    approved_at: typeof t.approved_at === "string" && t.approved_at ? t.approved_at : null,
+    offer: normalizeOffer(t.offer),
   };
+}
+
+function normalizeOffer(o: unknown): TaskOffer | null {
+  if (!o || typeof o !== "object") return null;
+  const x = o as Partial<TaskOffer>;
+  if (typeof x.agent !== "string" || !x.agent || typeof x.at !== "string") return null;
+  return { agent: x.agent, note: typeof x.note === "string" ? x.note : "", at: x.at, declined_at: typeof x.declined_at === "string" ? x.declined_at : null };
 }
 
 export function normalizeEntry(e: Entry): Entry {
@@ -358,6 +374,8 @@ export type Hub = {
   inbox: InboxItem[];
   /** Latest changelog and decision entries across all projects, newest first. */
   recent: Array<Entry & { project_name: string }>;
+  /** How many items wait on the Approvals page. */
+  approvals: number;
 };
 
 /** What a page renders before (or without) the store. */
@@ -373,6 +391,7 @@ export const EMPTY_HUB: Hub = {
   dated: [],
   inbox: [],
   recent: [],
+  approvals: 0,
 };
 
 // ─────────── dates ───────────
@@ -915,6 +934,7 @@ export function renderDigestMarkdown(hub: Hub, date = today()): string {
   out.push(`## Needs a decision (${urgent.length})`, "");
   if (urgent.length) for (const a of urgent.slice(0, 12)) out.push(`- ${a.project_name ? `${a.project_name}: ` : ""}${a.title} (${a.detail})`);
   else out.push("- Nothing is blocked, overdue, stalled or waiting on a decision.");
+  if (hub.approvals) out.push("", `## Waiting for your approval (${hub.approvals})`, "", "- Agent proposals, offers, decisions and finished work. Approve them in bulk on the Approvals page.");
   out.push("", `## Today (${hub.today.length})`, "");
   if (hub.today.length) for (const t of hub.today) out.push(line(t, t.status === "doing" ? ", in progress" : ""));
   else out.push("- Nothing planned yet.");
