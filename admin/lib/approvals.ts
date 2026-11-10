@@ -177,11 +177,11 @@ export type ApprovalOp = {
 export type ApprovalResult = { key: string; ok: boolean; error?: string; task_id?: string };
 
 /** What it takes to put things back the way they were. Returned by applyApprovals, sent back to undo. */
-export type ApprovalUndo =
+export type ApprovalUndo = { expected?: string } & (
   | { kind: "proposal"; item: InboxItem; task_id: string | null }
   | { kind: "offer"; task_id: string; offer: TaskOffer; assigned: boolean }
   | { kind: "decision"; entry_id: string; set: DecisionStatus }
-  | { kind: "finished"; task_id: string; approved: boolean; done_at: string | null; entry_id: string | null };
+  | { kind: "finished"; task_id: string; approved: boolean; done_at: string | null; entry_id: string | null });
 
 // ─────────── the daily run ───────────
 

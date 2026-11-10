@@ -18,7 +18,7 @@ export default async function ApprovalsPage() {
     error = err instanceof Error ? err.message : String(err);
   }
   // Only whether the agent API is on; the token itself never leaves the server.
-  const agentsOn = process.env.PM_AGENT_API_ENABLED === "true" && !!process.env.PM_AGENT_TOKEN;
+  const apiConfigured = process.env.PM_AGENT_API_ENABLED === "true" && !!process.env.PM_AGENT_TOKEN;
 
   return (
     <div>
@@ -28,18 +28,19 @@ export default async function ApprovalsPage() {
           Everything agents want a yes or no on, across every project: work they propose, tasks they offer to take, decisions they logged, and work they finished. Approve or decline in bulk; each batch is one commit with undo. Keys: j k move, x select, a approve, r decline, ↵ expand.
         </p>
       </header>
-      <div className={`mb-8 border px-4 py-3 text-[0.82rem] leading-relaxed ${agentsOn ? "border-line bg-bg-warm/40 text-fg-dim" : "border-accent bg-bg-warm/80 text-fg"}`}>
-        {agentsOn ? (
+      <div className={`mb-8 border px-4 py-3 text-[0.82rem] leading-relaxed ${apiConfigured ? "border-line bg-bg-warm/40 text-fg-dim" : "border-accent bg-bg-warm/80 text-fg"}`}>
+        {apiConfigured ? (
           <>
-            <span className="mono-label mr-2">Daily run</span>
-            The agent API is on. A scheduled agent reads <code className="font-mono text-[0.75rem]">/api/agent/sweep</code> each morning, builds what is assigned to it, and files offers and proposals here. Approved items are assigned to the agent, so the next run picks them up.
+            <span className="mono-label mr-2">Agent API configured</span>
+            The API flag and token are set. Approved items are assigned to the agent and become available when an authorized runner next connects.
           </>
         ) : (
           <>
-            <span className="mono-label mr-2">Daily run is off</span>
-            Agents cannot reach the dashboard yet. Set <code className="font-mono text-[0.75rem]">PM_AGENT_API_ENABLED=true</code> and <code className="font-mono text-[0.75rem]">PM_AGENT_TOKEN</code> on Vercel, then give the scheduled agent the same token. Until then this page shows only what is already here.
+            <span className="mono-label mr-2">Agent API disabled or missing token</span>
+            The dashboard cannot accept agent calls. Enabling shared-token access requires the owner's separate approval.
           </>
         )}
+        <p className="mt-2"><strong>Schedule: not verified.</strong> Last successful run: not verified. This dashboard has no scheduler or run telemetry. Deploying it does not schedule an agent; confirm the schedule and a successful run in the runner service separately.</p>
       </div>
       {error ? (
         <p className="border border-line bg-bg-warm/80 p-5 text-sm text-fg-dim">

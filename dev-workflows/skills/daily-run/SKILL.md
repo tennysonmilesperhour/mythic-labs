@@ -11,6 +11,8 @@ One pass a day over the whole portfolio. The rule that makes it safe: **you buil
 
 Same settings as the roadmap skill: `MYTHIC_PM_URL`, `MYTHIC_PM_TOKEN`, and `MYTHIC_PM_BYPASS` when the deployment is protected. The dashboard must have `PM_AGENT_API_ENABLED=true`. If a call returns 401 or a setting is missing, stop and report exactly which one. Never invent tasks or work around the API.
 
+Deploying the dashboard does not schedule this skill. Do not enable the API, create credentials, expand access, or create a schedule without the owner's separate approval. Confirm the actual schedule and a successful run in the runner service before saying the daily run is operational. Task assignment does not override action-specific approvals or permissions.
+
 Use `AGENT=claude-code` unless the run was started with another name.
 
 ```bash

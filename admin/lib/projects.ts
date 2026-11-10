@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ME, isMine } from "./taskMap";
 import { PLAN_TEMPLATES, type PlanTemplate } from "./templates";
 import {
@@ -819,6 +820,8 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
   const rule = ("recurrence" in clean ? clean.recurrence : task.recurrence) as Recurrence | null;
   let spawned: Task | null = null;
   if ("status" in clean && clean.status !== task.status) {
+    // Approval covers one completion only. Reopened work needs a fresh review.
+    task.approved_at = null;
     task.done_at = clean.status === "done" ? now() : null;
     if (clean.status === "doing") task.claimed_at = now();
     if (clean.status === "done" && rule) {
@@ -1168,6 +1171,12 @@ export async function createAgentTask(projectId: string, agent: string, input: R
       const d = projectIn(s, projectId);
       assertAgentProject(d, agent);
       const clean = pick(input, TASK_FIELDS.filter((field) => field !== "source_key"));
+      if (clean.agent) {
+        const parent = d.tasks.find((t) => t.id === clean.parent_id);
+        if (clean.agent !== agent || !parent || parent.agent !== agent || parent.status !== "doing") {
+          throw new Conflict("self-assignment is only allowed for a subtask of work you already claimed; propose other work in the inbox");
+        }
+      }
       const task = newTask(d, clean);
       addEntry(d, { kind: "progress", task_id: task.parent_id ?? task.id, title: `Added task: ${task.title}`, author: agent });
       return task;
@@ -1342,13 +1351,12 @@ export async function deleteEntry(id: string): Promise<void> {
 
 /**
  * The next task an agent should take: ready, in an active or building
- * project, assigned to this agent or unassigned. Ordered by project priority,
+ * project, assigned to this agent. Ordered by project priority,
  * then the project's own ready order.
  */
 export async function nextTask(
   agent: string,
-  projectId?: string,
-  opts: { assignedOnly?: boolean } = {}
+  projectId?: string
 ): Promise<{ task: Task; detail: ProjectDetail } | null> {
   const all = sortProjects((await loadAll()).map((d) => ({ ...d.project, d }))).map((x) => x.d);
   for (const d of all) {
@@ -1357,10 +1365,8 @@ export async function nextTask(
     // A nonempty project agent list constrains every task, including those
     // explicitly assigned to an agent. Keep selection aligned with claimTask.
     if (d.project.agents.length && !d.project.agents.includes(agent)) continue;
-    // Unassigned work is available when the project lists this agent (or none).
-    // The daily run asks for assigned work only: unassigned work goes through an offer you approve.
-    const open = !opts.assignedOnly && (!d.project.agents.length || d.project.agents.includes(agent));
-    const task = rankReady(d.tasks, d.milestones).find((t) => t.agent === agent || (!t.agent && open));
+    // Every caller gets assigned work only. Unassigned work needs an owner-approved offer.
+    const task = rankReady(d.tasks, d.milestones).find((t) => t.agent === agent);
     if (task) return { task, detail: d };
   }
   return null;
@@ -1374,6 +1380,7 @@ export async function claimTask(id: string, agent: string): Promise<Task> {
       const { d, item } = findIn(s, "tasks", id);
       const task = item as Task;
       assertAgentProject(d, agent);
+      if (!task.agent) throw new Conflict("owner approval required; offer to take this task first");
       if (task.status === "doing" && task.agent === agent) return task;
       if (task.status === "doing" && task.agent !== agent) {
         throw new Conflict(`already claimed by @${task.agent}`);
@@ -1591,6 +1598,8 @@ export async function applyApprovals(input: unknown): Promise<{ results: Approva
           results.push({ key, ok: false, error: (err as Error).message });
         }
       }
+      // Snapshot after the entire batch, including any related changes.
+      for (const step of undo) step.expected = approvalUndoState(s, step);
       return { results, undo };
     }
   );
@@ -1661,6 +1670,31 @@ function applyOne(s: Snapshot, op: ApprovalOp): { undo: ApprovalUndo; task_id?: 
   }
 }
 
+/** Compare the affected records inside the same mutation as undo. This is a
+ * concurrency guard, not authentication: the dashboard already has owner access. */
+function approvalUndoState(s: Snapshot, step: ApprovalUndo): string {
+  const details = Array.from(s.projects.values());
+  const taskId = "task_id" in step ? step.task_id : null;
+  const related = taskId ? details.flatMap((d) => [
+    ...d.tasks.filter((t) => t.id === taskId || t.parent_id === taskId || t.depends_on.includes(taskId)),
+    ...d.entries.filter((e) => e.task_id === taskId),
+  ]).sort((a, b) => a.id.localeCompare(b.id)) : [];
+  const state = step.kind === "decision"
+    ? details.flatMap((d) => d.entries).find((e) => e.id === step.entry_id) ?? null
+    : step.kind === "proposal"
+      ? { related, inbox: s.inbox.items.find((i) => i.id === step.item.id) ?? null,
+          collision: allRecordIds(s).has(step.item.id) }
+      : related;
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object") return Object.fromEntries(
+      Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)])
+    );
+    return value;
+  };
+  return createHash("sha256").update(JSON.stringify(canonical(state))).digest("hex");
+}
+
 /** Put approvals back, as far as nothing has moved on since. Items that moved on are reported, not forced. */
 export async function undoApprovals(input: unknown): Promise<{ restored: number; skipped: string[] }> {
   if (!Array.isArray(input) || !input.length) throw new Invalid("nothing to undo");
@@ -1680,6 +1714,15 @@ export async function undoApprovals(input: unknown): Promise<{ restored: number;
       };
       for (const step of steps) {
         if (!step || typeof step !== "object") continue;
+        if (!(APPROVAL_KINDS as readonly string[]).includes(step.kind) ||
+            (step.kind === "proposal" && (!step.item || typeof step.item.id !== "string"))) {
+          skipped.push("Invalid undo item");
+          continue;
+        }
+        if (!step.expected || step.expected !== approvalUndoState(s, step)) {
+          skipped.push("This item changed after approval; review its current state");
+          continue;
+        }
         if (step.kind === "proposal") {
           const item = step.item;
           if (!item || typeof item.id !== "string" || typeof item.title !== "string") continue;

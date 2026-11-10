@@ -3,15 +3,15 @@ import { nextTask } from "@/lib/projects";
 import { renderProjectMarkdown, taskPath, waitingOn } from "@/lib/projectTypes";
 
 // GET /api/agent/next?agent=<name>[&project=<id>][&assigned=1] · the next ready task, with
-// everything needed to start it. Read-only; claim it with POST .../claim. With assigned=1
-// only tasks assigned to you count (the daily run uses this).
+// everything needed to start it. Always assigned-only; assigned=1 remains compatible.
+// Read-only; claim it with POST .../claim.
 export async function GET(req: Request) {
   return handle(async () => {
     requireAgent(req);
     const agent = agentName(req);
     const params = new URL(req.url).searchParams;
     const project = params.get("project") || undefined;
-    const found = await nextTask(agent, project, { assignedOnly: params.get("assigned") === "1" });
+    const found = await nextTask(agent, project);
     if (!found) return { task: null, message: "Nothing ready for you. Stop and report back." };
     const { task, detail } = found;
     const p = detail.project;

@@ -105,7 +105,7 @@ const pausedClaim = await call(`/agent/tasks/${pausedTask.task.id}/claim`, 'POST
 check('paused project task cannot be claimed', pausedClaim.status === 409);
 const { body: dep } = await call(`/projects/${pid}/tasks`, 'POST', { title: 'First', acceptance: 'exists', source_key: `should-ignore:${stamp}` });
 check('manual task creation cannot claim an import source key', !dep.task.source_key);
-const { body: after } = await call(`/projects/${pid}/tasks`, 'POST', { title: 'Second', depends_on: [dep.task.id] });
+const { body: after } = await call(`/projects/${pid}/tasks`, 'POST', { title: 'Second', agent: 'a2', depends_on: [dep.task.id] });
 
 const statsBeforeAgentTask = await (await fetch('http://localhost:4010/__stats')).json();
 const atomicAgentTask = await call(`/agent/projects/${pid}/tasks`, 'POST', { title: 'Agent-created' }, agent('a1'));
@@ -115,13 +115,24 @@ const tasksBeforeInvalidParent = (await call(`/projects/${pid}`)).body.tasks.len
 const invalidAgentTask = await call(`/agent/projects/${pid}/tasks`, 'POST', { title: 'Invalid child', parent_id: 'not-in-this-project' }, agent('a1'));
 check('invalid agent parent is rejected without creating a task', invalidAgentTask.status === 404 && (await call(`/projects/${pid}`)).body.tasks.length === tasksBeforeInvalidParent);
 
+const unassignedClaim = await call(`/agent/tasks/${dep.task.id}/claim`, 'POST', undefined, agent('a1'));
+const unassignedReport = await call(`/agent/tasks/${dep.task.id}`, 'PATCH', { status: 'doing' }, agent('a1'));
+check('unassigned tasks cannot be claimed or reported without owner approval', unassignedClaim.status === 409 && unassignedReport.status === 409);
+for (const assigned of ['', '&assigned=0', '&assigned=1']) {
+  const unassignedNext = await call(`/agent/next?project=${pid}${assigned}`, 'GET', undefined, agent('a1'));
+  check(`next never returns unassigned work (${assigned || 'default'})`, unassignedNext.body.task === null);
+}
+await call(`/agent/tasks/${dep.task.id}/offer`, 'POST', { note: 'Implement and test it' }, agent('a1'));
+check('an open offer is not permission to claim', (await call(`/agent/tasks/${dep.task.id}/claim`, 'POST', undefined, agent('a1'))).status === 409);
+const approveFirst = await call('/approvals', 'POST', { items: [{ kind: 'offer', id: dep.task.id, action: 'approve' }] });
+check('owner approval assigns offered work', approveFirst.body.results[0].ok);
 const next1 = await call(`/agent/next?project=${pid}`, 'GET', undefined, agent('a1'));
 check('next returns the unblocked task', next1.body.task?.id === dep.task.id, next1.body.task?.title);
 
 const claims = await Promise.all(['a1', 'a2', 'a3', 'a4', 'a5'].map((a) =>
   call(`/agent/tasks/${dep.task.id}/claim`, 'POST', undefined, agent(a))));
 const wins = claims.filter((c) => c.status === 200).length;
-check('exactly one of five parallel claims wins', wins === 1, `${wins} won`);
+check('only the approved agent wins parallel claims', wins === 1, `${wins} won`);
 check('losers get 409', claims.filter((c) => c.status === 409).length === 4);
 
 const early = await call(`/agent/tasks/${after.task.id}/claim`, 'POST', undefined, agent('a2'));
@@ -337,9 +348,21 @@ const allowedComment = await call(`/agent/tasks/${gatedTask.task.id}/comments`, 
 check('agent comments are checked against the project like every other agent write', gatedComment.status === 409 && allowedComment.status === 200 && allowedComment.body.entry.author === 'other-agent');
 await call(`/projects/${gatedPid}`, 'PATCH', { status: 'paused' });
 check('agent comments are refused on a paused project', (await call(`/agent/tasks/${gatedTask.task.id}/comments`, 'POST', { body: 'Still here' }, agent('other-agent'))).status === 409);
-const agentTask = await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Agent subtask', estimate: 3, labels: ['ops', '#ops'], due_date: dayPlus(3), assign_self: true }, agent('claude-code'));
+const rootSelfAssign = await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Unapproved follow-up', assign_self: true }, agent('claude-code'));
+check('an agent cannot create self-assigned top-level work', rootSelfAssign.status === 409);
+const { body: splitParent } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Assigned work to split', agent: 'claude-code' });
+const unclaimedChild = await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Premature child', parent_id: splitParent.task.id, assign_self: true }, agent('claude-code'));
+check('subtask self-assignment requires a claimed parent', unclaimedChild.status === 409);
+await call(`/agent/tasks/${splitParent.task.id}/claim`, 'POST', undefined, agent('claude-code'));
+const wrongAgentChild = await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Not mine', parent_id: splitParent.task.id, assign_self: true }, agent('other-agent'));
+check('subtask self-assignment cannot use another agent parent', wrongAgentChild.status === 409);
+const agentTask = await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Agent subtask', parent_id: splitParent.task.id, estimate: 3, labels: ['ops', '#ops'], due_date: dayPlus(3), assign_self: true }, agent('claude-code'));
 check('agents set estimate, labels and due date on the tasks they add',
   agentTask.status === 200 && agentTask.body.task.estimate === 3 && JSON.stringify(agentTask.body.task.labels) === JSON.stringify(['ops']) && agentTask.body.task.due_date === dayPlus(3) && agentTask.body.task.agent === 'claude-code');
+check('an assigned child can be claimed and finished before its parent',
+  (await call(`/agent/tasks/${agentTask.body.task.id}/claim`, 'POST', undefined, agent('claude-code'))).status === 200 &&
+  (await call(`/agent/tasks/${agentTask.body.task.id}`, 'PATCH', { status: 'done', note: 'Child checks passed' }, agent('claude-code'))).status === 200 &&
+  (await call(`/agent/tasks/${splitParent.task.id}`, 'PATCH', { status: 'done', note: 'Parent checks passed' }, agent('claude-code'))).status === 200);
 check('agent task fields are validated', (await call(`/agent/projects/${fixPid}/tasks`, 'POST', { title: 'Bad', estimate: -1 }, agent('claude-code'))).status === 400);
 const { body: msB } = await call(`/projects/${fixPid}/milestones`, 'POST', { title: 'Cascade' });
 const { body: parentT } = await call(`/projects/${fixPid}/tasks`, 'POST', { title: 'Parent to move' });
@@ -423,6 +446,9 @@ check('the daily run lists assigned work to build and unassigned work to offer',
 const apNextAssigned = await call(`/agent/next?project=${apPid}&assigned=1`, 'GET', undefined, agent('claude-code'));
 const apNextOther = await call(`/agent/next?project=${apPid}&assigned=1`, 'GET', undefined, agent('codex'));
 check('assigned=1 returns only work assigned to the caller', apNextAssigned.body.task?.id === apBuilt.task.id && apNextOther.body.task === null, JSON.stringify([apNextAssigned.status, apNextAssigned.body.task?.title, apNextOther.body.task?.title]));
+const approvalsHtml = await fetch(`${B.replace(/\/api$/, '')}/approvals`).then((r) => r.text());
+check('API configuration never implies a verified schedule or successful run',
+  approvalsHtml.includes('Agent API configured') && approvalsHtml.includes('Schedule: not verified.') && approvalsHtml.includes('Last successful run: not verified.') && !approvalsHtml.includes('A scheduled agent reads'));
 const apOffered = await call(`/agent/tasks/${apOpen.task.id}/offer`, 'POST', { note: 'Small change, I can test it' }, agent('claude-code'));
 const offeredAgain = await call(`/agent/tasks/${apOpen.task.id}/offer`, 'POST', { note: 'me too' }, agent('codex'));
 check('an agent can offer to take an unassigned task, once', apOffered.status === 200 && apOffered.body.task.offer.agent === 'claude-code' && offeredAgain.status === 409);
@@ -457,11 +483,54 @@ const apSentBack = await call('/approvals', 'POST', { items: [{ kind: 'finished'
 const sweepAfter = await fetch(`${B}/agent/sweep`, { headers: agent('claude-code') }).then((r) => r.text());
 const declinedAgain = await call(`/agent/tasks/${apOpen.task.id}/offer`, 'POST', { note: 'please' }, agent('claude-code'));
 check('sent-back work returns to its agent with the note, and a declined offer is final',
-  apSentBack.body.results.every((r) => r.ok) && /Agent work · .* sent back, read the thread first/.test(sweepAfter) && declinedAgain.status === 409 &&
+  apSentBack.body.results.every((r) => r.ok) && (await call(`/agent/tasks/${apOpen.task.id}/claim`, 'POST', undefined, agent('claude-code'))).status === 409 && /Agent work · .* sent back, read the thread first/.test(sweepAfter) && declinedAgain.status === 409 &&
   (await call(`/projects/${apPid}`)).body.entries.some((e) => e.task_id === apBuilt.task.id && e.title === 'Sent back: Tests fail on Node 22'));
 const apDigest = await fetch(`${B}/agent/digest`, { headers: agent('claude-code') }).then((r) => r.text());
 check('the digest counts approvals waiting', /## Waiting for your approval \(\d+\)/.test(apDigest));
 await call('/approvals', 'POST', { items: [{ kind: 'proposal', id: apProposal.body.item.id, action: 'reject' }, { kind: 'proposal', id: apLoose.body.item.id, action: 'reject' }] });
+// A sign-off applies to one completion, including when the owner reopens it.
+await call(`/tasks/${apBuilt.task.id}`, 'PATCH', { status: 'done' });
+await call('/approvals', 'POST', { items: [{ kind: 'finished', id: apBuilt.task.id, action: 'approve' }] });
+await call(`/tasks/${apBuilt.task.id}/reopen`, 'POST', { status: 'todo' });
+await call(`/agent/tasks/${apBuilt.task.id}/claim`, 'POST', undefined, agent('claude-code'));
+await call(`/agent/tasks/${apBuilt.task.id}`, 'PATCH', { status: 'done', note: 'Revised and checked again' }, agent('claude-code'));
+check('reopened signed-off work requires a fresh approval after completion',
+  (await call('/approvals')).body.items.some((i) => i.key === `finished:${apBuilt.task.id}`));
+
+const guardedProposal = await call('/agent/inbox', 'POST', { title: 'Preserve subsequent planning', project_id: apPid }, agent('claude-code'));
+const guardedApproval = await call('/approvals', 'POST', { items: [{ kind: 'proposal', id: guardedProposal.body.item.id, action: 'approve' }] });
+const guardedId = guardedApproval.body.results[0].task_id;
+await call(`/tasks/${guardedId}`, 'PATCH', { notes: 'Owner added requirements' });
+const guardedChild = await call(`/projects/${apPid}/tasks`, 'POST', { title: 'New child', parent_id: guardedId });
+const guardedDependent = await call(`/projects/${apPid}/tasks`, 'POST', { title: 'Dependent task', depends_on: [guardedId] });
+const guardedUndo = await call('/approvals/undo', 'POST', { undo: guardedApproval.body.undo });
+const guardedState = (await call(`/projects/${apPid}`)).body;
+check('proposal undo preserves edited tasks, children and later dependency links',
+  guardedUndo.status === 200 && guardedUndo.body.restored === 0 && guardedUndo.body.skipped.length === 1 &&
+  guardedState.tasks.find((t) => t.id === guardedId)?.notes === 'Owner added requirements' &&
+  guardedState.tasks.find((t) => t.id === guardedChild.body.task.id)?.parent_id === guardedId &&
+  guardedState.tasks.find((t) => t.id === guardedDependent.body.task.id)?.depends_on.includes(guardedId));
+
+const guardedBack = await call('/approvals', 'POST', { items: [{ kind: 'finished', id: apBuilt.task.id, action: 'reject', note: 'One more fix' }] });
+await call(`/tasks/${apBuilt.task.id}`, 'PATCH', { notes: 'New acceptance criteria' });
+const guardedBackUndo = await call('/approvals/undo', 'POST', { undo: guardedBack.body.undo });
+check('send-back undo does not mark subsequently edited work done',
+  guardedBackUndo.body.restored === 0 && (await call(`/projects/${apPid}`)).body.tasks.find((t) => t.id === apBuilt.task.id).status === 'todo');
+
+const guardedOfferTask = await call(`/projects/${apPid}/tasks`, 'POST', { title: 'Offer concurrency' });
+await call(`/agent/tasks/${guardedOfferTask.body.task.id}/offer`, 'POST', { note: 'I can test this' }, agent('claude-code'));
+const guardedDecline = await call('/approvals', 'POST', { items: [{ kind: 'offer', id: guardedOfferTask.body.task.id, action: 'reject' }] });
+await call(`/tasks/${guardedOfferTask.body.task.id}`, 'PATCH', { agent: 'codex' });
+const guardedDeclineUndo = await call('/approvals/undo', 'POST', { undo: guardedDecline.body.undo });
+check('declined-offer undo does not restore an obsolete offer after reassignment', guardedDeclineUndo.body.restored === 0 && guardedDeclineUndo.body.skipped.length === 1);
+
+const freshApproval = await call('/approvals', 'POST', { items: [{ kind: 'decision', id: apDecision.created[0].id, action: 'approve' }] });
+const freshUndo = await call('/approvals/undo', 'POST', { undo: freshApproval.body.undo });
+const repeatedUndo = await call('/approvals/undo', 'POST', { undo: freshApproval.body.undo });
+check('unchanged undo succeeds once and replay does not overwrite later state', freshUndo.body.restored === 1 && repeatedUndo.body.restored === 0);
+const legacyUndo = await call('/approvals/undo', 'POST', { undo: [{ kind: 'finished', task_id: apBuilt.task.id, approved: false, done_at: null, entry_id: null }] });
+check('unversioned undo payloads cannot overwrite current records', legacyUndo.body.restored === 0 && legacyUndo.body.skipped.length === 1);
+
 await call(`/projects/${apPid}`, 'DELETE');
 
 await fetch('http://localhost:4010/__test/legacy');

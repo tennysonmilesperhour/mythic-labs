@@ -54,7 +54,8 @@ Colors are CSS variables (`app/globals.css`) consumed through Tailwind's config;
 - An agent can change only `next_action` on a project.
 - `blocked` requires a note.
 - `done` is refused while subtasks are open.
-- Claims 409 if another agent holds the task or the task isn't ready.
+- Claims 409 if the task is unassigned, assigned to another agent, or not ready. The next-task endpoint always returns assigned work only.
+- Agent-created work can be self-assigned only when it is a subtask of a currently claimed task held by that agent. Other work goes through inbox proposals or unassigned tasks and approved offers.
 - Agent comments attach to the task's thread (`task_id`), never change status, and are checked against the project (status, enabled agents) like every other agent write; proposals through `/api/agent/inbox` land in the inbox and touch no plan.
 - An agent never assigns itself unassigned work: it offers (`POST /api/agent/tasks/:id/offer`) and the owner approves. Offers are refused on assigned, owner-step or non-todo tasks, and a declined offer is final. The owner's comment route may carry a `status` so a reply and an unblock are one commit.
 - Anything the store would refuse to read back (duplicate record ids, duplicate task `source_key`s) must be refused on write: restores and spawned occurrences check the whole snapshot (every project and its rows, tracked repositories and the inbox), and a version pulled from history gets the same shape checks as a file the store reads.

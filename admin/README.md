@@ -124,19 +124,19 @@ The dashboard doubles as the roadmap agents work from. The API is disabled unles
 | `GET /api/agent/roadmap` | All projects as Markdown (or `?format=json`): status, ready work, attention flags |
 | `GET /api/agent/digest` | Today's brief as Markdown: what needs the owner, today's plan, agent work, due soon, recent changes |
 | `GET /api/agent/projects/:id` | One project as Markdown with task ids |
-| `GET /api/agent/next[?project=][&assigned=1]` | Next ready task for this agent, with build instructions, acceptance criteria and active decisions. `assigned=1` skips unassigned work |
+| `GET /api/agent/next[?project=][&assigned=1]` | Next ready task assigned to this agent, with build instructions, acceptance criteria and active decisions. Every call is assigned-only; `assigned=1` remains compatible |
 | `GET /api/agent/sweep` | The daily run's checklist as Markdown: claimed work, assigned ready work (sent-back tasks flagged), unassigned work to offer for, blocked tasks, projects with nothing ready, proposals still waiting |
 | `POST /api/agent/tasks/:id/offer` | `{note}`: ask to take an unassigned task. It shows on Approvals; approving assigns it. A declined offer is final (409 on a repeat) |
 | `GET /api/agent/tasks/:id` | One task with its thread (reports and the owner's replies, oldest first), subtasks and what it waits on |
-| `POST /api/agent/tasks/:id/claim` | Mark doing and assign. 409 if another agent holds it or it isn't ready |
+| `POST /api/agent/tasks/:id/claim` | Mark assigned work doing. 409 if unassigned, assigned to another agent, or not ready |
 | `PATCH /api/agent/tasks/:id` | `{status, note}`; blocked needs a note; done is refused while subtasks are open |
 | `POST /api/agent/tasks/:id/comments` | `{body}`: a question or checkpoint on the thread without changing status. Checked against the project like every agent write |
-| `POST /api/agent/projects/:id/tasks` | Add a subtask or follow-up (title, parent_id, acceptance, estimate, labels, due_date, depends_on) |
+| `POST /api/agent/projects/:id/tasks` | Add an unassigned task, or a subtask of claimed work with `parent_id` and `assign_self: true`. Self-assigned top-level work is refused; use the inbox for proposals |
 | `POST /api/agent/projects/:id/entries` | Changelog, progress, note, or decision (always lands as *proposed*) |
 | `POST /api/agent/inbox` | Propose work (`title, notes?, project_id?, priority?, labels?, estimate?, due_date?, assign?`) into the inbox and onto Approvals; touches no plan. Approving it adds the task assigned to the proposing agent, or to the owner with `"assign":"me"` |
 | `PATCH /api/agent/projects/:id` | `{next_action}` only |
 
-**Ready** means: todo, not snoozed, every dependency done, every subtask done, in an Active or Building project. Agents take tasks assigned to them, or unassigned tasks in projects that list them (or list no agents). Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence, snoozed until it is due, so the same chore is not picked up again at once.
+**Ready** means: todo, not snoozed, every dependency done, every subtask done, in an Active or Building project. Agents take only tasks assigned to them in projects that enable them. Unassigned work requires an offer and owner approval before claiming. Subtasks inherit their parent's priority for ordering. Finishing a recurring task spawns its next occurrence, snoozed until it is due, so the same chore is not picked up again at once.
 
 The `roadmap` skill in `dev-workflows` teaches any agent this loop, and the `daily-run` skill teaches the scheduled morning pass (see Daily run below). Agents need `MYTHIC_PM_URL` and `MYTHIC_PM_TOKEN` in their environment (plus `MYTHIC_PM_BYPASS` if Vercel Deployment Protection is on; use a Protection Bypass for Automation secret).
 
@@ -144,7 +144,9 @@ The `roadmap` skill in `dev-workflows` teaches any agent this loop, and the `dai
 
 A scheduled agent can work the whole portfolio each morning with the `daily-run` skill. It builds only tasks assigned to it (`/api/agent/next?assigned=1`), opens draft pull requests, offers to take unassigned work it can finish alone, and proposes work for projects with nothing ready. You approve in bulk on Approvals; approved items are assigned to the agent and the next run builds them. Setup:
 
-1. Turn on the agent API: `PM_AGENT_API_ENABLED=true` and a `PM_AGENT_TOKEN` on Vercel, then redeploy.
+Deploying this app does not create a schedule. The Approvals page reports API configuration separately from the unverified schedule and last successful run. Verify those in the runner service. Shared-token access and scheduling need the owner's separate approval; keep the API disabled until then.
+
+1. After approval, turn on the agent API: `PM_AGENT_API_ENABLED=true` and a `PM_AGENT_TOKEN` on Vercel, then redeploy.
 2. If Deployment Protection is on, create a Protection Bypass for Automation secret.
 3. Give the scheduled agent `MYTHIC_PM_URL`, `MYTHIC_PM_TOKEN` and, if needed, `MYTHIC_PM_BYPASS`, and network access to the dashboard host.
 4. Schedule it (for example a Claude Code routine on claude.ai/code) with a prompt like: "Read `dev-workflows/skills/daily-run/SKILL.md` and do the daily run."
