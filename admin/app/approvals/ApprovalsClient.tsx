@@ -140,7 +140,7 @@ export default function ApprovalsClient({ initial, projects }: { initial: Approv
       <div className="border border-dashed border-line bg-bg-warm/40 py-16 px-8 text-center">
         <div className="serif-display text-2xl text-fg mb-3">Nothing to approve</div>
         <p className="text-fg-dim text-sm max-w-md mx-auto leading-relaxed">
-          Agent proposals, offers to take a task, proposed decisions and finished agent work land here. The daily run fills it each morning.
+          Agent proposals, offers to take a task, proposed decisions and finished agent work appear here when an authorized agent submits them.
         </p>
       </div>
     );
