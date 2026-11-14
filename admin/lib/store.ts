@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { gh } from "./github";
 import { normalizeDetail, renderProjectMarkdown, type InboxFile, type ProjectDetail } from "./projectTypes";
+import type { MessagesFile } from "./messageTypes";
 
 /**
  * The dashboard's data lives as files in git; there is no database.
@@ -14,6 +15,7 @@ import { normalizeDetail, renderProjectMarkdown, type InboxFile, type ProjectDet
  *   repos.json           the Repos page's tracked exceptions
  *   operations.json      idempotency receipts
  *   inbox.json           quick captures waiting to be sorted (optional; written on first capture)
+ *   messages.json        the private inbox between the owner and agents (optional; written on first message)
  *
  * The destination is a separately configured, already-private repository.
  * Every change is one commit; the history is the audit log.
@@ -51,6 +53,7 @@ export type Snapshot = {
   repos: ReposFile;
   operations: Record<string, OperationReceipt>;
   inbox: InboxFile;
+  messages: MessagesFile;
   /** A validated pre-versioned snapshot; metadata is written on its first mutation. */
   legacyMetadataMigration: boolean;
 };
@@ -89,7 +92,7 @@ interface Backend {
 }
 
 const wanted = (p: string) =>
-  p === "repos.json" || p === "operations.json" || p === "inbox.json" || /^projects\/[\w-]+\.json$/.test(p);
+  p === "repos.json" || p === "operations.json" || p === "inbox.json" || p === "messages.json" || /^projects\/[\w-]+\.json$/.test(p);
 
 /** Git's blob id for a text, so the cache can match tree entries without refetching. */
 const blobSha = (text: string) => {
@@ -383,7 +386,23 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
     }
     inbox = parsedInbox as InboxFile;
   }
-  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, inbox, legacyMetadataMigration };
+  // Messages arrived later still; a missing file is an empty inbox, a present one must be well formed.
+  let messages: MessagesFile = { schemaVersion: 1, items: [] };
+  if (files.has("messages.json")) {
+    const parsed = JSON.parse(files.get("messages.json")!) as Partial<MessagesFile>;
+    if (!parsed || parsed.schemaVersion !== 1 || !Array.isArray(parsed.items)) {
+      throw new Error("Project data file messages.json has an incompatible message collection.");
+    }
+    for (const m of parsed.items) {
+      if (!m || typeof m.id !== "string" || typeof m.thread_id !== "string" || typeof m.body !== "string") {
+        throw new Error("Project data file messages.json contains an invalid message.");
+      }
+      if (seenIds.has(m.id)) throw new Error(`Duplicate record id ${m.id} in project data snapshot.`);
+      seenIds.add(m.id);
+    }
+    messages = parsed as MessagesFile;
+  }
+  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, inbox, messages, legacyMetadataMigration };
 }
 
 async function readFresh(): Promise<Snapshot> {
@@ -476,6 +495,9 @@ export async function mutate<T>(
     }
     if (JSON.stringify(draft.inbox) !== JSON.stringify(base.inbox)) {
       changes.push({ path: "inbox.json", content: JSON.stringify(draft.inbox, null, 2) + "\n" });
+    }
+    if (JSON.stringify(draft.messages) !== JSON.stringify(base.messages)) {
+      changes.push({ path: "messages.json", content: JSON.stringify(draft.messages, null, 2) + "\n" });
     }
     if (!changes.length) return result;
     if (!base.head) {

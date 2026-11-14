@@ -12,6 +12,7 @@ A Next.js app for the Mythic Labs central brain (this repo's plugin marketplace)
 |---|---|
 | **Overview** | The home page: today's plan, inbox and review counts, what only you can do, what needs a decision (blocked, overdue, critical, late milestones, proposed decisions, stalled and quiet work), task flow across agents, projects by status and by health, the brain and repo exceptions, and recent changes. Every number links to the list it counts. |
 | **Today** | The daily plan: tasks planned for the day (or carried over), your tasks due by today, and anything you have in progress, with story points against a daily capacity. Pull ready work in, start or finish with keys, send leftovers to tomorrow, end the day in one step, copy the brief as Markdown. |
+| **Messages** | A private inbox between you and your agents. Run reports, steps only you can do (each with a direct link), and replies to your questions arrive as threads; you write instructions or questions and the agent answers on its next check. **Open in Claude** jumps to the session that runs the checks (set `PM_CLAUDE_URL`). |
 | **Approvals** | Everything agents want a yes or no on, across every project: work they proposed, unassigned tasks they offer to take, decisions they logged, and work they finished in the last 14 days (with the PR link). Filter by kind, project or agent, select, and approve or decline in bulk; each batch is one commit with undo. Approving a proposal or an offer assigns the work to that agent, so the next daily run builds it. Sending finished work back reopens it for the same agent with your note. |
 | **Inbox** | Quick captures (press `c` anywhere) and agent proposals, each with the hints it carried. Sort one into a project and milestone as a task in one commit, or drop it with undo. |
 | **My tasks** | Everything only you can do: tasks assigned to @me or noted as an owner step, decisions waiting on your call, agents stuck on a blocker. Each row opens a task map with the steps, links and text to paste. |
@@ -26,9 +27,13 @@ A Next.js app for the Mythic Labs central brain (this repo's plugin marketplace)
 | **Brain** | Reads `.claude-plugin/marketplace.json` and every plugin manifest in this repo. Browse every skill, agent, command, hook the brain ships. |
 | **Authoring** | Three forms: register an MCP server in a plugin, draft a new slash command, or verify a consuming repo's wiring. All commits go straight to the brain repo. |
 
+### Install it as a desktop app
+
+In Chrome or Edge, open the dashboard and click the install icon at the right of the address bar (or the menu, then "Install Mythic Labs"). In Safari on a Mac, choose File, then Add to Dock. It opens in its own window with its own icon, and has shortcuts to Messages, Approvals and Today.
+
 ### Keyboard and capture
 
-`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g i` Inbox, `g v` Approvals, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `↵` opens, `d` finishes, `s` starts, and `t` plans a task for today or takes it off today. On Today, `n` moves a task to tomorrow. On All tasks, `x` selects, `b` blocks, `e` edits in place and `p` toggles the details panel. In the Inbox, `↵` adds the item as a task and `⌫` drops it. On Approvals, `x` selects, `a` approves, `r` declines and `↵` expands. Shortcuts are off while you type in a field, and the second key of a `g` chord never reaches a list.
+`⌘K` (or `/`) opens search and commands across projects, tasks, milestones, decisions, notes and inbox items. `c` opens quick capture. `?` lists every shortcut. `g` then a letter jumps to a page (`g t` Today, `g e` Messages, `g i` Inbox, `g v` Approvals, `g q` All tasks, `g p` Projects, `g r` Review, `g n` Insights, `g h` History). In task lists, `j` and `k` move, `↵` opens, `d` finishes, `s` starts, and `t` plans a task for today or takes it off today. On Today, `n` moves a task to tomorrow. On All tasks, `x` selects, `b` blocks, `e` edits in place and `p` toggles the details panel. In the Inbox, `↵` adds the item as a task and `⌫` drops it. On Approvals, `x` selects, `a` approves, `r` declines and `↵` expands. Shortcuts are off while you type in a field, and the second key of a `g` chord never reaches a list.
 
 Quick capture reads one line the way Todoist and Things do, and shows every recognized token before saving:
 
@@ -55,7 +60,8 @@ private project data repository / existing branch
 ├── projects/<id>.md     the same project as Markdown, for people and agents
 ├── repos.json           the Repos page's tracked exceptions
 ├── operations.json      idempotency receipts, kept for 30 days
-└── inbox.json           quick captures waiting to be sorted (written on the first capture)
+├── inbox.json           quick captures waiting to be sorted (written on the first capture)
+└── messages.json        the inbox between you and your agents (written on the first message)
 ```
 
 Every edit is one commit, so Git history is the audit trail, and the History page reads it back. Set `PM_DATA_OWNER`, `PM_DATA_REPO`, and `PM_DATA_BRANCH` independently of `BRAIN_OWNER` / `BRAIN_REPO`. The app verifies the destination is private before reading or writing, and fails closed when config, branch, or incompatible data files are missing or inaccessible. A validated pre-versioned project-only snapshot remains readable; its missing metadata files are added atomically on the first mutation without changing existing records. Fields added after the first release (estimates, labels, recurrence, threads, review stamps) are optional in stored files and filled with defaults on read. It never initializes an empty branch automatically, so seed a new data repository by hand before the first deploy (see below). Preview deployments may use only `preview/*` branches; production cannot use a preview branch. The server-side `GITHUB_TOKEN` needs existing Contents read/write access to the private data repository. This change does not create or broaden token access.
@@ -125,6 +131,8 @@ The dashboard doubles as the roadmap agents work from. The API is disabled unles
 | `GET /api/agent/digest` | Today's brief as Markdown: what needs the owner, today's plan, agent work, due soon, recent changes |
 | `GET /api/agent/projects/:id` | One project as Markdown with task ids |
 | `GET /api/agent/next[?project=][&assigned=1]` | Next ready task assigned to this agent, with build instructions, acceptance criteria and active decisions. Every call is assigned-only; `assigned=1` remains compatible |
+| `GET /api/agent/messages[?all=1]` | Threads where the owner wrote last and waits for a reply |
+| `POST /api/agent/messages` | `{body, subject?, thread_id?, kind?: "message"\|"report"\|"needs_you"}`: write to the owner or reply in a thread |
 | `GET /api/agent/sweep` | The daily run's checklist as Markdown: claimed work, assigned ready work (sent-back tasks flagged), unassigned work to offer for, blocked tasks, projects with nothing ready, proposals still waiting |
 | `POST /api/agent/tasks/:id/offer` | `{note}`: ask to take an unassigned task. It shows on Approvals; approving assigns it. A declined offer is final (409 on a repeat) |
 | `GET /api/agent/tasks/:id` | One task with its thread (reports and the owner's replies, oldest first), subtasks and what it waits on |
@@ -167,6 +175,7 @@ The dashboard's own pages and `/api/*` routes are no-auth (single-admin mode), s
 | `GET /api/projects/:id/history/:sha` | The project as it was at a commit; `POST` restores it |
 | `GET /api/history[?project=]` | Recent commits to the data store |
 | `GET` `POST /api/approvals` | The approvals queue; `POST {items: [{kind, id, action: "approve"\|"reject", project_id?, note?}]}` applies many in one commit and returns `{results, undo}` |
+| `GET` `POST /api/messages`, `POST /api/messages/:id/read` | Threads with your agents; write or reply; mark a thread read |
 | `POST /api/approvals/undo` | `{undo}`: reverse a batch, skipping items that moved on since (a task an agent already started) |
 | `GET` `POST /api/inbox`, `PATCH` `DELETE /api/inbox/:id`, `POST /api/inbox/:id/triage` | Captures and turning one into a task |
 | `GET /api/search` | The index the command palette searches |

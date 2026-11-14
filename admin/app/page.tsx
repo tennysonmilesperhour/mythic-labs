@@ -149,10 +149,11 @@ export default async function Overview() {
           what="Where to start: today's plan, captures waiting to be sorted, agent work waiting for approval, what already shipped today, and projects due for their weekly pass."
           action={{ href: "/today", label: "Open today" }}
         >
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-line border border-line">
             <Metric label="Planned today" value={hub!.today.length} def="Tasks on today's plan, including carry-overs and your overdue work." href="/today" />
             <Metric label="Inbox" value={hub!.inbox.length} def="Captures and agent proposals waiting to be sorted into a project." href="/inbox" warn />
             <Metric label="To approve" value={hub!.approvals} def="Agent proposals, offers to take a task, proposed decisions and finished agent work, waiting on your yes or no." href="/approvals" warn />
+            <Metric label="Unread messages" value={hub!.messages} def="Run reports, steps only you can do, and agent replies you have not opened." href="/messages" warn />
             <Metric label="Finished today" value={hub!.doneToday.length} def="Tasks closed today by you or an agent." href="/today#finished-today" />
             <Metric label="Due for review" value={reviewDue} def="Live projects that have not had a weekly pass in 7 days." href="/review" warn />
           </div>

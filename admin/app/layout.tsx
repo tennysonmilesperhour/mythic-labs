@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   title: "Mythic Labs · Brain Admin",
   description:
     "Mythic Labs: the roadmap for everything you're building, and the shared brain of skills and tools your coding agents use.",
+  applicationName: "Mythic Labs",
+  icons: { icon: "/icon.svg", apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Mythic Labs", statusBarStyle: "black-translucent" },
 };
 
 export default function RootLayout({

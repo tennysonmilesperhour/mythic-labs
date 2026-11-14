@@ -29,6 +29,7 @@ export function useCommands(): Commands {
 export const GO: Array<{ key: string; href: string; label: string }> = [
   { key: "o", href: "/", label: "Overview" },
   { key: "t", href: "/today", label: "Today" },
+  { key: "e", href: "/messages", label: "Messages" },
   { key: "i", href: "/inbox", label: "Inbox" },
   { key: "v", href: "/approvals", label: "Approvals" },
   { key: "m", href: "/tasks", label: "My tasks" },

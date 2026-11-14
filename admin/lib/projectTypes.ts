@@ -376,6 +376,8 @@ export type Hub = {
   recent: Array<Entry & { project_name: string }>;
   /** How many items wait on the Approvals page. */
   approvals: number;
+  /** Agent messages you have not opened. */
+  messages: number;
 };
 
 /** What a page renders before (or without) the store. */
@@ -392,6 +394,7 @@ export const EMPTY_HUB: Hub = {
   inbox: [],
   recent: [],
   approvals: 0,
+  messages: 0,
 };
 
 // ─────────── dates ───────────
@@ -934,6 +937,7 @@ export function renderDigestMarkdown(hub: Hub, date = today()): string {
   out.push(`## Needs a decision (${urgent.length})`, "");
   if (urgent.length) for (const a of urgent.slice(0, 12)) out.push(`- ${a.project_name ? `${a.project_name}: ` : ""}${a.title} (${a.detail})`);
   else out.push("- Nothing is blocked, overdue, stalled or waiting on a decision.");
+  if (hub.messages) out.push("", `## Unread messages from agents (${hub.messages})`, "", "- Read them on the Messages page.");
   if (hub.approvals) out.push("", `## Waiting for your approval (${hub.approvals})`, "", "- Agent proposals, offers, decisions and finished work. Approve them in bulk on the Approvals page.");
   out.push("", `## Today (${hub.today.length})`, "");
   if (hub.today.length) for (const t of hub.today) out.push(line(t, t.status === "doing" ? ", in progress" : ""));

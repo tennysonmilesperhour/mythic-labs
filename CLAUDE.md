@@ -34,7 +34,7 @@ mythic-labs/
 ├── templates/
 │   └── consuming-repo.settings.json   ← per-repo override template
 │
-├── admin/                        ← Next.js dashboard (today, inbox, approvals, all tasks, projects, review, insights, history, catalogue, install paths, drift check)
+├── admin/                        ← Next.js dashboard (today, messages, inbox, approvals, all tasks, projects, review, insights, history, catalogue, install paths, drift check)
 │
 ├── README.md                     ← brand manifesto
 ├── mythic_labs_landing.html      ← public landing
@@ -200,7 +200,7 @@ Results land in `evals/results/` (gitignored). Validate structure separately wit
 - **Marketplace catalog** → `.claude-plugin/marketplace.json`
 - **Per-repo override template** → `templates/consuming-repo.settings.json`
 - **Dashboard** → `admin/` (deployed on Vercel)
-- **Project manager** (status, plans, changelogs, decisions across all repos) → `admin/app/projects/`; the daily and weekly rituals → `admin/app/today/`, `admin/app/inbox/`, `admin/app/approvals/`, `admin/app/review/`; every task in one view → `admin/app/queue/`; flow metrics and version history → `admin/app/insights/`, `admin/app/history/`. Data is committed as files to an explicitly configured private repository by `admin/lib/store.ts` (no database)
+- **Project manager** (status, plans, changelogs, decisions across all repos) → `admin/app/projects/`; the daily and weekly rituals → `admin/app/today/`, `admin/app/messages/`, `admin/app/inbox/`, `admin/app/approvals/`, `admin/app/review/`; every task in one view → `admin/app/queue/`; flow metrics and version history → `admin/app/insights/`, `admin/app/history/`. Data is committed as files to an explicitly configured private repository by `admin/lib/store.ts` (no database)
 - **Agent roadmap API** (next task, claim, report, task threads, inbox proposals, offers, the daily sweep, digest) → `admin/app/api/agent/`; the skills agents use to work from it → `dev-workflows/skills/roadmap/` and, for the scheduled morning pass, `dev-workflows/skills/daily-run/`
 - **Approvals** (bulk approve agent proposals, offers, decisions and finished work) → `admin/app/approvals/`, logic in `admin/lib/approvals.ts`
 - **Dashboard checks** (typecheck, unit checks, build, smoke test against a fake GitHub) → `.github/workflows/admin.yml`
