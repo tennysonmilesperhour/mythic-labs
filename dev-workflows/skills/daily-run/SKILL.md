@@ -1,6 +1,6 @@
 ---
 name: daily-run
-description: The scheduled morning pass over every Mythic Labs project. Builds the tasks the owner assigned to agents, offers to take unassigned work it can do, proposes work for projects with nothing ready, and leaves everything else on the dashboard's Approvals page for the owner to approve in bulk. Use when running as the daily or scheduled agent, or when asked to "do the daily run", "run the morning sweep", "check every project for work you can do" or "work through everything assigned to you".
+description: The scheduled morning pass over every Mythic Labs project. Answers the owner's messages, builds the tasks the owner assigned to agents, offers to take unassigned work it can do, proposes work for projects with nothing ready, and leaves everything else on the dashboard's Approvals page for the owner to approve in bulk. Use when running as the daily or scheduled agent, or when asked to "do the daily run", "run the morning sweep", "check every project for work you can do" or "work through everything assigned to you", and for the midday message checks ("check my messages", "answer the owner's inbox").
 ---
 
 # Daily run
@@ -24,9 +24,19 @@ pm() { # pm METHOD PATH [JSON]
 }
 ```
 
+## Messages
+
+The dashboard has a private inbox between you and the owner (`/messages`). It is how the owner talks to you between runs, and how you report back.
+
+- `pm GET /api/agent/messages` lists threads where the owner wrote last and waits for you. Reply in the thread: `pm POST /api/agent/messages '{"thread_id":"<id>","body":"…"}'`.
+- An instruction there ("focus on kiwipop", "skip dialogue this week", "build X") outranks the checklist order, never the guardrails. Something you cannot do (needs credentials, a payment, a legal or brand call) gets a reply saying exactly what the owner must do, with a direct link to the page.
+- Post anything only the owner can do as its own thread: `{"kind":"needs_you","subject":"<the step>","body":"<why, and the direct link>"}`. Always include the link to the exact page.
+
+**Message check (the 11:52am and 4:52pm runs):** only read and answer messages. Do quick, safe requests right away (a question, a status, a single small change you can finish within the guardrails). Leave larger work for the morning run and say so in the reply. If nothing waits, stop without writing anything.
+
 ## The pass
 
-1. **Read the checklist.** `pm GET /api/agent/sweep`. It lists, in order: tasks you already claimed, tasks assigned to you that are ready (some marked "sent back"), unassigned work you could offer to take, your blocked tasks, projects with nothing ready, and your proposals still waiting. Work through it top to bottom.
+1. **Read the checklist.** `pm GET /api/agent/sweep`. It lists, in order: messages from the owner waiting for your reply (answer them first, see Messages), tasks you already claimed, tasks assigned to you that are ready (some marked "sent back"), unassigned work you could offer to take, your blocked tasks, projects with nothing ready, and your proposals still waiting. Work through it top to bottom.
 
 2. **Resume, then build.** For each task you already claimed, then each ready task assigned to you, follow the roadmap skill's loop (claim, read the thread and build instructions, build, report). Fetch work with `pm GET "/api/agent/next?assigned=1"` so you never pick up unassigned work. A task marked "sent back" has the owner's note on its thread: read `pm GET /api/agent/tasks/<id>` first and fix what it says.
    - Open a **draft** pull request for every code change, with the task title and acceptance criteria in the description. Put the PR link in the `done` note; the Approvals page shows it.
@@ -44,7 +54,7 @@ pm() { # pm METHOD PATH [JSON]
    `pm POST /api/agent/inbox '{"title":"…","notes":"<why, and what done looks like>","project_id":"<id>","estimate":2}'`
    Add `"assign":"me"` when only the owner can do it. Skip anything listed under "Your proposals still waiting".
 
-5. **Report.** End with a short summary for the owner:
+5. **Report.** Post the summary as a message, `{"kind":"report","subject":"Daily run, <date>","body":"…"}`, and end with the same text:
    - finished: task, project, PR link
    - offered and proposed: counts, plus one line each for anything important
    - blocked: task and the exact question

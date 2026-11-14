@@ -571,6 +571,28 @@ check('unversioned undo payloads cannot overwrite current records', legacyUndo.b
 
 await call(`/projects/${apPid}`, 'DELETE');
 
+// ── messages ──
+const msgFirst = await call('/messages', 'POST', { subject: `Focus ${stamp}`, body: 'Work on kiwipop first this week.' });
+check('the owner starts a thread', msgFirst.status === 200 && msgFirst.body.message.thread_id === msgFirst.body.message.id && msgFirst.body.message.author === 'me');
+check('the owner cannot send a run report', (await call('/messages', 'POST', { body: 'x', kind: 'report' })).status === 400);
+const waiting = await call('/agent/messages', 'GET', undefined, agent('claude-code'));
+check('the agent sees threads waiting for its reply', waiting.status === 200 && waiting.body.threads.some((t) => t.id === msgFirst.body.message.id && t.awaiting_agent));
+const sweepWithMessage = await fetch(`${B}/agent/sweep`, { headers: agent('claude-code') }).then((r) => r.text());
+check('the daily checklist puts owner messages first', new RegExp(`## 0\\. Messages from the owner \\(\\d+\\)[\\s\\S]*Focus ${stamp}`).test(sweepWithMessage));
+const agentReply = await call('/agent/messages', 'POST', { thread_id: msgFirst.body.message.id, body: 'Understood. Kiwipop first.' }, agent('claude-code'));
+const report = await call('/agent/messages', 'POST', { kind: 'report', subject: `Daily run ${stamp}`, body: 'Finished 2 tasks.' }, agent('claude-code'));
+check('an agent cannot write as the owner', (await call('/agent/messages', 'POST', { body: 'x', agent: 'me' }, { ...agent('claude-code'), 'x-agent': 'me' })).status === 400);
+const threadsNow = (await call('/messages')).body.threads;
+const focus = threadsNow.find((t) => t.id === msgFirst.body.message.id);
+check('a reply lands in the thread, marks the owner message read, and no longer waits on the agent',
+  agentReply.status === 200 && focus.messages.length === 2 && !!focus.messages[0].read_at && !focus.awaiting_agent && focus.unread === 1);
+check('a run report is its own unread thread', report.status === 200 && threadsNow.find((t) => t.id === report.body.message.id)?.kind === 'report');
+const hubUnread = (await call('/projects')).body.messages;
+await call(`/messages/${msgFirst.body.message.id}/read`, 'POST');
+const afterRead = (await call('/messages')).body.threads.find((t) => t.id === msgFirst.body.message.id);
+check('opening a thread marks it read and the overview counts unread', typeof hubUnread === 'number' && hubUnread >= 2 && afterRead.unread === 0);
+check('replying to a missing thread is refused', (await call('/messages', 'POST', { body: 'x', thread_id: 'nope' })).status === 404);
+
 await fetch('http://localhost:4010/__test/legacy');
 const legacyRead = await call('/projects');
 check('validated pre-versioned records remain readable', legacyRead.status === 200 && legacyRead.body.projects?.some((p) => p.id === 'legacy-fixture'));

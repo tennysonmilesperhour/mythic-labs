@@ -452,7 +452,8 @@ t('plan templates are well formed', () => {
 });
 
 // ── approvals and the daily run ──
-const approvals = await load('../lib/approvals.ts', { './projectTypes': types.url, './taskMap': taskMap.url });
+const messageTypes = await load('../lib/messageTypes.ts', { './taskMap': taskMap.url });
+const approvals = await load('../lib/approvals.ts', { './projectTypes': types.url, './taskMap': taskMap.url, './messageTypes': messageTypes.url });
 const { collectApprovals, renderSweepMarkdown, defaultAgentFor, REVIEW_WINDOW_DAYS } = approvals.mod;
 const aproj = (over = {}) => ({ id: 'p', name: 'Lanternfish', status: 'active', priority: 'medium', agents: [], sort_order: 0, next_action: '', ...over });
 const daysAgo = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
@@ -521,6 +522,30 @@ t('the daily run builds only assigned work and offers the rest', () => {
 t('the digest points at the approvals waiting', () => {
   assert.doesNotMatch(renderDigestMarkdown(EMPTY_HUB, '2026-11-05'), /approval/);
   assert.match(renderDigestMarkdown({ ...EMPTY_HUB, approvals: 3 }, '2026-11-05'), /Waiting for your approval \(3\)/);
+});
+
+// ── messages ──
+const { groupThreads, unreadCount } = messageTypes.mod;
+const msg = (over) => ({ id: Math.random().toString(36), thread_id: 'a', author: 'me', kind: 'message', subject: '', body: 'hi', created_at: '2026-11-14T10:00:00Z', read_at: null, ...over });
+t('threads group by thread, newest first, and know who owes a reply', () => {
+  const items = [
+    msg({ id: 'a', thread_id: 'a', subject: 'Focus on kiwipop', created_at: '2026-11-14T08:00:00Z' }),
+    msg({ id: 'a2', thread_id: 'a', author: 'claude-code', body: 'On it', created_at: '2026-11-14T09:00:00Z' }),
+    msg({ id: 'b', thread_id: 'b', author: 'claude-code', kind: 'report', subject: 'Daily run', created_at: '2026-11-14T10:00:00Z' }),
+    msg({ id: 'c', thread_id: 'c', subject: 'Question', created_at: '2026-11-14T07:00:00Z' }),
+  ];
+  const th = groupThreads(items);
+  assert.deepEqual(th.map((x) => x.id), ['b', 'a', 'c']);
+  assert.equal(th.find((x) => x.id === 'a').subject, 'Focus on kiwipop');
+  assert.equal(th.find((x) => x.id === 'a').awaiting_agent, false);
+  assert.equal(th.find((x) => x.id === 'c').awaiting_agent, true);
+  assert.equal(th.find((x) => x.id === 'b').kind, 'report');
+  assert.equal(unreadCount(items), 2);
+});
+t('the daily run lists messages waiting for a reply first', () => {
+  const md = renderSweepMarkdown([], [], 'claude-code', '2026-11-14', [msg({ id: 'q', thread_id: 'q', subject: 'Skip dialogue', body: 'Do not touch dialogue this week' })]);
+  const zero = md.split('## 0.')[1].split('## 1.')[0];
+  assert.match(zero, /Skip dialogue `q`: Do not touch dialogue this week/);
 });
 
 console.log(`unit checks passed (${n})`);

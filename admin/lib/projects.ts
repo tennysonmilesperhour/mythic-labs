@@ -56,6 +56,7 @@ import {
   type TaskRef,
   type TaskStatus,
 } from "./projectTypes";
+import { MESSAGE_KINDS, unreadCount, type Message, type MessageKind } from "./messageTypes";
 import {
   APPROVAL_KINDS,
   agentAllowed,
@@ -246,7 +247,7 @@ function touch(d: ProjectDetail) {
  * with a duplicate anywhere, so a restore must check all of them.
  */
 function allRecordIds(s: Snapshot): Set<string> {
-  const ids = new Set<string>(s.inbox.items.map((i) => i.id));
+  const ids = new Set<string>([...s.inbox.items.map((i) => i.id), ...s.messages.items.map((m) => m.id)]);
   for (const r of s.repos.repos) ids.add(r.id);
   for (const [pid, d] of Array.from(s.projects.entries())) {
     ids.add(pid);
@@ -343,7 +344,7 @@ const TODAY_RANK = (t: Task, day: string) =>
 
 /** Everything the projects hub shows at a glance. */
 export async function getHub(): Promise<Hub> {
-  const [all, inbox] = await Promise.all([loadAll(), listInbox()]);
+  const [all, inbox, messages] = await Promise.all([loadAll(), listInbox(), listMessages()]);
   const projects = sortProjects(all.map(summarize));
   const ref = (d: ProjectDetail, t: Task): TaskRef => ({
     ...t,
@@ -408,6 +409,7 @@ export async function getHub(): Promise<Hub> {
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!) || PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]),
     inbox,
     approvals: collectApprovals(all, inbox).length,
+    messages: unreadCount(messages),
     recent: all
       .flatMap((d) =>
         d.entries
@@ -1829,6 +1831,71 @@ export async function offerTask(id: string, agent: string, note: string): Promis
       task.updated_at = now();
       touch(d);
       return task;
+    }
+  );
+}
+
+// ─────────── messages ───────────
+
+export async function listMessages(): Promise<Message[]> {
+  return (await readSnapshot()).messages.items;
+}
+
+const MESSAGE_MAX = 20_000;
+
+/**
+ * Send a message as the owner ("me") or an agent. With thread_id it is a reply;
+ * without, it starts a thread. Sending marks the other side's messages in that
+ * thread read, since you answered them.
+ */
+export async function sendMessage(author: string, input: Record<string, unknown>): Promise<Message> {
+  const body = typeof input.body === "string" ? input.body.trim() : "";
+  if (!body) throw new Invalid("write something");
+  if (body.length > MESSAGE_MAX) throw new Invalid(`keep it under ${MESSAGE_MAX} characters`);
+  const kind = (MESSAGE_KINDS as readonly string[]).includes(input.kind as string) ? (input.kind as MessageKind) : "message";
+  if (author === ME && kind !== "message") throw new Invalid("only agents send reports and needs-you items");
+  const subject = typeof input.subject === "string" ? input.subject.trim().slice(0, 160) : "";
+  const threadId = typeof input.thread_id === "string" && input.thread_id ? input.thread_id : null;
+  return mutate(
+    (m) => `Messages: ${author === ME ? "you" : `@${author}`} ${threadId ? "replied" : "wrote"} ${clip(m.subject || m.body.split("\n")[0])}`,
+    (s) => {
+      const stamp = now();
+      if (threadId) {
+        const thread = s.messages.items.filter((m) => m.thread_id === threadId);
+        if (!thread.length) throw new NotFound("thread not found");
+        for (const m of thread) if (!m.read_at && (author === ME ? m.author !== ME : m.author === ME)) m.read_at = stamp;
+      }
+      const id = newId();
+      const message: Message = {
+        id,
+        thread_id: threadId ?? id,
+        author,
+        kind,
+        subject: threadId ? "" : subject,
+        body,
+        created_at: stamp,
+        read_at: null,
+      };
+      s.messages.items.push(message);
+      return message;
+    }
+  );
+}
+
+/** The owner opened a thread: mark its agent messages read. */
+export async function markThreadRead(threadId: string): Promise<{ marked: number }> {
+  return mutate(
+    (r) => `Messages: read ${r.marked}`,
+    (s) => {
+      const stamp = now();
+      let marked = 0;
+      for (const m of s.messages.items) {
+        if (m.thread_id === threadId && m.author !== ME && !m.read_at) {
+          m.read_at = stamp;
+          marked++;
+        }
+      }
+      return { marked };
     }
   );
 }

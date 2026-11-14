@@ -20,6 +20,7 @@ import {
   type TaskOffer,
 } from "./projectTypes";
 import { ME, isMine } from "./taskMap";
+import { groupThreads, type Message } from "./messageTypes";
 
 /** Finished agent work older than this drops off the Approvals page unreviewed. */
 export const REVIEW_WINDOW_DAYS = 14;
@@ -190,7 +191,7 @@ export type ApprovalUndo = { expected?: string } & (
  * It builds only what is assigned to it; for anything else it offers or proposes,
  * and you approve in bulk.
  */
-export function renderSweepMarkdown(details: ProjectDetail[], inbox: InboxItem[], agent: string, day = today()): string {
+export function renderSweepMarkdown(details: ProjectDetail[], inbox: InboxItem[], agent: string, day = today(), messages: Message[] = []): string {
   const sorted = sortProjects(details.map((d) => ({ ...d.project, d }))).map((x) => x.d);
   const open = sorted.filter((d) => WORKABLE.includes(d.project.status) && agentAllowed(d, agent));
   const line = (d: ProjectDetail, t: Task, extra = "") =>
@@ -199,6 +200,19 @@ export function renderSweepMarkdown(details: ProjectDetail[], inbox: InboxItem[]
   out.push(
     "Work top to bottom. Build only tasks assigned to you. For other work you could do, offer to take it or propose it; the owner approves in bulk on the Approvals page.",
     ""
+  );
+
+  const waitingThreads = groupThreads(messages).filter((t) => t.awaiting_agent);
+  const notes = waitingThreads.map((t) => {
+    const last = t.messages[t.messages.length - 1];
+    return `- ${t.subject} \`${t.id}\`: ${last.body.replace(/\s+/g, " ").slice(0, 400)}`;
+  });
+  section(
+    out,
+    "0. Messages from the owner",
+    notes,
+    "No messages waiting.",
+    "Read each thread (`GET /api/agent/messages`) and reply in it (`POST /api/agent/messages` with `thread_id`). An instruction here outranks the rest of this list, but never your guardrails."
   );
 
   const doing = open.flatMap((d) => d.tasks.filter((t) => t.status === "doing" && t.agent === agent).map((t) => line(d, t, ` · last update ${daysSince(t.updated_at)}d ago`)));

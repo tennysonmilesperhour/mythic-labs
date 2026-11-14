@@ -12,8 +12,8 @@ export async function GET(req: Request) {
     const s = await readSnapshot();
     const details = Array.from(s.projects.values());
     if (new URL(req.url).searchParams.get("format") === "json") {
-      return { markdown: renderSweepMarkdown(details, s.inbox.items, agent), approvals_waiting: collectApprovals(details, s.inbox.items).length };
+      return { markdown: renderSweepMarkdown(details, s.inbox.items, agent, undefined, s.messages.items), approvals_waiting: collectApprovals(details, s.inbox.items).length };
     }
-    return markdown(renderSweepMarkdown(details, s.inbox.items, agent));
+    return markdown(renderSweepMarkdown(details, s.inbox.items, agent, undefined, s.messages.items));
   });
 }
