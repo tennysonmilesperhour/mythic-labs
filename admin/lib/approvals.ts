@@ -32,7 +32,7 @@ export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
 export const APPROVAL_META: Record<ApprovalKind, { label: string; hint: string; approve: string; reject: string }> = {
   proposal: {
     label: "Proposed work",
-    hint: "Ideas an agent filed. Approving one adds it to the project as a task assigned to that agent, so the next daily run builds it.",
+    hint: "Ideas an agent filed. Approving one adds a task assigned to that agent. It becomes available when its dependencies are complete and an authorized runner connects.",
     approve: "Add task",
     reject: "Drop",
   },

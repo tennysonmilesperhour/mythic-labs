@@ -1712,6 +1712,10 @@ export async function undoApprovals(input: unknown): Promise<{ restored: number;
         }
         return null;
       };
+      // Check every guard against the initial snapshot. A reversal in this batch
+      // may change records included in another item's guard.
+      const eligible: ApprovalUndo[] = [];
+      const seen = new Set<string>();
       for (const step of steps) {
         if (!step || typeof step !== "object") continue;
         if (!(APPROVAL_KINDS as readonly string[]).includes(step.kind) ||
@@ -1719,10 +1723,24 @@ export async function undoApprovals(input: unknown): Promise<{ restored: number;
           skipped.push("Invalid undo item");
           continue;
         }
+        const id = step.kind === "proposal" ? step.item.id : step.kind === "decision" ? step.entry_id : step.task_id;
+        if (typeof id !== "string" || !id) {
+          skipped.push("Invalid undo item");
+          continue;
+        }
+        const key = `${step.kind}:${id}`;
+        if (seen.has(key)) {
+          skipped.push("Duplicate undo item");
+          continue;
+        }
+        seen.add(key);
         if (!step.expected || step.expected !== approvalUndoState(s, step)) {
           skipped.push("This item changed after approval; review its current state");
           continue;
         }
+        eligible.push(step);
+      }
+      for (const step of eligible) {
         if (step.kind === "proposal") {
           const item = step.item;
           if (!item || typeof item.id !== "string" || typeof item.title !== "string") continue;

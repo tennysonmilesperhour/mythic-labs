@@ -39,3 +39,9 @@ const page = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8')
 assert(!page.includes('from "@/lib/store"'), 'dashboard page must not import the storage implementation');
 assert(page.includes('dataSourceLabel'), 'dashboard must use the repository abstraction for its source label');
 console.log('overview regressions passed');
+
+const approvalClient = await readFile(new URL('../app/approvals/ApprovalsClient.tsx', import.meta.url), 'utf8');
+const approvalLogic = await readFile(new URL('../lib/approvals.ts', import.meta.url), 'utf8');
+assert(!approvalClient.includes('The daily run fills it each morning'), 'empty approvals cannot imply a verified schedule');
+assert(!approvalLogic.includes('so the next daily run builds it'), 'proposal help cannot promise a scheduled execution');
+console.log('approval status copy regressions passed');
