@@ -51,3 +51,8 @@ We begin every engagement with a diagnostic conversation. We spend it listening 
 
 *Mythic Labs 2026. Diagnostic Union Technicians.*
 
+
+
+## Installation & Usage
+
+<!-- TODO: Add install instructions -->
