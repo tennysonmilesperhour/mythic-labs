@@ -134,7 +134,7 @@ export default function TaskMapClient({
   const late = isOverdue(task.due_date, done);
   const ready = isReady(task, tasks);
   const humanOnly = isMine(task);
-  const agents = (project.agents.length ? project.agents : AGENT_PRESETS).filter((a) => a !== ME);
+  const agents = Array.from(new Set([...(project.agents.length ? project.agents : AGENT_PRESETS), ...(task.agent ? [task.agent] : [])])).filter((a) => a !== ME);
 
   const steps = extractSteps(task.notes);
   const snippets = extractSnippets(task.notes, task.acceptance);
@@ -171,10 +171,10 @@ export default function TaskMapClient({
   ]
     .filter(Boolean)
     .join("\n");
-  const report = `Done: ${task.title}${task.acceptance ? `\nChecked against: ${task.acceptance.replace(/\n+/g, "; ")}` : ""}\nEvidence: <PR, URL or screenshot>`;
+  const report = `Submitted for review: ${task.title}${task.acceptance ? `\nChecked against: ${task.acceptance.replace(/\n+/g, "; ")}` : ""}\nEvidence: <PR, URL or screenshot>`;
 
   const next = mine.find((t) => t.status === "doing") ?? mine[0];
-  const freshlyDone = done && task.done_at && daysSince(task.done_at) < 1;
+  const freshlyDone = done && task.delivery?.stage === "verified";
 
   return (
     <div>
@@ -249,7 +249,7 @@ export default function TaskMapClient({
 
       {freshlyDone ? (
         <div className="border border-accent bg-[rgba(139,115,85,0.06)] px-5 py-4 mb-6 glow-anchor">
-          <div className="mono-label mb-1">Done. Next up</div>
+          <div className="mono-label mb-1">Verified. Next up</div>
           {next ? (
             <Link href={taskHref(next.id)} className="text-[1.05rem] text-fg hover:text-accent">
               {next.title} <span className="font-mono text-[0.6rem] text-fg-ghost">· {next.project_name} →</span>
