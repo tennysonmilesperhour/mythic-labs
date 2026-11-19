@@ -28,7 +28,7 @@ export function throughputByWeek(details: ProjectDetail[], weeks = 12, day = tod
   for (const d of details) {
     for (const t of d.tasks) {
       if (t.status !== "done" || !t.done_at) continue;
-      const b = buckets.get(weekStart(t.done_at.slice(0, 10)));
+      const b = buckets.get(weekStart(today(new Date(t.done_at))));
       if (!b) continue;
       b.tasks++;
       b.points += pointsOf(t);
@@ -45,7 +45,7 @@ export function cycleTimes(details: ProjectDetail[], sinceDays = 90, day = today
   const out: CycleSample[] = [];
   for (const d of details) {
     for (const t of d.tasks) {
-      if (t.status !== "done" || !t.done_at || t.done_at.slice(0, 10) < from) continue;
+      if (t.status !== "done" || !t.done_at || today(new Date(t.done_at)) < from) continue;
       const start = t.claimed_at ?? t.created_at;
       const days = Math.max(0, (new Date(t.done_at).getTime() - new Date(start).getTime()) / 86_400_000);
       out.push({ id: t.id, title: t.title, project_id: d.project.id, project_name: d.project.name, agent: t.agent, days: Math.round(days * 10) / 10, done_at: t.done_at, points: pointsOf(t) });
@@ -75,7 +75,7 @@ export function velocity(tasks: Task[], weeks = 4, day = today()): number {
   let pts = 0;
   for (const t of tasks) {
     if (t.status !== "done" || !t.done_at) continue;
-    const d = t.done_at.slice(0, 10);
+    const d = today(new Date(t.done_at));
     if (d >= start && d < end) pts += pointsOf(t);
   }
   return pts / weeks;
@@ -147,7 +147,7 @@ export function byAgent(details: ProjectDetail[], sinceDays = 30, day = today())
       const s = get(t.agent);
       if (t.status === "blocked") s.blocked_now++;
       if (t.status === "doing") s.doing_now++;
-      if (t.status === "done" && t.done_at && t.done_at.slice(0, 10) >= from) {
+      if (t.status === "done" && t.done_at && today(new Date(t.done_at)) >= from) {
         s.done++;
         s.points += pointsOf(t);
         const start = t.claimed_at ?? t.created_at;
@@ -168,7 +168,7 @@ export function byProject(details: ProjectDetail[], sinceDays = 30, day = today(
   return details
     .filter((d) => d.project.status !== "paused")
     .map((d) => {
-      const done = d.tasks.filter((t) => t.status === "done" && t.done_at && t.done_at.slice(0, 10) >= from);
+      const done = d.tasks.filter((t) => t.status === "done" && t.done_at && today(new Date(t.done_at)) >= from);
       const open = d.tasks.filter((t) => t.status !== "done");
       const rate = velocity(d.tasks, 4, day);
       const openPoints = open.reduce((n, t) => n + pointsOf(t), 0);

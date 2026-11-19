@@ -35,7 +35,7 @@ assert.equal(isUpcoming(today, 'todo', soon, today), true, 'work due today remai
 assert.equal(isUpcoming(soon, 'doing', soon, today), true, 'work due at the end of the window remains upcoming');
 assert.equal(isUpcoming(today, 'done', soon, today), false, 'completed work is not upcoming');
 
-const page = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+const page = await readFile(new URL('../app/overview/page.tsx', import.meta.url), 'utf8');
 assert(!page.includes('from "@/lib/store"'), 'dashboard page must not import the storage implementation');
 assert(page.includes('dataSourceLabel'), 'dashboard must use the repository abstraction for its source label');
 console.log('overview regressions passed');

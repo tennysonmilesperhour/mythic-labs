@@ -6,11 +6,11 @@ import type { AttentionItem, Project, Task } from "./projectTypes";
 /** The person running the dashboard. Tasks assigned here are human-only. */
 export const ME = "me";
 
-/** Unassigned tasks whose notes call them an owner step are yours too. */
+/** Owner involvement is independent of the assigned agent. Explicit false clears a legacy gate. */
 const OWNER_STEP = /\bowner(?:'s)? (?:step|action|task)\b/i;
 
-export const isMine = (t: Pick<Task, "agent" | "notes">) =>
-  t.agent === ME || (!t.agent && OWNER_STEP.test(t.notes ?? ""));
+export const isMine = (t: Pick<Task, "agent" | "notes" | "requires_owner_action">) =>
+  t.agent === ME || (t.requires_owner_action ?? OWNER_STEP.test(t.notes ?? ""));
 
 /** Kinds of attention flag that point at a single task. */
 const TASK_FLAGS = new Set(["blocked", "overdue", "stalled", "critical"]);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { GlyphMark } from "./Glyphs";
@@ -10,7 +11,7 @@ export const NAV_GROUPS: Array<{ title: string; items: Array<{ href: string; lab
   {
     title: "Work",
     items: [
-      { href: "/", label: "Overview", key: "o" },
+      { href: "/overview", label: "Overview", key: "o" },
       { href: "/today", label: "Today", key: "t" },
       { href: "/messages", label: "Messages", key: "e" },
       { href: "/inbox", label: "Inbox", key: "i" },
@@ -62,7 +63,7 @@ export default function Sidebar() {
             Mythic <span className="text-accent">·</span> Labs
           </div>
         </div>
-        <div className="serif-display text-[1.35rem] leading-none text-fg">Brain Admin</div>
+        <div className="serif-display text-[1.35rem] leading-none text-fg">Mythic Labs</div>
         <button
           onClick={() => open("palette")}
           className="mt-4 w-full flex items-center justify-between border border-line bg-bg/60 px-3 py-2 text-left hover:border-fg-dim"
@@ -131,27 +132,17 @@ export default function Sidebar() {
 export function MobileNav() {
   const pathname = usePathname();
   const { open } = useCommands();
-  return (
-    <nav className="glass sticky top-0 z-30 md:hidden border-b border-line flex items-center gap-1 overflow-x-auto px-3 py-2">
-      <GlyphMark size={14} className="text-accent shrink-0 mr-2" />
-      <button onClick={() => open("palette")} className="font-mono text-[0.6rem] tracking-[0.18em] uppercase px-2.5 py-1.5 shrink-0 text-accent" aria-label="Search">
-        ⌕
-      </button>
-      <button onClick={() => open("capture")} className="font-mono text-[0.6rem] tracking-[0.18em] uppercase px-2.5 py-1.5 shrink-0 text-accent" aria-label="Capture">
-        +
-      </button>
-      {NAV.map((item) => {
-        const active = isActive(item.href, pathname);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`font-mono text-[0.6rem] tracking-[0.18em] uppercase px-2.5 py-1.5 shrink-0 ${active ? "text-fg border-b border-accent" : "text-fg-dim"}`}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  const [more, setMore] = useState(false);
+  const primary = [{href:"/",label:"Today"},{href:"/projects",label:"Projects"},{href:"/messages",label:"Activity"}];
+  return <nav className="glass sticky top-0 z-30 md:hidden border-b border-line px-2 py-2">
+    <div className="grid grid-cols-4 text-sm">
+      {primary.map(item=><Link key={item.href} href={item.href} onClick={()=>setMore(false)} className={`text-center py-3 rounded-lg ${isActive(item.href,pathname) || item.href === "/" && pathname === "/today" ? "bg-fg text-bg" : "text-fg"}`}>{item.label}</Link>)}
+      <button className="py-3" aria-expanded={more} aria-controls="mobile-more" onClick={()=>setMore(!more)}>More</button>
+    </div>
+    {more && <div id="mobile-more" className="grid grid-cols-2 gap-1 pt-3 max-h-[70vh] overflow-y-auto">
+      <button className="py-3 text-left px-3" onClick={()=>{open("capture");setMore(false);}}>+ Capture</button>
+      <button className="py-3 text-left px-3" onClick={()=>{open("palette");setMore(false);}}>Search</button>
+      {NAV.filter(item=>!["/today","/projects","/messages"].includes(item.href)).map(item=><Link key={item.href} href={item.href} onClick={()=>setMore(false)} className="py-3 px-3 text-sm">{item.label}</Link>)}
+    </div>}
+  </nav>;
 }

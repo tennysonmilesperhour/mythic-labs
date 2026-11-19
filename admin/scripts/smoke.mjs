@@ -34,8 +34,9 @@ const logTabsSource = await readFile(new URL('../app/projects/[id]/LogTabs.tsx',
 check('evidence links render on decision and note cards as well as changelog', (logTabsSource.match(/<EvidenceSource href=\{e\.evidence_url\} \/>/g) || []).length === 2);
 
 const stamp = Date.now().toString(36);
-// Dates relative to today (UTC, like the server), so the checks hold on any day.
-const dayPlus = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+// Calendar dates in the owner's timezone, including DST boundaries.
+const localDay = new Intl.DateTimeFormat("en-CA", {timeZone:"America/Denver",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const dayPlus = (n) => new Date(new Date(`${localDay}T12:00:00Z`).getTime() + n * 86400000).toISOString().slice(0,10);
 const commitCount = async () => (await (await fetch('http://localhost:4010/__stats')).json()).commits;
 const fileAtHead = async (path) => (await (await fetch(`http://localhost:4010/__test/file?path=${encodeURIComponent(path)}`)).json()).content;
 const sourceKeyOne = await call('/projects', 'POST', { name: `Life one ${stamp}`, source_key: ' life:inventory-1 ' });
@@ -592,6 +593,34 @@ await call(`/messages/${msgFirst.body.message.id}/read`, 'POST');
 const afterRead = (await call('/messages')).body.threads.find((t) => t.id === msgFirst.body.message.id);
 check('opening a thread marks it read and the overview counts unread', typeof hubUnread === 'number' && hubUnread >= 2 && afterRead.unread === 0);
 check('replying to a missing thread is refused', (await call('/messages', 'POST', { body: 'x', thread_id: 'nope' })).status === 404);
+
+// One request through claim, submission, review, delivery evidence, and reopening.
+const flowProject = await call('/projects', 'POST', { name: `Firefly flow ${stamp}`, status: 'active' });
+const flowPid = flowProject.body.created[0].id;
+const flowCreate = await call(`/projects/${flowPid}/tasks`, 'POST', { title: 'Show an offline notice', agent: 'claude-code', requires_owner_action: true });
+let flowTask = flowCreate.body.task;
+check('owner gate blocks assigned agent claim', (await call(`/agent/tasks/${flowTask.id}/claim`, 'POST', {}, agent('claude-code'))).status === 409);
+check('owner gate excludes assigned next task', !(await call(`/agent/next?project=${flowPid}`, 'GET', undefined, agent('claude-code'))).body.task);
+await call(`/tasks/${flowTask.id}`, 'PATCH', { requires_owner_action: false });
+check('clearing owner gate enables assigned claim', (await call(`/agent/tasks/${flowTask.id}/claim`, 'POST', {}, agent('claude-code'))).status === 200);
+flowTask = (await call(`/agent/tasks/${flowTask.id}`, 'PATCH', { status:'done',note:'Checks pass. PR https://github.com/example/firefly/pull/1' }, agent('claude-code'))).body.task;
+check('submission does not imply delivery', !flowTask.delivery && !flowTask.approved_at);
+check('delivery requires review', (await call(`/tasks/${flowTask.id}/delivery`, 'POST', {stage:'merged',url:'https://github.com/example/firefly/pull/1',note:'Merged',expected_updated_at:flowTask.updated_at})).status===409);
+await call('/approvals','POST',{items:[{kind:'finished',id:flowTask.id,action:'approve'}]});
+flowTask=(await call(`/projects/${flowPid}`)).body.tasks.find(t=>t.id===flowTask.id);
+check('review alone does not imply delivery', !!flowTask.approved_at && !flowTask.delivery);
+check('delivery cannot skip merge', (await call(`/tasks/${flowTask.id}/delivery`,'POST',{stage:'verified',url:'https://firefly.example',note:'Checked',expected_updated_at:flowTask.updated_at})).status===409);
+check('unsafe delivery URL is rejected', (await call(`/tasks/${flowTask.id}/delivery`,'POST',{stage:'merged',url:'javascript:alert(1)',note:'Checked',expected_updated_at:flowTask.updated_at})).status===400);
+for (const stage of ['merged','deployed','verified']) {
+ const result=await call(`/tasks/${flowTask.id}/delivery`,'POST',{stage,url:'https://firefly.example/evidence',note:`Confirmed ${stage} for the expected commit`,expected_updated_at:flowTask.updated_at});
+ check(`delivery ${stage} persists evidence`,result.status===200 && result.body.task?.delivery?.stage===stage);
+ flowTask=result.body.task;
+}
+check('stale delivery writes are rejected', (await call(`/tasks/${flowTask.id}/delivery`,'POST',{stage:'verified',url:'https://firefly.example',note:'stale',expected_updated_at:'old'})).status===409);
+const flowReopened=await call(`/tasks/${flowTask.id}`,'PATCH',{status:'todo'});
+check('reopening clears old approval and delivery evidence', !flowReopened.body.task.delivery && !flowReopened.body.task.approved_at);
+const home=await (await fetch(B.replace(/\/api$/,'')+'/')).text();
+check('daily home renders actionable and verified-result sections',home.includes('Needs you') && home.includes('Verified results') && home.includes('What do you want done?'));
 
 await fetch('http://localhost:4010/__test/legacy');
 const legacyRead = await call('/projects');

@@ -154,6 +154,9 @@ export type Task = {
   status: TaskStatus;
   priority: Priority;
   agent: string | null;
+  /** Explicit owner gate; undefined preserves legacy owner-step notes. */
+  requires_owner_action?: boolean;
+  delivery?: { stage: "merged" | "deployed" | "verified"; url: string; note: string; at: string } | null;
   due_date: string | null;
   /** Story points (ESTIMATES), or null when unestimated. */
   estimate: number | null;
@@ -399,12 +402,14 @@ export const EMPTY_HUB: Hub = {
 
 // ─────────── dates ───────────
 
-export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+export const LOCAL_TIME_ZONE = "America/Denver";
+
+export function today(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: LOCAL_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
 export function daysFromNow(n: number): string {
-  return new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  return addDays(today(), n);
 }
 
 /** YYYY-MM-DD plus n days. Noon UTC keeps the arithmetic clear of daylight-saving edges. */

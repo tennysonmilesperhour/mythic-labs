@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ESTIMATES,
+  AGENT_PRESETS,
   LABEL_PRESETS,
   RECURRENCES,
   RECURRENCE_META,
@@ -46,6 +47,7 @@ import {
   type MapLink,
 } from "@/lib/taskMap";
 import { Chip, InlineText, PRIORITY_MARK, TagInput, api, btnGhost, btnPrimary, inputBase, inputCls } from "@/components/ProjectBits";
+import DeliveryPanel from "@/components/DeliveryPanel";
 import CopyBlock from "@/components/CopyBlock";
 import SubLink from "@/components/SubLink";
 import { GlyphArrow } from "@/components/Glyphs";
@@ -132,7 +134,7 @@ export default function TaskMapClient({
   const late = isOverdue(task.due_date, done);
   const ready = isReady(task, tasks);
   const humanOnly = isMine(task);
-  const agents = project.agents.filter((a) => a !== ME);
+  const agents = (project.agents.length ? project.agents : AGENT_PRESETS).filter((a) => a !== ME);
 
   const steps = extractSteps(task.notes);
   const snippets = extractSnippets(task.notes, task.acceptance);
@@ -193,15 +195,15 @@ export default function TaskMapClient({
       </nav>
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <Link href={`/queue?status=${task.status}`} title="All tasks with this status" className="hover:opacity-80">
-          <Chip tone={task.status === "blocked" ? "solid" : task.status === "doing" ? "accent" : "dim"}>{task.status}</Chip>
+        <Link href={`/queue?status=${task.status}`} title="All tasks with this work status" className="hover:opacity-80">
+          <Chip tone={task.status === "blocked" ? "solid" : task.status === "doing" ? "accent" : "dim"}>{task.status === "done" ? "submitted" : task.status}</Chip>
         </Link>
         <Link href={`/projects/${project.id}?tab=plan&task=${task.id}`} title="See it in the project plan" className="hover:opacity-80">
           <Chip tone={task.priority === "critical" ? "solid" : "dim"}>
             {PRIORITY_MARK[task.priority]} {task.priority}
           </Chip>
         </Link>
-        {ready ? <Chip tone="accent">ready</Chip> : null}
+        {ready ? <Chip tone="accent">unblocked</Chip> : null}
         {late ? <Chip tone="solid">{dueLabel(task.due_date)}</Chip> : null}
         {task.planned_for === day && !done ? <Chip tone="accent">today</Chip> : null}
         {task.recurrence ? <Chip title="Finishing it creates the next occurrence">↻ {RECURRENCE_META[task.recurrence].short}</Chip> : null}
@@ -222,6 +224,11 @@ export default function TaskMapClient({
         <InlineText value={task.title} onSave={(title) => title && patch(task.id, { title })} />
       </h1>
 
+      <DeliveryPanel task={task} onChange={(updated) => setTasks(ts => ts.map(t => t.id === updated.id ? updated : t))} />
+      <label className="flex items-center gap-3 py-3 mb-4 text-sm">
+        <input type="checkbox" checked={humanOnly} disabled={saving || task.agent === ME} onChange={e => patch(task.id, { requires_owner_action: e.target.checked })} />
+        Needs my action before an agent can work
+      </label>
       <p className="text-fg-dim text-[0.95rem] leading-relaxed max-w-3xl mb-6">
         {humanOnly
           ? "Only you can do this one. Everything needed to finish it is on this page: what done means, the steps, the links and the text to paste."
@@ -296,9 +303,10 @@ export default function TaskMapClient({
         ) : null}
         {agents.length ? (
           <select
-            value={humanOnly ? "" : task.agent ?? ""}
+            aria-label="Assigned agent"
+            value={task.agent === ME ? "" : task.agent ?? ""}
             onChange={(e) => e.target.value && patch(task.id, { agent: e.target.value })}
-            className="font-mono text-[0.6rem] uppercase tracking-[0.15em] border border-line bg-bg px-2 py-1.5 text-fg-dim"
+            className="text-sm border border-line bg-bg px-3 py-3 text-fg"
           >
             <option value="">Hand to agent…</option>
             {agents.map((a) => <option key={a} value={a}>@{a}</option>)}

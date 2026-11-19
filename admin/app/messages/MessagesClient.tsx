@@ -11,12 +11,15 @@ import { useToast } from "@/components/Toast";
 
 const KIND_LABEL: Record<Thread["kind"], string> = { message: "message", report: "run report", needs_you: "needs you" };
 
-export default function MessagesClient({ initial, claudeUrl }: { initial: Thread[]; claudeUrl: string }) {
+export default function MessagesClient({ initial, claudeUrl, initialThread }: { initial: Thread[]; claudeUrl: string; initialThread?: string }) {
   const router = useRouter();
   const { toast } = useToast();
   const [threads, setThreads] = useState(initial);
   useEffect(() => setThreads(initial), [initial]);
-  const [openId, setOpenId] = useState<string | null>(initial[0]?.id ?? null);
+  const [openId, setOpenId] = useState<string | null>(initialThread ?? null);
+  const [showReports, setShowReports] = useState(!!initialThread && initial.find(t=>t.id===initialThread)?.kind === "report");
+  const reports = threads.filter(t=>t.kind === "report");
+  const visibleThreads = threads.filter(t=>showReports ? t.kind === "report" : t.kind !== "report");
   const [composing, setComposing] = useState(initial.length === 0);
   const [subject, setSubject] = useState("");
   const [draft, setDraft] = useState("");
@@ -63,9 +66,13 @@ export default function MessagesClient({ initial, claudeUrl }: { initial: Thread
           <button onClick={() => { setComposing(true); setOpenId(null); }} className={btnPrimary}>New message</button>
           <a href={claudeUrl} target="_blank" rel="noreferrer" className={btnGhost} title="Open the Claude session that runs your automations">Open in Claude ↗</a>
         </div>
-        {threads.length ? (
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button className={btnGhost} aria-pressed={!showReports} onClick={()=>setShowReports(false)}>Conversations</button>
+          <button className={btnGhost} aria-pressed={showReports} onClick={()=>setShowReports(true)}>Routine reports ({reports.length})</button>
+        </div>
+        {visibleThreads.length ? (
           <ul className="border border-line bg-bg/85 divide-y divide-line-soft">
-            {threads.map((t) => {
+            {visibleThreads.map((t) => {
               const last = t.messages[t.messages.length - 1];
               const active = t.id === openId && !composing;
               return (
@@ -92,7 +99,7 @@ export default function MessagesClient({ initial, claudeUrl }: { initial: Thread
             })}
           </ul>
         ) : (
-          <p className="text-fg-dim text-sm border border-dashed border-line px-4 py-6">No messages yet.</p>
+          <p className="text-fg-dim text-sm border border-dashed border-line px-4 py-6">No messages in this view.</p>
         )}
       </aside>
 
@@ -120,7 +127,7 @@ export default function MessagesClient({ initial, claudeUrl }: { initial: Thread
               >
                 {busy ? "Sending…" : "Send"}
               </button>
-              <span className="text-[0.75rem] text-fg-ghost">The agent checks at 7:51am, 11:52am and 4:52pm Mountain. ⌘↵ sends.</span>
+              <span className="text-[0.75rem] text-fg-ghost">Delivered when an agent next connects. Schedule unverified. ⌘↵ sends.</span>
             </div>
           </div>
         ) : (

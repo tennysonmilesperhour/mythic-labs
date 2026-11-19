@@ -6,7 +6,8 @@ import MessagesClient from "./MessagesClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function MessagesPage() {
+export default async function MessagesPage({ searchParams }: { searchParams: Promise<{thread?: string}> }) {
+  const { thread } = await searchParams;
   let error: string | null = null;
   let threads: Thread[] = [];
   try {
@@ -22,7 +23,7 @@ export default async function MessagesPage() {
       <header className="border-b border-line pb-6 mb-8">
         <h1 className="serif-display text-[2.2rem] md:text-[2.6rem] leading-none mb-2">Messages</h1>
         <p className="text-fg-dim text-sm max-w-2xl leading-relaxed">
-          A private inbox between you and your agents. Run reports, steps only you can do, and answers to your questions land here. Write an instruction or a question and the agent picks it up on its next check: 7:51am, 11:52am and 4:52pm Mountain.
+          Questions and owner actions appear first. Routine run reports are grouped separately. Agents receive your messages when they next connect; the next run time is unverified.
         </p>
       </header>
       {error ? (
@@ -31,7 +32,7 @@ export default async function MessagesPage() {
           <Link href={fixHref("source:store")} className="text-accent underline">Fix it step by step →</Link>
         </p>
       ) : (
-        <MessagesClient initial={threads} claudeUrl={claudeUrl} />
+        <MessagesClient initial={threads} claudeUrl={claudeUrl} initialThread={thread} />
       )}
     </div>
   );

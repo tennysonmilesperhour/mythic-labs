@@ -22,8 +22,6 @@ import {
 import { ME, isMine } from "./taskMap";
 import { groupThreads, type Message } from "./messageTypes";
 
-/** Finished agent work older than this drops off the Approvals page unreviewed. */
-export const REVIEW_WINDOW_DAYS = 14;
 /** The agent a hand-off goes to when a project names no agent of its own. */
 export const DEFAULT_AGENT = "claude-code";
 
@@ -50,9 +48,9 @@ export const APPROVAL_META: Record<ApprovalKind, { label: string; hint: string; 
     reject: "Reject",
   },
   finished: {
-    label: "Finished by agents",
-    hint: `Agent work marked done in the last ${REVIEW_WINDOW_DAYS} days. Approve to sign it off, or send it back to the agent with a note.`,
-    approve: "Approve",
+    label: "Submitted for review",
+    hint: "Submitted work stays here until reviewed. Approving records your review. Merge, deployment and live verification are tracked separately on the task.",
+    approve: "Mark reviewed",
     reject: "Send back",
   },
 };
@@ -121,7 +119,6 @@ export function collectApprovals(details: ProjectDetail[], inbox: InboxItem[], n
       href: `/inbox#item-${i.id}`,
     });
   }
-  const cutoff = now - REVIEW_WINDOW_DAYS * 86_400_000;
   for (const d of details) {
     const p = d.project;
     for (const t of d.tasks) {
@@ -132,11 +129,11 @@ export function collectApprovals(details: ProjectDetail[], inbox: InboxItem[], n
           link: firstLink(t.offer.note), needs_project: false, href: `/tasks/${t.id}`,
         });
       }
-      if (t.status === "done" && t.agent && t.agent !== ME && !t.approved_at && t.done_at && Date.parse(t.done_at) >= cutoff) {
+      if (t.status === "done" && t.agent && t.agent !== ME && !t.approved_at) {
         const report = finishingNote(d.entries, t);
         out.push({
           key: `finished:${t.id}`, kind: "finished", id: t.id, title: taskPath(t, d.tasks), body: report?.body || report?.title || "",
-          project_id: p.id, project_name: p.name, agent: t.agent, at: t.done_at,
+          project_id: p.id, project_name: p.name, agent: t.agent, at: t.done_at || t.updated_at,
           link: firstLink(report?.body, ...threadOf(d.entries, t.id).map((e) => e.body)), needs_project: false, href: `/tasks/${t.id}`,
         });
       }
@@ -215,7 +212,7 @@ export function renderSweepMarkdown(details: ProjectDetail[], inbox: InboxItem[]
     "Read each thread (`GET /api/agent/messages`) and reply in it (`POST /api/agent/messages` with `thread_id`). An instruction here outranks the rest of this list, but never your guardrails."
   );
 
-  const doing = open.flatMap((d) => d.tasks.filter((t) => t.status === "doing" && t.agent === agent).map((t) => line(d, t, ` · last update ${daysSince(t.updated_at)}d ago`)));
+  const doing = open.flatMap((d) => d.tasks.filter((t) => t.status === "doing" && t.agent === agent && !isMine(t)).map((t) => line(d, t, ` · last update ${daysSince(t.updated_at)}d ago`)));
   section(out, "1. Resume what you already claimed", doing, "Nothing in progress.");
 
   const sentBack = new Set<string>();
@@ -224,7 +221,7 @@ export function renderSweepMarkdown(details: ProjectDetail[], inbox: InboxItem[]
     if (t.status === "todo" && t.agent === agent && last?.author === ME && last.title.startsWith("Sent back")) sentBack.add(t.id);
   }
   const ready = open.flatMap((d) =>
-    rankReady(d.tasks, d.milestones).filter((t) => t.agent === agent).map((t) => line(d, t, sentBack.has(t.id) ? " · sent back, read the thread first" : ""))
+    rankReady(d.tasks, d.milestones).filter((t) => t.agent === agent && !isMine(t)).map((t) => line(d, t, sentBack.has(t.id) ? " · sent back, read the thread first" : ""))
   );
   section(out, "2. Build what is assigned to you", ready, "Nothing assigned to you is ready.");
 

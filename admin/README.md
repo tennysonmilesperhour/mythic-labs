@@ -266,3 +266,11 @@ admin/
 ## Path to multi-user
 
 Add auth in front (e.g. Auth.js with the GitHub provider, or Vercel's own protection), then record the signed-in user as the author of each change. The commit history already says what changed and when.
+
+### Daily workflow and delivery evidence
+
+The home and Today pages show owner steps, approvals, claimed work, routing queues, and verified results. The full overview remains at `/overview`; phone navigation uses Today, Projects, Activity and More. Routine reports have their own Activity filter and messages are marked read only when opened.
+
+`requires_owner_action` is an optional task boolean editable through the owner task API. When absent, legacy owner-step notes remain recognized regardless of assignee. Explicit false releases that gate. The agent claim/next/sweep paths exclude owner-gated tasks. Assignment alone does not establish runner availability; the daily view labels the last recorded message and keeps schedules unverified.
+
+`done` means submitted. Unreviewed submissions never expire. Approval records review without merging or deploying. Owner endpoint `POST /api/tasks/:id/delivery` accepts `{ stage, url, note, expected_updated_at }`. Stages are `merged`, `deployed`, `verified` in order after approval. HTTPS evidence and a description of the check are required. This is an explicit evidence attestation, not an automatic GitHub/Vercel check. Each step is recorded in the task thread and stale writes return 409. Reopening clears approval and delivery; historical evidence remains in the thread. Agent APIs cannot record these delivery steps. Dates use America/Denver while timestamps remain UTC.

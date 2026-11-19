@@ -1,7 +1,12 @@
 import Link from "next/link";
-import { getHub, loadAll } from "@/lib/projects";
+import { getHub, loadAll, listMessages, listInbox } from "@/lib/projects";
 import { WORKABLE, rankReady, today, type TaskRef } from "@/lib/projectTypes";
 import { fixHref, isMine } from "@/lib/taskMap";
+import DailyHome from "@/components/DailyHome";
+import { collectApprovals } from "@/lib/approvals";
+import type { ProjectDetail } from "@/lib/projectTypes";
+import type { Message } from "@/lib/messageTypes";
+import type { ApprovalItem } from "@/lib/approvals";
 import TodayClient from "./TodayClient";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +15,12 @@ export default async function TodayPage() {
   let error: string | null = null;
   let hub: Awaited<ReturnType<typeof getHub>> | null = null;
   let suggestions: TaskRef[] = [];
+  let details: ProjectDetail[] = [];
+  let messages: Message[] = [];
+  let approvals: ApprovalItem[] = [];
   try {
-    const [h, all] = await Promise.all([getHub(), loadAll()]);
+    const [h, all, msgs, inbox] = await Promise.all([getHub(), loadAll(), listMessages(), listInbox()]);
+    details = all; messages = msgs; approvals = collectApprovals(all, inbox);
     hub = h;
     const planned = new Set(h.today.map((t) => t.id));
     // Ready work you could pull in: yours first, then unassigned, then agents' work you might start.
@@ -40,5 +49,8 @@ export default async function TodayPage() {
     );
   }
 
-  return <TodayClient hub={hub} suggestions={suggestions} day={today()} />;
+  return <>
+    <DailyHome details={details} messages={messages} approvals={approvals} day={today()} />
+    <details className="border-t border-line mt-8 pt-5"><summary className="cursor-pointer text-fg-dim py-3">Plan my day manually</summary><div className="mt-6"><TodayClient hub={hub} suggestions={suggestions} day={today()} /></div></details>
+  </>;
 }
