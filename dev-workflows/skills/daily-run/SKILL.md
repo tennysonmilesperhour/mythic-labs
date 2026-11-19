@@ -5,7 +5,7 @@ description: The scheduled morning pass over every Mythic Labs project. Answers 
 
 # Daily run
 
-One pass a day over the whole portfolio. The rule that makes it safe: **you build only what the owner assigned to you.** Everything else you could do becomes an offer or a proposal on the Approvals page, and the owner approves it in bulk. Approved items are assigned to you, so tomorrow's run builds them.
+One pass a day over the whole portfolio. The rule that makes it safe: **you build only what the owner assigned to you.** Everything else you could do becomes an offer or a proposal on the Approvals page, and the owner approves it in bulk. Approved items are assigned to you and wait for your next connected run.
 
 ## Setup
 
@@ -54,8 +54,8 @@ The dashboard has a private inbox between you and the owner (`/messages`). It is
    `pm POST /api/agent/inbox '{"title":"…","notes":"<why, and what done looks like>","project_id":"<id>","estimate":2}'`
    Add `"assign":"me"` when only the owner can do it. Skip anything listed under "Your proposals still waiting".
 
-5. **Report.** Post the summary as a message, `{"kind":"report","subject":"Daily run, <date>","body":"…"}`, and end with the same text:
-   - finished: task, project, PR link
+5. **Report.** If nothing changed and no owner action is needed, stop without posting another report. Reuse the current day's report thread for later checkpoints. Post the summary as a message, `{"kind":"report","subject":"Daily run, <date>","body":"…"}`, and end with the same text:
+   - submitted for review: task, project, checks, PR link
    - offered and proposed: counts, plus one line each for anything important
    - blocked: task and the exact question
    - waiting on the owner: the approvals count from the checklist, and the dashboard's `/approvals` page
@@ -67,3 +67,5 @@ The dashboard has a private inbox between you and the owner (`/messages`). It is
 - Never accept a decision; log choices as proposed decisions for the owner.
 - One offer per task, at most 2 proposals per project per run, no duplicates of waiting proposals.
 - If the API is unreachable or returns errors for more than a couple of calls, stop and report rather than retrying in a loop.
+
+Report completion as submitted, reviewed, merged, deployed, or verified live according to recorded evidence. A draft PR is submitted. Never claim a deployment from a task status alone.

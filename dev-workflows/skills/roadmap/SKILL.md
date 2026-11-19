@@ -57,7 +57,7 @@ pm() { # pm METHOD PATH [JSON]
 4. **Read before building.** Follow `project.build_instructions` exactly: branch naming, checks, definition of done. Respect every entry in `active_decisions`. The task's `acceptance` is the bar. Read the thread (`GET /api/agent/tasks/<id>`): the owner may have left instructions there.
 5. **Build.** Split large work into subtasks via `POST .../tasks` with `parent_id`, `assign_self: true` and an `estimate`, so progress and forecasts stay visible. Post a short `PATCH` note at meaningful checkpoints (PR opened, tests passing).
 6. **Finish.** When the acceptance criteria are met and checks pass:
-   - `PATCH` the task `{"status":"done","note":"<what shipped, PR link>"}`
+   - `PATCH` the task `{"status":"done","note":"<what was submitted, checks, PR link>"}`
    - log a changelog entry: `{"kind":"changelog","change_type":"added|changed|fixed|removed|security","title":"…"}`
    - if you made a choice someone might later question, record it: `{"kind":"decision","title","context","body","alternatives","consequences"}`. It lands as *proposed* for the user to accept.
    - update `next_action` if it changed.
@@ -90,3 +90,9 @@ End each session with a short punch list: tasks finished (with PR links), tasks 
 - Never mark a task done without meeting its acceptance criteria. If there are none, write them into a progress note before you start.
 - Never set a decision to accepted. Only the user can.
 - Don't log noise: one progress note per real checkpoint, one changelog entry per user-visible change, one inbox proposal per distinct idea.
+
+## Delivery and owner gates
+
+`done` means submitted for review. Approval records review only. Merge, production deployment and live verification are separate evidence records on the task. Never describe a draft PR as shipped. Include the exact PR URL and checks in the finishing note. The owner or an explicitly authorized assistant records delivery evidence through the task page after checking each result.
+
+Tasks with `requires_owner_action: true`, or legacy owner-step notes without an explicit override, stay in the owner's list regardless of agent assignment. Claim and next-task skip them until the owner clears that gate. Calendar days use America/Denver. Unreviewed submissions never expire.

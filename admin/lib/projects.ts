@@ -1,3 +1,4 @@
+import { nextDeliveryStage, safeEvidenceUrl } from "./delivery";
 import { createHash } from "node:crypto";
 import { ME, isMine } from "./taskMap";
 import { PLAN_TEMPLATES, type PlanTemplate } from "./templates";
@@ -29,6 +30,7 @@ import {
   computeStats,
   dayOfMonth,
   daysFromNow,
+  today as localToday,
   groupAttention,
   isReady,
   isSnoozed,
@@ -79,7 +81,7 @@ const MILESTONE_FIELDS = [
   "title", "description", "start_date", "target_date", "done", "sort_order",
 ] as const;
 const TASK_FIELDS = [
-  "title", "source_key", "notes", "acceptance", "depends_on", "status", "priority", "agent",
+  "title", "source_key", "notes", "acceptance", "depends_on", "status", "priority", "agent", "requires_owner_action",
   "due_date", "estimate", "planned_for", "recurrence", "labels", "snoozed_until", "milestone_id", "parent_id", "sort_order",
 ] as const;
 const ENTRY_FIELDS = [
@@ -163,6 +165,7 @@ function validateEntryFields(d: ProjectDetail, clean: Record<string, unknown>) {
 
 /** Reject malformed task fields before they reach the store. Mutates `clean` into canonical shape. */
 function validateTaskFields(clean: Record<string, unknown>) {
+  if ("requires_owner_action" in clean && typeof clean.requires_owner_action !== "boolean") throw new Invalid("requires_owner_action must be boolean");
   if ("status" in clean && !(TASK_STATUSES as readonly string[]).includes(String(clean.status))) {
     throw new Invalid(`status must be one of ${TASK_STATUSES.join(", ")}`);
   }
@@ -214,7 +217,7 @@ export class Conflict extends Error {}
 export class Invalid extends Error {}
 
 const now = () => new Date().toISOString();
-const today = () => now().slice(0, 10);
+const today = localToday;
 const normalizeSourceKey = (value: unknown) => typeof value === "string" ? value.trim() : "";
 
 // ─────────── draft helpers (run inside mutate, so they may run twice) ───────────
@@ -402,7 +405,7 @@ export async function getHub(): Promise<Hub> {
           a.sort_order - b.sort_order
       ),
     doneToday: all
-      .flatMap((d) => d.tasks.filter((t) => t.status === "done" && t.done_at?.slice(0, 10) === day).map((t) => ref(d, t)))
+      .flatMap((d) => d.tasks.filter((t) => t.status === "done" && !!t.done_at && localToday(new Date(t.done_at)) === day).map((t) => ref(d, t)))
       .sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? "")),
     dated: live
       .flatMap((d) => d.tasks.filter((t) => t.status !== "done" && t.due_date).map((t) => ref(d, t)))
@@ -824,6 +827,7 @@ function applyTaskPatch(d: ProjectDetail, task: Task, clean: Record<string, unkn
   if ("status" in clean && clean.status !== task.status) {
     // Approval covers one completion only. Reopened work needs a fresh review.
     task.approved_at = null;
+    task.delivery = null;
     task.done_at = clean.status === "done" ? now() : null;
     if (clean.status === "doing") task.claimed_at = now();
     if (clean.status === "done" && rule) {
@@ -1368,7 +1372,7 @@ export async function nextTask(
     // explicitly assigned to an agent. Keep selection aligned with claimTask.
     if (d.project.agents.length && !d.project.agents.includes(agent)) continue;
     // Every caller gets assigned work only. Unassigned work needs an owner-approved offer.
-    const task = rankReady(d.tasks, d.milestones).find((t) => t.agent === agent);
+    const task = rankReady(d.tasks, d.milestones).find((t) => t.agent === agent && !isMine(t));
     if (task) return { task, detail: d };
   }
   return null;
@@ -1382,6 +1386,7 @@ export async function claimTask(id: string, agent: string): Promise<Task> {
       const { d, item } = findIn(s, "tasks", id);
       const task = item as Task;
       assertAgentProject(d, agent);
+      if (isMine(task)) throw new Conflict("owner action required before an agent can claim this task");
       if (!task.agent) throw new Conflict("owner approval required; offer to take this task first");
       if (task.status === "doing" && task.agent === agent) return task;
       if (task.status === "doing" && task.agent !== agent) {
@@ -1414,6 +1419,7 @@ export async function reportTask(
       const { d, item } = findIn(s, "tasks", id);
       const task = item as Task;
       assertAgentProject(d, agent);
+      if (isMine(task)) throw new Conflict("owner action required before an agent can report this task");
       if (task.status !== "doing" || task.agent !== agent) throw new Conflict("claim this task before reporting progress");
       if (input.status === "done") {
         const open = openDescendants(task, d.tasks);
@@ -1659,6 +1665,7 @@ function applyOne(s: Snapshot, op: ApprovalOp): { undo: ApprovalUndo; task_id?: 
       if (task.status !== "done" || task.approved_at) throw new Conflict("already reviewed or reopened");
       if (op.action === "approve") {
         task.approved_at = stamp;
+        task.updated_at = stamp;
         touch(d);
         return { undo: { kind: "finished", task_id: task.id, approved: true, done_at: task.done_at, entry_id: null }, task_id: task.id };
       }
@@ -1993,3 +2000,24 @@ export async function restoreProject(id: string, sha: string): Promise<ProjectDe
   );
 }
 
+
+/** Owner-recorded delivery evidence. Each step is explicit and survives in the task thread. */
+export async function recordDelivery(id: string, input: Record<string, unknown>): Promise<Task> {
+  return mutate(
+    (task, s) => `${pfx(s, task.project_id)}delivery ${task.delivery?.stage}: ${clip(task.title)}`,
+    (s) => {
+      const { d, item } = findIn(s, "tasks", id);
+      const task = item as Task;
+      if (input.expected_updated_at !== task.updated_at) throw new Conflict("Task changed. Refresh before recording delivery.");
+      const stage = nextDeliveryStage(task);
+      if (!stage || input.stage !== stage) throw new Conflict("Review the submission and record each delivery step in order.");
+      if (!safeEvidenceUrl(input.url)) throw new Invalid("A valid HTTPS evidence URL without credentials is required.");
+      if (typeof input.note !== "string" || !input.note.trim() || input.note.length > 10000) throw new Invalid("Describe the evidence you checked (up to 10000 characters).");
+      task.delivery = { stage, url: input.url, note: input.note.trim(), at: now() };
+      task.updated_at = now();
+      touch(d);
+      addEntry(d, { kind: "progress", task_id: id, title: `Delivery recorded: ${stage}`, body: `${input.note.trim()}\n\nEvidence: ${input.url}`, author: ME });
+      return task;
+    }
+  );
+}

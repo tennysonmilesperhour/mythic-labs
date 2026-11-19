@@ -454,10 +454,10 @@ t('plan templates are well formed', () => {
 // ── approvals and the daily run ──
 const messageTypes = await load('../lib/messageTypes.ts', { './taskMap': taskMap.url });
 const approvals = await load('../lib/approvals.ts', { './projectTypes': types.url, './taskMap': taskMap.url, './messageTypes': messageTypes.url });
-const { collectApprovals, renderSweepMarkdown, defaultAgentFor, REVIEW_WINDOW_DAYS } = approvals.mod;
+const { collectApprovals, renderSweepMarkdown, defaultAgentFor } = approvals.mod;
 const aproj = (over = {}) => ({ id: 'p', name: 'Lanternfish', status: 'active', priority: 'medium', agents: [], sort_order: 0, next_action: '', ...over });
 const daysAgo = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
-t('approvals collect proposals, open offers, proposed decisions and recent agent work', () => {
+t('approvals collect proposals, open offers, proposed decisions and all unreviewed agent work', () => {
   const offer = { agent: 'claude-code', note: 'can do', at: daysAgo(0), declined_at: null };
   const d = {
     project: aproj(), milestones: [],
@@ -468,7 +468,7 @@ t('approvals collect proposals, open offers, proposed decisions and recent agent
       task({ id: 'f1', status: 'done', agent: 'claude-code', done_at: daysAgo(1) }),
       task({ id: 'f2', status: 'done', agent: 'claude-code', done_at: daysAgo(1), approved_at: daysAgo(0) }),
       task({ id: 'f3', status: 'done', agent: 'me', done_at: daysAgo(1) }),
-      task({ id: 'f4', status: 'done', agent: 'claude-code', done_at: daysAgo(REVIEW_WINDOW_DAYS + 1) }),
+      task({ id: 'f4', status: 'done', agent: 'claude-code', done_at: daysAgo(45) }),
     ],
     entries: [
       { id: 'e1', project_id: 'p', task_id: 'f1', kind: 'progress', title: 'Finished: t', body: 'PR https://github.com/o/r/pull/7.', author: 'claude-code', created_at: daysAgo(1) },
@@ -482,7 +482,7 @@ t('approvals collect proposals, open offers, proposed decisions and recent agent
     { id: 'i3', title: 'Loose idea', notes: '', source: 'claude-code', project_id: 'gone', created_at: daysAgo(0) },
   ];
   const got = collectApprovals([d], inbox);
-  assert.deepEqual(got.map((x) => x.key), ['proposal:i1', 'proposal:i3', 'offer:o1', 'decision:d1', 'finished:f1']);
+  assert.deepEqual(got.map((x) => x.key), ['proposal:i1', 'proposal:i3', 'offer:o1', 'decision:d1', 'finished:f1', 'finished:f4']);
   assert.equal(got.find((x) => x.key === 'proposal:i3').needs_project, true);
   assert.equal(got.find((x) => x.key === 'finished:f1').link, 'https://github.com/o/r/pull/7');
 });
@@ -548,4 +548,14 @@ t('the daily run lists messages waiting for a reply first', () => {
   assert.match(zero, /Skip dialogue `q`: Do not touch dialogue this week/);
 });
 
+t('owner steps stay visible even when assigned to an agent', () => {
+  assert.equal(taskMap.mod.isMine(task({agent:'claude-cowork', notes:'Owner step: add the account key'})), true);
+  assert.equal(taskMap.mod.isMine(task({agent:'claude-code', requires_owner_action:true})), true);
+  assert.equal(taskMap.mod.isMine(task({agent:'claude-code', notes:'Owner step: completed', requires_owner_action:false})), false);
+});
+t('Denver calendar dates respect midnight and daylight saving', () => {
+  assert.equal(types.mod.today(new Date('2026-11-19T03:00:00Z')), '2026-11-18');
+  assert.equal(types.mod.today(new Date('2026-07-19T06:00:00Z')), '2026-07-19');
+  assert.equal(types.mod.today(new Date('2026-11-19T06:00:00Z')), '2026-11-18');
+});
 console.log(`unit checks passed (${n})`);

@@ -47,7 +47,7 @@ export function groupThreads(items: Message[]): Thread[] {
     threads.push({
       id,
       subject: first.subject || first.body.split("\n")[0].slice(0, 80),
-      kind: first.kind,
+      kind: messages.some(m => m.kind === "needs_you" && m.author !== ME && !m.read_at) ? "needs_you" : first.kind,
       messages,
       last_at: last.created_at,
       unread: messages.filter((m) => m.author !== ME && !m.read_at).length,
