@@ -52,6 +52,17 @@ http.createServer((req, res) => {
       }
       return send(res, 200, out);
     }
+    // Pull requests on a client repo, for billing. #7 is a person's change, #8 a dependency bot's, #6 merged before the start date, #9 closed unmerged.
+    if (req.method === 'GET' && (m = p.match(/^\/repos\/acme\/client-app\/pulls$/))) {
+      const pr = (number, title, merged_at, type = 'User') => ({ number, title, html_url: `https://github.com/acme/client-app/pull/${number}`, merged_at, updated_at: merged_at || '2026-03-05T10:00:00Z', user: { login: type === 'Bot' ? 'dependabot[bot]' : 'dev', type } });
+      return send(res, 200, [pr(9, 'Abandoned idea', null), pr(8, 'Bump next', '2026-03-04T10:00:00Z', 'Bot'), pr(7, 'Add invite links', '2026-03-03T10:00:00Z'), pr(6, 'Old work', '2025-12-01T10:00:00Z')]);
+    }
+    if (req.method === 'GET' && (m = p.match(/^\/repos\/acme\/client-app\/pulls\/(\d+)\/files$/))) {
+      const files = m[1] === '7'
+        ? [{ filename: 'src/lib/links.ts', additions: 120, deletions: 40 }, { filename: 'src/lib/links.test.ts', additions: 60, deletions: 0 }, { filename: 'docs/LINKS.md', additions: 100, deletions: 0 }, { filename: 'package-lock.json', additions: 900, deletions: 300 }]
+        : [{ filename: 'package.json', additions: 1, deletions: 1 }, { filename: 'package-lock.json', additions: 40, deletions: 30 }];
+      return send(res, 200, files);
+    }
     if (req.method === 'GET' && (m = p.match(/^\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/))) {
       const ref = u.searchParams.get('ref') || refs.main; const c = commits[ref]; const sha = c && trees[c.tree.sha]?.[m[1]];
       if (!sha) return send(res, 404, { message: 'Not Found' });

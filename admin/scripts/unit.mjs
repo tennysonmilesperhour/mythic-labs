@@ -558,4 +558,57 @@ t('Denver calendar dates respect midnight and daylight saving', () => {
   assert.equal(types.mod.today(new Date('2026-07-19T06:00:00Z')), '2026-07-19');
   assert.equal(types.mod.today(new Date('2026-11-19T06:00:00Z')), '2026-11-18');
 });
+
+// ── billing ──
+const billingTypes = await load('../lib/billingTypes.ts');
+{
+  const { classifyFile, countLines, estimateHours, nextDocNumber, docLines, docTotal, mailtoHref, validBillingFile, EMPTY_BILLING } = billingTypes.mod;
+  t('lock files, build output and generated types are not billed; docs and tests are told apart', () => {
+    assert.equal(classifyFile('package-lock.json'), 'skipped');
+    assert.equal(classifyFile('apps/web/dist/main.js'), 'skipped');
+    assert.equal(classifyFile('src/lib/database.types.ts'), 'skipped');
+    assert.equal(classifyFile('public/logo.png'), 'skipped');
+    assert.equal(classifyFile('README.md'), 'docs');
+    assert.equal(classifyFile('src/lib/links.test.ts'), 'tests');
+    assert.equal(classifyFile('e2e/invite.spec.ts'), 'tests');
+    assert.equal(classifyFile('src/app/page.tsx'), 'code');
+  });
+  const est = (files) => estimateHours(countLines(files));
+  t('a tiny change bills the half hour of review plus a little', () => assert.equal(est([{ filename: 'src/a.ts', additions: 3, deletions: 1 }]), 0.75));
+  t('a change with nothing counted bills a quarter hour', () => assert.equal(est([{ filename: 'package-lock.json', additions: 500, deletions: 200 }]), 0.25));
+  t('the estimate grows with size, more slowly for large changes', () => {
+    const small = est([{ filename: 'src/a.ts', additions: 150, deletions: 0 }]);
+    const mid = est([{ filename: 'src/a.ts', additions: 600, deletions: 0 }]);
+    const big = est([{ filename: 'src/a.ts', additions: 3000, deletions: 0 }]);
+    assert.equal(small, 2.75);
+    assert.equal(mid, 6.75);
+    assert.ok(big > mid && big < 3000 / 75);
+  });
+  t('removed lines count a quarter and docs count 30%', () => {
+    assert.equal(est([{ filename: 'src/a.ts', additions: 0, deletions: 300 }]), est([{ filename: 'src/a.ts', additions: 75, deletions: 0 }]));
+    assert.ok(est([{ filename: 'docs/a.md', additions: 300, deletions: 0 }]) < est([{ filename: 'src/a.ts', additions: 300, deletions: 0 }]));
+  });
+  t('document numbers count per kind and year', () => {
+    const docs = [{ number: 'INV-2026-002' }, { number: 'INV-2025-009' }, { number: 'EST-2026-001' }];
+    assert.equal(nextDocNumber(docs, 'invoice', 2026), 'INV-2026-003');
+    assert.equal(nextDocNumber(docs, 'estimate', 2026), 'EST-2026-002');
+    assert.equal(nextDocNumber(docs, 'invoice', 2027), 'INV-2027-001');
+  });
+  t('invoice lines run oldest first and total to the cent', () => {
+    const w = (id, merged_at, hours, rate) => ({ id, title: id, pr_url: '', merged_at, hours, rate });
+    const lines = docLines([w('b', '2026-03-02', 1.25, 80), w('a', '2026-03-01', 0.75, 120)]);
+    assert.deepEqual(lines.map((l) => l.work_id), ['a', 'b']);
+    assert.equal(docTotal(lines), 190);
+  });
+  t('the email draft goes to the client with the total', () => {
+    const href = mailtoHref({ kind: 'invoice', number: 'INV-2026-001', client_name: 'Acme', client_email: 'a@acme.example', total: 190, due_on: '2026-03-15', lines: [] }, { name: 'Mythic Labs', email: '', payment_terms_days: 14, payment_note: 'Pay by ACH' });
+    assert.ok(href.startsWith('mailto:a%40acme.example?subject=Invoice%20INV-2026-001%20from%20Mythic%20Labs'));
+    assert.match(decodeURIComponent(href), /\$190\.00, due 2026-03-15[\s\S]*Pay by ACH/);
+  });
+  t('a billing file must be well formed', () => {
+    assert.equal(validBillingFile(EMPTY_BILLING), true);
+    assert.equal(validBillingFile({ ...EMPTY_BILLING, work: [{ id: 'x' }] }), false);
+    assert.equal(validBillingFile({ schemaVersion: 2 }), false);
+  });
+}
 console.log(`unit checks passed (${n})`);

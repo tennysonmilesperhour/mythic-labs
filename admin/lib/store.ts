@@ -6,6 +6,7 @@ import path from "node:path";
 import { gh } from "./github";
 import { normalizeDetail, renderProjectMarkdown, type InboxFile, type ProjectDetail } from "./projectTypes";
 import type { MessagesFile } from "./messageTypes";
+import { EMPTY_BILLING, validBillingFile, type BillingFile } from "./billingTypes";
 
 /**
  * The dashboard's data lives as files in git; there is no database.
@@ -16,6 +17,7 @@ import type { MessagesFile } from "./messageTypes";
  *   operations.json      idempotency receipts
  *   inbox.json           quick captures waiting to be sorted (optional; written on first capture)
  *   messages.json        the private inbox between the owner and agents (optional; written on first message)
+ *   billing.json         client projects, billable work per merged PR, estimates and invoices (optional)
  *
  * The destination is a separately configured, already-private repository.
  * Every change is one commit; the history is the audit log.
@@ -54,6 +56,7 @@ export type Snapshot = {
   operations: Record<string, OperationReceipt>;
   inbox: InboxFile;
   messages: MessagesFile;
+  billing: BillingFile;
   /** A validated pre-versioned snapshot; metadata is written on its first mutation. */
   legacyMetadataMigration: boolean;
 };
@@ -92,7 +95,7 @@ interface Backend {
 }
 
 const wanted = (p: string) =>
-  p === "repos.json" || p === "operations.json" || p === "inbox.json" || p === "messages.json" || /^projects\/[\w-]+\.json$/.test(p);
+  p === "repos.json" || p === "operations.json" || p === "inbox.json" || p === "messages.json" || p === "billing.json" || /^projects\/[\w-]+\.json$/.test(p);
 
 /** Git's blob id for a text, so the cache can match tree entries without refetching. */
 const blobSha = (text: string) => {
@@ -402,7 +405,18 @@ function parse(head: string | null, files: Map<string, string>): Snapshot {
     }
     messages = parsed as MessagesFile;
   }
-  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, inbox, messages, legacyMetadataMigration };
+  // Billing arrived later still; a missing file is no client work yet.
+  let billing: BillingFile = structuredClone(EMPTY_BILLING);
+  if (files.has("billing.json")) {
+    const parsed = JSON.parse(files.get("billing.json")!) as unknown;
+    if (!validBillingFile(parsed)) throw new Error("Project data file billing.json has an incompatible billing record.");
+    for (const row of [...parsed.work, ...parsed.documents]) {
+      if (seenIds.has(row.id)) throw new Error(`Duplicate record id ${row.id} in project data snapshot.`);
+      seenIds.add(row.id);
+    }
+    billing = parsed;
+  }
+  return { head, projects, repos, operations: parsedOperations.items as Record<string, OperationReceipt>, inbox, messages, billing, legacyMetadataMigration };
 }
 
 async function readFresh(): Promise<Snapshot> {
@@ -498,6 +512,9 @@ export async function mutate<T>(
     }
     if (JSON.stringify(draft.messages) !== JSON.stringify(base.messages)) {
       changes.push({ path: "messages.json", content: JSON.stringify(draft.messages, null, 2) + "\n" });
+    }
+    if (JSON.stringify(draft.billing) !== JSON.stringify(base.billing)) {
+      changes.push({ path: "billing.json", content: JSON.stringify(draft.billing, null, 2) + "\n" });
     }
     if (!changes.length) return result;
     if (!base.head) {

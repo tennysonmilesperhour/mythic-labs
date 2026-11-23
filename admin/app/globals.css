@@ -293,3 +293,10 @@ body {
 .pulse-dot {
   animation: mythic-pulse 3.2s ease-in-out infinite;
 }
+
+/* Estimates and invoices print on plain paper, whatever the theme. */
+@media print {
+  @page { margin: 16mm; }
+  html, body { background: #fff !important; color: #111 !important; }
+  .invoice-sheet, .invoice-sheet * { color: #111 !important; border-color: #ccc !important; background: transparent !important; }
+}
