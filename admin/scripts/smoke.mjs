@@ -635,6 +635,11 @@ const person = mine.find((w) => w.pr_number === 7), bot = mine.find((w) => w.pr_
 check('sync records merged pull requests since the start date only', synced.status === 200 && mine.length === 2 && !mine.some((w) => w.pr_number === 6 || w.pr_number === 9), JSON.stringify(synced.body));
 check('lock files do not count and the estimate follows the counted lines', person?.counts.skipped.files === 1 && person?.estimate_hours === 3.75 && person?.rate === 80, JSON.stringify(person));
 check('a bot pull request is listed but excluded', bot?.status === 'excluded');
+const { body: bareMade } = await call('/projects', 'POST', { name: `Bare repo ${stamp}`, status: 'active', repo: 'client-app', agents: [] });
+await call('/billing/clients', 'POST', { project_id: bareMade.created[0].id, rate: 80 });
+const bareSync = await call('/billing/sync', 'POST', {});
+check('a bare repo name reads from the dashboard owner', !bareSync.body.errors.some((e) => /not owner\/name/.test(e.error)), JSON.stringify(bareSync.body.errors));
+await call('/billing/clients', 'DELETE', { project_id: bareMade.created[0].id });
 const resync = await call('/billing/sync', 'POST', {});
 check('syncing again adds nothing', resync.body.added.length === 0);
 await call('/billing/work', 'PATCH', { items: [{ id: person.id, hours: 3.5 }] });
