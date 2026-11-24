@@ -191,6 +191,54 @@ export async function updateWork(ops: unknown): Promise<WorkItem[]> {
   );
 }
 
+const ZERO_COUNTS: LineCounts = {
+  code: { files: 0, additions: 0, deletions: 0 },
+  tests: { files: 0, additions: 0, deletions: 0 },
+  docs: { files: 0, additions: 0, deletions: 0 },
+  skipped: { files: 0, additions: 0, deletions: 0 },
+};
+
+/** Record time by hand: calls, prompting, review, anything without a merged pull request. */
+export async function addManualWork(input: Record<string, unknown>): Promise<WorkItem> {
+  const projectId = str(input.project_id, 64, "project_id");
+  const title = str(input.title, 300, "description");
+  if (!title) throw new Invalid("describe the work");
+  const hours = hoursOf(input.hours);
+  if (hours <= 0) throw new Invalid("hours must be above 0");
+  const date = str(input.date, 10, "date") || today();
+  if (!DATE_RE.test(date)) throw new Invalid("date must be YYYY-MM-DD");
+  const note = str(input.note, 500, "note");
+  return mutate(
+    (w) => `Billing: ${w.hours} h by hand, ${w.title}`,
+    (s) => {
+      const client = s.billing.clients.find((c) => c.project_id === projectId);
+      if (!client) throw new NotFound("that project is not client work");
+      const stamp = now();
+      const w: WorkItem = {
+        id: newId(),
+        project_id: projectId,
+        repo: "",
+        pr_number: 0,
+        pr_url: "",
+        title,
+        author: "me",
+        merged_at: `${date}T12:00:00.000Z`,
+        counts: structuredClone(ZERO_COUNTS),
+        estimate_hours: hours,
+        hours,
+        rate: client.rate,
+        status: "unbilled",
+        invoice_id: null,
+        note,
+        created_at: stamp,
+        updated_at: stamp,
+      };
+      s.billing.work.push(w);
+      return w;
+    }
+  );
+}
+
 type FetchedPull = {
   repo: string;
   number: number;
@@ -237,7 +285,7 @@ export type SyncResult = {
 /** Record every newly merged pull request on a client project, with its estimate. */
 export async function syncBilling(): Promise<SyncResult> {
   const s = await readSnapshot();
-  const known = new Set(s.billing.work.map((w) => `${w.repo}#${w.pr_number}`.toLowerCase()));
+  const known = new Set(s.billing.work.filter((w) => w.pr_number > 0).map((w) => `${w.repo}#${w.pr_number}`.toLowerCase()));
   const fetched: Array<{ client: BillingClient; pulls: FetchedPull[] }> = [];
   const errors: SyncResult["errors"] = [];
   let more = false;
