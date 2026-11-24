@@ -654,6 +654,10 @@ const afterVoid = (await call('/billing')).body.work.find((w) => w.id === person
 check('voiding an invoice returns its work to unbilled', voided.body.document.status === 'void' && afterVoid.status === 'unbilled' && !afterVoid.invoice_id);
 await call('/billing/clients', 'POST', { project_id: clientPid, rate: 95 });
 check('a new rate applies to work not yet invoiced', (await call('/billing')).body.work.find((w) => w.id === person.id).rate === 95);
+const manual = await call('/billing/work', 'POST', { project_id: clientPid, title: 'Scoping call with the client', hours: 0.5, date: '2026-03-10' });
+check('time can be added by hand at the client rate', manual.status === 200 && manual.body.work.hours === 0.5 && manual.body.work.rate === 95 && manual.body.work.status === 'unbilled', JSON.stringify(manual.body));
+check('hand-entered time needs hours above zero', (await call('/billing/work', 'POST', { project_id: clientPid, title: 'x', hours: 0 })).status === 400);
+await call('/billing/work', 'PATCH', { items: [{ id: manual.body.work.id, status: 'excluded' }] });
 const agentBilling = await call('/agent/billing', 'GET', undefined, agent('claude-code'));
 const agentRow = agentBilling.body?.clients?.find((c) => c.project_id === clientPid);
 check('agents read unbilled totals per client', agentRow?.unbilled_hours === 3.5 && agentRow?.unbilled_amount === 332.5, JSON.stringify(agentRow));

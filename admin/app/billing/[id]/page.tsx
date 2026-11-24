@@ -58,7 +58,7 @@ export default async function BillingDocPage({ params }: { params: Promise<{ id:
                 <td className="py-2 pr-3 font-mono text-xs whitespace-nowrap">{l.merged_at.slice(0, 10)}</td>
                 <td className="py-2 pr-3">
                   {l.title}
-                  <div className="text-[0.7rem] text-fg-dim break-all">{l.pr_url}</div>
+                  {l.pr_url ? <div className="text-[0.7rem] text-fg-dim break-all">{l.pr_url}</div> : null}
                 </td>
                 <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{hoursLabel(l.hours)}</td>
                 <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{money(l.rate)}</td>

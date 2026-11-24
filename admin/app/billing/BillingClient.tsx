@@ -272,7 +272,7 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
                   </td>
                   <td className="py-2 pr-3 font-mono text-xs whitespace-nowrap">{day(w.merged_at)}</td>
                   <td className="py-2 pr-3 min-w-[14rem]">
-                    <a href={w.pr_url} target="_blank" rel="noreferrer" className="hover:text-accent">#{w.pr_number} {w.title}</a>
+                    {w.pr_url ? <a href={w.pr_url} target="_blank" rel="noreferrer" className="hover:text-accent">#{w.pr_number} {w.title}</a> : <span>{w.title}</span>}
                     <div className="text-[0.7rem] text-fg-dim mt-0.5">{countsSummary(w.counts)}{w.note ? ` · ${w.note}` : ""}</div>
                   </td>
                   <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{hoursLabel(w.estimate_hours)}</td>
@@ -307,6 +307,7 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
           Nothing unbilled. Pull requests merged on {client.client_name}&apos;s repo since {client.since} show up here with an estimate.
         </p>
       )}
+      <AddTime projectId={client.project_id} onAdded={onChange} />
       <div className="flex flex-wrap items-center gap-3 mt-4">
         <button onClick={() => make("estimate")} disabled={!picked.length || busy} className={btnGhost}>Make estimate</button>
         <button onClick={() => make("invoice")} disabled={!picked.length || busy} className={btnPrimary}>Make invoice</button>
@@ -318,6 +319,37 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
         ) : null}
       </div>
     </Section>
+  );
+}
+
+function AddTime({ projectId, onAdded }: { projectId: string; onAdded: () => void }) {
+  const { toast } = useToast();
+  const [title, setTitle] = useState("");
+  const [hours, setHours] = useState("");
+  const [date, setDate] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const [busy, setBusy] = useState(false);
+  const add = async () => {
+    if (!title.trim() || !hours) return;
+    setBusy(true);
+    try {
+      await api("/api/billing/work", "POST", { project_id: projectId, title, hours: Number(hours), date });
+      setTitle("");
+      setHours("");
+      toast("Time added.");
+      onAdded();
+    } catch (err) {
+      toast({ message: (err as Error).message, tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-4">
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add time by hand: what you did" className={`${inputBase} flex-1 min-w-[12rem]`} aria-label="Work description" />
+      <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Hours" inputMode="decimal" className={`${inputBase} w-20`} aria-label="Hours" />
+      <input value={date} onChange={(e) => setDate(e.target.value)} type="date" className={inputBase} aria-label="Date" />
+      <button onClick={add} disabled={busy || !title.trim() || !hours} className={btnGhost}>Add time</button>
+    </div>
   );
 }
 

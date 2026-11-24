@@ -171,6 +171,7 @@ export const hoursLabel = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(
 
 /** One line describing what counted, for the work table and the estimate. */
 export function countsSummary(c: LineCounts): string {
+  if (!c.code.files && !c.tests.files && !c.docs.files && !c.skipped.files) return "time entered by hand";
   const parts: string[] = [];
   for (const k of ["code", "tests", "docs"] as const) {
     if (c[k].files) parts.push(`${k} +${c[k].additions} −${c[k].deletions} in ${c[k].files} file${c[k].files === 1 ? "" : "s"}`);
