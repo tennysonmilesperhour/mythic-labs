@@ -622,6 +622,37 @@ check('reopening clears old approval and delivery evidence', !flowReopened.body.
 const home=await (await fetch(B.replace(/\/api$/,'')+'/')).text();
 check('daily home renders actionable and verified-result sections',home.includes('Needs you') && home.includes('Verified results') && home.includes('What do you want done?'));
 
+// ── billing ──
+const { body: clientMade } = await call('/projects', 'POST', { name: `Client ${stamp}`, status: 'active', repo: 'acme/client-app', agents: [] });
+const clientPid = clientMade.created[0].id;
+const madeClient = await call('/billing/clients', 'POST', { project_id: clientPid, rate: 80, client_name: 'Acme', client_email: 'billing@acme.example', since: '2026-01-01' });
+check('a project joins client work at its own rate', madeClient.status === 200 && madeClient.body.client.rate === 80);
+check('a client email must look like one', (await call('/billing/clients', 'POST', { project_id: clientPid, client_email: 'nope' })).status === 400);
+const synced = await call('/billing/sync', 'POST', {});
+const billing1 = (await call('/billing')).body;
+const mine = billing1.work.filter((w) => w.project_id === clientPid);
+const person = mine.find((w) => w.pr_number === 7), bot = mine.find((w) => w.pr_number === 8);
+check('sync records merged pull requests since the start date only', synced.status === 200 && mine.length === 2 && !mine.some((w) => w.pr_number === 6 || w.pr_number === 9), JSON.stringify(synced.body));
+check('lock files do not count and the estimate follows the counted lines', person?.counts.skipped.files === 1 && person?.estimate_hours === 3.75 && person?.rate === 80, JSON.stringify(person));
+check('a bot pull request is listed but excluded', bot?.status === 'excluded');
+const resync = await call('/billing/sync', 'POST', {});
+check('syncing again adds nothing', resync.body.added.length === 0);
+await call('/billing/work', 'PATCH', { items: [{ id: person.id, hours: 3.5 }] });
+const invoice = await call('/billing/documents', 'POST', { kind: 'invoice', work_ids: [person.id] });
+check('an invoice totals hours at the client rate', invoice.status === 200 && invoice.body.document.total === 280 && /^INV-\d{4}-001$/.test(invoice.body.document.number), JSON.stringify(invoice.body));
+check('invoiced work cannot be invoiced twice', (await call('/billing/documents', 'POST', { kind: 'invoice', work_ids: [person.id] })).status === 409);
+check('invoiced work is frozen', (await call('/billing/work', 'PATCH', { items: [{ id: person.id, hours: 9 }] })).status === 409);
+const sheet = await (await fetch(B.replace(/\/api$/, '') + `/billing/${invoice.body.document.id}`)).text();
+check('the invoice page renders the number and total', sheet.includes(invoice.body.document.number) && sheet.includes('$280.00'));
+const voided = await call(`/billing/documents/${invoice.body.document.id}`, 'PATCH', { status: 'void' });
+const afterVoid = (await call('/billing')).body.work.find((w) => w.id === person.id);
+check('voiding an invoice returns its work to unbilled', voided.body.document.status === 'void' && afterVoid.status === 'unbilled' && !afterVoid.invoice_id);
+await call('/billing/clients', 'POST', { project_id: clientPid, rate: 95 });
+check('a new rate applies to work not yet invoiced', (await call('/billing')).body.work.find((w) => w.id === person.id).rate === 95);
+const agentBilling = await call('/agent/billing', 'GET', undefined, agent('claude-code'));
+const agentRow = agentBilling.body?.clients?.find((c) => c.project_id === clientPid);
+check('agents read unbilled totals per client', agentRow?.unbilled_hours === 3.5 && agentRow?.unbilled_amount === 332.5, JSON.stringify(agentRow));
+
 await fetch('http://localhost:4010/__test/legacy');
 const legacyRead = await call('/projects');
 check('validated pre-versioned records remain readable', legacyRead.status === 200 && legacyRead.body.projects?.some((p) => p.id === 'legacy-fixture'));

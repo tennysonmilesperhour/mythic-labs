@@ -35,9 +35,9 @@ export default function RootLayout({
             <LivingCanvas />
             <div className="page-stack flex min-h-screen">
               <Sidebar />
-              <main className="flex-1 min-w-0 md:ml-64">
+              <main className="flex-1 min-w-0 md:ml-64 print:ml-0">
                 <MobileNav />
-                <div className="max-w-6xl mx-auto px-4 py-8 md:px-12 md:py-20">{children}</div>
+                <div className="max-w-6xl mx-auto px-4 py-8 md:px-12 md:py-20 print:p-0 print:max-w-none">{children}</div>
               </main>
             </div>
           </CommandLayer>

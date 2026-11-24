@@ -16,6 +16,7 @@ export const NAV_GROUPS: Array<{ title: string; items: Array<{ href: string; lab
       { href: "/messages", label: "Messages", key: "e" },
       { href: "/inbox", label: "Inbox", key: "i" },
       { href: "/approvals", label: "Approvals", key: "v" },
+      { href: "/billing", label: "Billing", key: "l" },
       { href: "/tasks", label: "My tasks", key: "m" },
       { href: "/queue", label: "All tasks", key: "q" },
       { href: "/projects", label: "Projects", key: "p" },
@@ -55,7 +56,7 @@ export default function Sidebar() {
   const [theme, toggleTheme] = useTheme();
 
   return (
-    <aside className="glass fixed left-0 top-0 h-screen w-64 border-r border-line hidden md:flex flex-col z-30">
+    <aside className="glass fixed left-0 top-0 h-screen w-64 border-r border-line hidden md:flex flex-col z-30 print:!hidden">
       <div className="px-8 pt-8 pb-6 border-b border-line">
         <div className="flex items-center gap-3 mb-4">
           <GlyphMark size={16} className="text-accent" />
@@ -134,7 +135,7 @@ export function MobileNav() {
   const { open } = useCommands();
   const [more, setMore] = useState(false);
   const primary = [{href:"/",label:"Today"},{href:"/projects",label:"Projects"},{href:"/messages",label:"Activity"}];
-  return <nav className="glass sticky top-0 z-30 md:hidden border-b border-line px-2 py-2">
+  return <nav className="glass sticky top-0 z-30 md:hidden border-b border-line px-2 py-2 print:hidden">
     <div className="grid grid-cols-4 text-sm">
       {primary.map(item=><Link key={item.href} href={item.href} onClick={()=>setMore(false)} className={`text-center py-3 rounded-lg ${isActive(item.href,pathname) || item.href === "/" && pathname === "/today" ? "bg-fg text-bg" : "text-fg"}`}>{item.label}</Link>)}
       <button className="py-3" aria-expanded={more} aria-controls="mobile-more" onClick={()=>setMore(!more)}>More</button>

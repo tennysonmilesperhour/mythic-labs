@@ -79,5 +79,5 @@ export default function LivingCanvas() {
     };
   }, []);
 
-  return <canvas ref={ref} className="living-canvas" aria-hidden="true" />;
+  return <canvas ref={ref} className="living-canvas print:hidden" aria-hidden="true" />;
 }

@@ -54,11 +54,14 @@ The dashboard has a private inbox between you and the owner (`/messages`). It is
    `pm POST /api/agent/inbox '{"title":"…","notes":"<why, and what done looks like>","project_id":"<id>","estimate":2}'`
    Add `"assign":"me"` when only the owner can do it. Skip anything listed under "Your proposals still waiting".
 
-5. **Report.** If nothing changed and no owner action is needed, stop without posting another report. Reuse the current day's report thread for later checkpoints. Post the summary as a message, `{"kind":"report","subject":"Daily run, <date>","body":"…"}`, and end with the same text:
+5. **Bill client work.** `pm POST /api/agent/billing` estimates every pull request merged on a client project since the last check (the dashboard's Billing page does the same on each visit). Then `pm GET /api/agent/billing` gives unbilled hours and amount per client. Never create, send or void estimates and invoices; those are the owner's.
+
+6. **Report.** If nothing changed and no owner action is needed, stop without posting another report. Reuse the current day's report thread for later checkpoints. Post the summary as a message, `{"kind":"report","subject":"Daily run, <date>","body":"…"}`, and end with the same text:
    - submitted for review: task, project, checks, PR link
    - offered and proposed: counts, plus one line each for anything important
    - blocked: task and the exact question
    - waiting on the owner: the approvals count from the checklist, and the dashboard's `/approvals` page
+   - client work: unbilled hours and amount per client, with the `/billing` page, when any is unbilled
 
 ## Guardrails
 
