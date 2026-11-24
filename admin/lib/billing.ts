@@ -1,7 +1,7 @@
 // Client billing: the projects you bill, an estimate for each merged pull
 // request, and the estimates and invoices made from them. Stored in billing.json.
 
-import { gh } from "./github";
+import { BRAIN_OWNER, gh } from "./github";
 import { Conflict, Invalid, NotFound } from "./projects";
 import { mutate, newId, readSnapshot, type Snapshot } from "./store";
 import {
@@ -49,11 +49,13 @@ const hoursOf = (v: unknown): number => {
   return Math.round(n * 100) / 100;
 };
 
-/** owner/repo from "owner/repo" or a GitHub URL. */
-export function parseRepo(repo: string | null): { owner: string; repo: string } | null {
+/** owner/repo from "owner/repo", a GitHub URL, or a bare name (owned by the dashboard's GitHub account). */
+export function parseRepo(repo: string | null, defaultOwner = BRAIN_OWNER): { owner: string; repo: string } | null {
   if (!repo) return null;
-  const m = repo.trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/, "").match(/^([\w.-]+)\/([\w.-]+)/);
-  return m ? { owner: m[1], repo: m[2] } : null;
+  const clean = repo.trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/, "").replace(/\/+$/, "");
+  const m = clean.match(/^([\w.-]+)\/([\w.-]+)/);
+  if (m) return { owner: m[1], repo: m[2] };
+  return /^[\w.-]+$/.test(clean) ? { owner: defaultOwner, repo: clean } : null;
 }
 
 function projectsOf(s: Snapshot): BillingProject[] {

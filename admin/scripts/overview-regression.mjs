@@ -6,9 +6,10 @@ const source = await readFile(new URL('../lib/projectTypes.ts', import.meta.url)
 const js = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { computeAttention, isUpcoming } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const { computeAttention, isUpcoming, today: localToday, addDays } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 const old = new Date(Date.now() - 5 * 86400000).toISOString();
-const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+// The dashboard's calendar day is the owner's (America/Denver), not UTC.
+const yesterday = addDays(localToday(), -1);
 const activeProject = {
   id: 'test-project', name: 'Test project', status: 'active', priority: 'medium',
   next_action: 'Review the plan', agents: [], agent_instructions: '',
