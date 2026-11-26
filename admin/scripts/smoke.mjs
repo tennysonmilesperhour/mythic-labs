@@ -658,9 +658,20 @@ const manual = await call('/billing/work', 'POST', { project_id: clientPid, titl
 check('time can be added by hand at the client rate', manual.status === 200 && manual.body.work.hours === 0.5 && manual.body.work.rate === 95 && manual.body.work.status === 'unbilled', JSON.stringify(manual.body));
 check('hand-entered time needs hours above zero', (await call('/billing/work', 'POST', { project_id: clientPid, title: 'x', hours: 0 })).status === 400);
 await call('/billing/work', 'PATCH', { items: [{ id: manual.body.work.id, status: 'excluded' }] });
+const cost = await call('/billing/work', 'POST', { project_id: clientPid, kind: 'expense', title: 'October hosting', amount: 25 });
+check('a fixed cost is recorded with no hours and keeps its amount on a rate change', cost.status === 200 && cost.body.work.kind === 'expense' && cost.body.work.amount === 25 && cost.body.work.hours === 0, JSON.stringify(cost.body));
+const mixed = await call('/billing/documents', 'POST', { kind: 'invoice', work_ids: [person.id, cost.body.work.id] });
+check('an invoice adds costs to hours times rate', mixed.status === 200 && mixed.body.document.total === 357.5 && mixed.body.document.lines.some((l) => l.kind === 'expense' && l.amount === 25), JSON.stringify(mixed.body.document?.lines));
+await call(`/billing/documents/${mixed.body.document.id}`, 'PATCH', { status: 'void' });
+await call('/billing/work', 'PATCH', { items: [{ id: cost.body.work.id, status: 'excluded' }] });
 const agentBilling = await call('/agent/billing', 'GET', undefined, agent('claude-code'));
 const agentRow = agentBilling.body?.clients?.find((c) => c.project_id === clientPid);
 check('agents read unbilled totals per client', agentRow?.unbilled_hours === 3.5 && agentRow?.unbilled_amount === 332.5, JSON.stringify(agentRow));
+const agentItems = (await call('/agent/billing?items=1', 'GET', undefined, agent('claude-code'))).body.clients.find((c) => c.project_id === clientPid).items;
+const weeklyBill = await call('/agent/billing/invoices', 'POST', { work_ids: agentItems.map((i) => i.id) }, agent('claude-code'));
+check('an agent drafts the weekly invoice from the listed items', weeklyBill.status === 200 && weeklyBill.body.document.status === 'draft' && weeklyBill.body.document.total === 332.5, JSON.stringify(weeklyBill.body));
+check('the agent invoice route needs the token', (await call('/agent/billing/invoices', 'POST', { work_ids: [] })).status === 401);
+await call(`/billing/documents/${weeklyBill.body.document.id}`, 'PATCH', { status: 'void' });
 
 await fetch('http://localhost:4010/__test/legacy');
 const legacyRead = await call('/projects');

@@ -60,8 +60,8 @@ export default async function BillingDocPage({ params }: { params: Promise<{ id:
                   {l.title}
                   {l.pr_url ? <div className="text-[0.7rem] text-fg-dim break-all">{l.pr_url}</div> : null}
                 </td>
-                <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{hoursLabel(l.hours)}</td>
-                <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{money(l.rate)}</td>
+                <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{l.kind === "expense" ? "" : hoursLabel(l.hours)}</td>
+                <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{l.kind === "expense" ? "cost" : money(l.rate)}</td>
                 <td className="py-2 text-right font-mono text-xs whitespace-nowrap">{money(l.amount)}</td>
               </tr>
             ))}

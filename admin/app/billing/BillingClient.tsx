@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BillingState, SyncResult } from "@/lib/billing";
 import {
-  amount,
   countsSummary,
+  itemAmount,
   hoursLabel,
   money,
   type BillingClient as Client,
@@ -213,7 +213,7 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
   const others = useMemo(() => work.filter((w) => w.status !== "unbilled").sort((a, b) => b.merged_at.localeCompare(a.merged_at)), [work]);
   const rows = showAll ? [...unbilled, ...others] : unbilled;
   const picked = unbilled.filter((w) => selected.has(w.id));
-  const pickedTotal = picked.reduce((t, w) => t + amount(w.hours, w.rate), 0);
+  const pickedTotal = picked.reduce((t, w) => t + itemAmount(w), 0);
   const unbilledHours = unbilled.reduce((t, w) => t + w.hours, 0);
 
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -247,7 +247,7 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
 
   return (
     <Section
-      title={`${projectName} · unbilled ${hoursLabel(unbilledHours)} · ${money(unbilled.reduce((t, w) => t + amount(w.hours, w.rate), 0))}`}
+      title={`${projectName} · unbilled ${hoursLabel(unbilledHours)} · ${money(unbilled.reduce((t, w) => t + itemAmount(w), 0))}`}
       aside={<button onClick={onSync} disabled={syncing} className={btnGhost}>{syncing ? "Checking GitHub…" : "Check for merged PRs"}</button>}
     >
       {rows.length ? (
@@ -275,9 +275,11 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
                     {w.pr_url ? <a href={w.pr_url} target="_blank" rel="noreferrer" className="hover:text-accent">#{w.pr_number} {w.title}</a> : <span>{w.title}</span>}
                     <div className="text-[0.7rem] text-fg-dim mt-0.5">{countsSummary(w.counts)}{w.note ? ` · ${w.note}` : ""}</div>
                   </td>
-                  <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{hoursLabel(w.estimate_hours)}</td>
+                  <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{w.kind === "expense" ? "cost" : hoursLabel(w.estimate_hours)}</td>
                   <td className="py-2 pr-3 text-right">
-                    {w.status === "unbilled" ? (
+                    {w.kind === "expense" ? (
+                      <span className="font-mono text-xs text-fg-dim">none</span>
+                    ) : w.status === "unbilled" ? (
                       <input
                         value={hours[w.id] ?? String(w.hours)}
                         onChange={(e) => setHours({ ...hours, [w.id]: e.target.value })}
@@ -291,7 +293,7 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
                       <span className="font-mono text-xs">{hoursLabel(w.hours)}</span>
                     )}
                   </td>
-                  <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{money(amount(w.hours, w.rate))}</td>
+                  <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{money(itemAmount(w))}</td>
                   <td className="py-2 text-right whitespace-nowrap">
                     {w.status === "unbilled" ? <button onClick={() => patch([{ id: w.id, status: "excluded" }])} className={btnGhost}>Exclude</button> : null}
                     {w.status === "excluded" ? <button onClick={() => patch([{ id: w.id, status: "unbilled" }])} className={btnGhost}>Include</button> : null}
@@ -326,16 +328,19 @@ function AddTime({ projectId, onAdded }: { projectId: string; onAdded: () => voi
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [hours, setHours] = useState("");
+  const [kind, setKind] = useState<"work" | "expense">("work");
   const [date, setDate] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [busy, setBusy] = useState(false);
   const add = async () => {
     if (!title.trim() || !hours) return;
     setBusy(true);
     try {
-      await api("/api/billing/work", "POST", { project_id: projectId, title, hours: Number(hours), date });
+      await api("/api/billing/work", "POST", kind === "expense"
+        ? { project_id: projectId, kind, title, amount: Number(hours), date }
+        : { project_id: projectId, title, hours: Number(hours), date });
       setTitle("");
       setHours("");
-      toast("Time added.");
+      toast(kind === "expense" ? "Cost added." : "Time added.");
       onAdded();
     } catch (err) {
       toast({ message: (err as Error).message, tone: "error" });
@@ -345,10 +350,14 @@ function AddTime({ projectId, onAdded }: { projectId: string; onAdded: () => voi
   };
   return (
     <div className="flex flex-wrap items-center gap-2 mt-4">
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add time by hand: what you did" className={`${inputBase} flex-1 min-w-[12rem]`} aria-label="Work description" />
-      <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Hours" inputMode="decimal" className={`${inputBase} w-20`} aria-label="Hours" />
+      <select value={kind} onChange={(e) => setKind(e.target.value as "work" | "expense")} className={inputBase} aria-label="Kind">
+        <option value="work">Time</option>
+        <option value="expense">Cost</option>
+      </select>
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind === "expense" ? "What the cost is, e.g. November hosting" : "What you did"} className={`${inputBase} flex-1 min-w-[12rem]`} aria-label="Work description" />
+      <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder={kind === "expense" ? "$" : "Hours"} inputMode="decimal" className={`${inputBase} w-20`} aria-label={kind === "expense" ? "Amount" : "Hours"} />
       <input value={date} onChange={(e) => setDate(e.target.value)} type="date" className={inputBase} aria-label="Date" />
-      <button onClick={add} disabled={busy || !title.trim() || !hours} className={btnGhost}>Add time</button>
+      <button onClick={add} disabled={busy || !title.trim() || !hours} className={btnGhost}>{kind === "expense" ? "Add cost" : "Add time"}</button>
     </div>
   );
 }

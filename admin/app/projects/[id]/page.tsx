@@ -3,7 +3,7 @@ import { NotFound, getProjectDetail, loadAll } from "@/lib/projects";
 import { fetchMarketplace } from "@/lib/brain";
 import Link from "next/link";
 import { getBilling } from "@/lib/billing";
-import { amount, hoursLabel, money } from "@/lib/billingTypes";
+import { hoursLabel, itemAmount, money } from "@/lib/billingTypes";
 import ProjectDetailClient from "./ProjectDetailClient";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +47,7 @@ export default async function ProjectPage({
       <Link href="/billing" className="mb-6 flex flex-wrap items-center gap-3 border border-accent bg-bg-warm/60 px-4 py-2 text-xs hover:text-accent">
         <span className="mono-label">Client work</span>
         <span>{client.client_name} · {money(client.rate)}/h</span>
-        <span className="text-fg-dim">Unbilled {hoursLabel(unbilled.reduce((t, w) => t + w.hours, 0))} · {money(unbilled.reduce((t, w) => t + amount(w.hours, w.rate), 0))}</span>
+        <span className="text-fg-dim">Unbilled {hoursLabel(unbilled.reduce((t, w) => t + w.hours, 0))} · {money(unbilled.reduce((t, w) => t + itemAmount(w), 0))}</span>
         <span className="ml-auto">Billing →</span>
       </Link>
     ) : null}

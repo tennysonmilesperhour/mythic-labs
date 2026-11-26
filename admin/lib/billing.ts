@@ -43,6 +43,12 @@ const rateOf = (v: unknown, field = "rate"): number => {
   return Math.round(n * 100) / 100;
 };
 
+const moneyOf = (v: unknown): number => {
+  const n = typeof v === "string" ? Number(v) : v;
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0 || n > 1_000_000) throw new Invalid("amount must be a dollar figure above 0");
+  return Math.round(n * 100) / 100;
+};
+
 const hoursOf = (v: unknown): number => {
   const n = typeof v === "string" ? Number(v) : v;
   if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 1000) throw new Invalid("hours must be between 0 and 1000");
@@ -111,7 +117,7 @@ export async function saveClient(input: Record<string, unknown>): Promise<Billin
         if (rate !== undefined && rate !== c.rate) {
           c.rate = rate;
           // Work not yet invoiced follows the new rate; invoices keep the rate they were made with.
-          for (const w of s.billing.work) if (w.project_id === projectId && w.status !== "invoiced") { w.rate = rate; w.updated_at = stamp; }
+          for (const w of s.billing.work) if (w.project_id === projectId && w.status !== "invoiced" && w.kind !== "expense") { w.rate = rate; w.updated_at = stamp; }
         }
         c.updated_at = stamp;
       }
@@ -173,6 +179,7 @@ export async function updateWork(ops: unknown): Promise<WorkItem[]> {
       status: status as "unbilled" | "excluded" | undefined,
       hours: op.hours === undefined ? undefined : hoursOf(op.hours),
       note: op.note === undefined ? undefined : str(op.note, 500, "note"),
+      amount: op.amount === undefined ? undefined : moneyOf(op.amount),
     };
   });
   return mutate(
@@ -183,7 +190,8 @@ export async function updateWork(ops: unknown): Promise<WorkItem[]> {
         if (!w) throw new NotFound(`no work item ${op.id}`);
         if (w.status === "invoiced") throw new Conflict(`"${w.title}" is on an invoice; void the invoice to change it`);
         if (op.status) w.status = op.status;
-        if (op.hours !== undefined) w.hours = op.hours;
+        if (op.hours !== undefined && w.kind !== "expense") w.hours = op.hours;
+        if (op.amount !== undefined && w.kind === "expense") w.amount = op.amount;
         if (op.note !== undefined) w.note = op.note;
         w.updated_at = now();
         return w;
@@ -198,18 +206,20 @@ const ZERO_COUNTS: LineCounts = {
   skipped: { files: 0, additions: 0, deletions: 0 },
 };
 
-/** Record time by hand: calls, prompting, review, anything without a merged pull request. */
+/** Record time by hand (calls, prompting, review) or a fixed cost such as hosting. */
 export async function addManualWork(input: Record<string, unknown>): Promise<WorkItem> {
   const projectId = str(input.project_id, 64, "project_id");
+  const expense = input.kind === "expense";
   const title = str(input.title, 300, "description");
-  if (!title) throw new Invalid("describe the work");
-  const hours = hoursOf(input.hours);
-  if (hours <= 0) throw new Invalid("hours must be above 0");
+  if (!title) throw new Invalid(expense ? "describe the cost" : "describe the work");
+  const hours = expense ? 0 : hoursOf(input.hours);
+  if (!expense && hours <= 0) throw new Invalid("hours must be above 0");
+  const cost = expense ? moneyOf(input.amount) : undefined;
   const date = str(input.date, 10, "date") || today();
   if (!DATE_RE.test(date)) throw new Invalid("date must be YYYY-MM-DD");
   const note = str(input.note, 500, "note");
   return mutate(
-    (w) => `Billing: ${w.hours} h by hand, ${w.title}`,
+    (w) => (w.kind === "expense" ? `Billing: $${w.amount} cost, ${w.title}` : `Billing: ${w.hours} h by hand, ${w.title}`),
     (s) => {
       const client = s.billing.clients.find((c) => c.project_id === projectId);
       if (!client) throw new NotFound("that project is not client work");
@@ -226,8 +236,9 @@ export async function addManualWork(input: Record<string, unknown>): Promise<Wor
         counts: structuredClone(ZERO_COUNTS),
         estimate_hours: hours,
         hours,
-        rate: client.rate,
+        rate: expense ? 0 : client.rate,
         status: "unbilled",
+        ...(expense ? { kind: "expense" as const, amount: cost } : {}),
         invoice_id: null,
         note,
         created_at: stamp,

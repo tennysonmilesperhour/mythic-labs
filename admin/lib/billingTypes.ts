@@ -42,6 +42,9 @@ export type WorkItem = {
   hours: number;
   rate: number;
   status: WorkStatus;
+  /** "expense" is a fixed cost (hosting, fees) billed at `amount` with no hours. Absent means hourly work. */
+  kind?: "work" | "expense";
+  amount?: number;
   invoice_id: string | null;
   note: string;
   created_at: string;
@@ -51,7 +54,7 @@ export type WorkItem = {
 export type DocKind = "estimate" | "invoice";
 export type DocStatus = "draft" | "sent" | "paid" | "void";
 
-export type DocLine = { work_id: string; title: string; pr_url: string; merged_at: string; hours: number; rate: number; amount: number };
+export type DocLine = { work_id: string; title: string; pr_url: string; merged_at: string; hours: number; rate: number; amount: number; kind?: "work" | "expense" };
 
 /** An estimate or an invoice: a frozen copy of the lines at the time it was made. */
 export type BillingDoc = {
@@ -165,13 +168,17 @@ export const roundQuarter = (h: number) => Math.ceil(h * 4 - 1e-9) / 4;
 /** Cents-safe dollar amount. */
 export const amount = (hours: number, rate: number) => Math.round(hours * rate * 100) / 100;
 
+/** What an item bills: its fixed amount for an expense, hours times rate for work. */
+export const itemAmount = (w: Pick<WorkItem, "hours" | "rate" | "kind" | "amount">) =>
+  w.kind === "expense" ? Math.round((w.amount || 0) * 100) / 100 : amount(w.hours, w.rate);
+
 export const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const hoursLabel = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(2).replace(/0$/, "")} h`;
 
 /** One line describing what counted, for the work table and the estimate. */
 export function countsSummary(c: LineCounts): string {
-  if (!c.code.files && !c.tests.files && !c.docs.files && !c.skipped.files) return "time entered by hand";
+  if (!c.code.files && !c.tests.files && !c.docs.files && !c.skipped.files) return "entered by hand";
   const parts: string[] = [];
   for (const k of ["code", "tests", "docs"] as const) {
     if (c[k].files) parts.push(`${k} +${c[k].additions} −${c[k].deletions} in ${c[k].files} file${c[k].files === 1 ? "" : "s"}`);
@@ -183,7 +190,7 @@ export function countsSummary(c: LineCounts): string {
 export function docLines(items: WorkItem[]): DocLine[] {
   return [...items]
     .sort((a, b) => a.merged_at.localeCompare(b.merged_at))
-    .map((w) => ({ work_id: w.id, title: w.title, pr_url: w.pr_url, merged_at: w.merged_at, hours: w.hours, rate: w.rate, amount: amount(w.hours, w.rate) }));
+    .map((w) => ({ work_id: w.id, title: w.title, pr_url: w.pr_url, merged_at: w.merged_at, hours: w.kind === "expense" ? 0 : w.hours, rate: w.kind === "expense" ? 0 : w.rate, amount: itemAmount(w), ...(w.kind === "expense" ? { kind: "expense" as const } : {}) }));
 }
 
 export const docTotal = (lines: DocLine[]) => Math.round(lines.reduce((t, l) => t + l.amount, 0) * 100) / 100;
@@ -199,7 +206,7 @@ export function nextDocNumber(docs: BillingDoc[], kind: DocKind, year: number): 
 export function mailtoHref(doc: BillingDoc, business: Business): string {
   const label = doc.kind === "invoice" ? "Invoice" : "Estimate";
   const from = business.name || "Mythic Labs";
-  const lines = doc.lines.map((l) => `- ${l.title}: ${hoursLabel(l.hours)} at ${money(l.rate)}/h = ${money(l.amount)}`);
+  const lines = doc.lines.map((l) => (l.kind === "expense" ? `- ${l.title}: ${money(l.amount)}` : `- ${l.title}: ${hoursLabel(l.hours)} at ${money(l.rate)}/h = ${money(l.amount)}`));
   const body = [
     `Hi ${doc.client_name || "there"},`,
     "",

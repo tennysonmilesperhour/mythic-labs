@@ -605,6 +605,14 @@ const billingTypes = await load('../lib/billingTypes.ts');
     assert.ok(href.startsWith('mailto:a%40acme.example?subject=Invoice%20INV-2026-001%20from%20Mythic%20Labs'));
     assert.match(decodeURIComponent(href), /\$190\.00, due 2026-03-15[\s\S]*Pay by ACH/);
   });
+  t('a cost bills its fixed amount with no hours', () => {
+    const { itemAmount } = billingTypes.mod;
+    assert.equal(itemAmount({ kind: 'expense', amount: 25.5, hours: 0, rate: 0 }), 25.5);
+    assert.equal(itemAmount({ hours: 1.5, rate: 80 }), 120);
+    const lines = docLines([{ id: 'h', title: 'Hosting', pr_url: '', merged_at: '2026-11-01', hours: 0, rate: 0, kind: 'expense', amount: 20 }, { id: 'w', title: 'Work', pr_url: '', merged_at: '2026-11-02', hours: 0.5, rate: 80 }]);
+    assert.equal(docTotal(lines), 60);
+    assert.equal(lines[0].kind, 'expense');
+  });
   t('a billing file must be well formed', () => {
     assert.equal(validBillingFile(EMPTY_BILLING), true);
     assert.equal(validBillingFile({ ...EMPTY_BILLING, work: [{ id: 'x' }] }), false);

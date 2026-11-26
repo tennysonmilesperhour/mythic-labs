@@ -54,7 +54,7 @@ The dashboard has a private inbox between you and the owner (`/messages`). It is
    `pm POST /api/agent/inbox '{"title":"…","notes":"<why, and what done looks like>","project_id":"<id>","estimate":2}'`
    Add `"assign":"me"` when only the owner can do it. Skip anything listed under "Your proposals still waiting".
 
-5. **Bill client work.** `pm POST /api/agent/billing` estimates every pull request merged on a client project since the last check (the dashboard's Billing page does the same on each visit). Then `pm GET /api/agent/billing` gives unbilled hours and amount per client. Never create, send or void estimates and invoices; those are the owner's.
+5. **Bill client work.** `pm POST /api/agent/billing` estimates every pull request merged on a client project since the last check (the dashboard's Billing page does the same on each visit). Then `pm GET /api/agent/billing` gives unbilled hours and amount per client. On Mondays, draft one invoice per client from the unbilled work and costs dated in the previous week (Monday to Sunday, Mountain time): select their ids from `pm GET /api/agent/billing?items=1` and `pm POST /api/agent/billing/invoices '{"project_id":"<id>","work_ids":[...]}'`. Post the invoice link in the report. Never send, mark sent or paid, or void an invoice; those are the owner's.
 
 6. **Report.** If nothing changed and no owner action is needed, stop without posting another report. Reuse the current day's report thread for later checkpoints. Post the summary as a message, `{"kind":"report","subject":"Daily run, <date>","body":"…"}`, and end with the same text:
    - submitted for review: task, project, checks, PR link
