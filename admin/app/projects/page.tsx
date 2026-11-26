@@ -37,7 +37,7 @@ export default async function ProjectsPage({
             Projects are stored as files in a private GitHub repo. Set PM_DATA_REPO
             (owner/repo, must be private) and a GITHUB_TOKEN with Contents read and write on it.
           </p>
-          <Link href={fixHref("source:store")} className="inline-block mt-3 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-accent hover:text-fg">
+          <Link href={fixHref("source:store")} className="inline-block mt-3 font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent hover:text-fg">
             Fix it step by step →
           </Link>
         </div>

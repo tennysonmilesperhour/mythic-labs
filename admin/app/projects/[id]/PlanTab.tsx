@@ -372,7 +372,7 @@ export default function PlanTab({ store }: { store: Store }) {
           <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} />
           hide done
         </label>
-        <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} className="bg-bg/70 border border-line font-mono text-[0.62rem] text-fg-dim px-2 py-1 outline-none">
+        <select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} className="bg-bg/70 border border-line text-[0.78rem] text-fg-dim px-2 py-1 outline-none">
           <option value="">any agent</option>
           {store.agentOptions.map((a) => (
             <option key={a} value={a}>
@@ -381,7 +381,7 @@ export default function PlanTab({ store }: { store: Store }) {
           ))}
         </select>
         {labels.length ? (
-          <select value={labelFilter} onChange={(e) => setLabelFilter(e.target.value)} className="bg-bg/70 border border-line font-mono text-[0.62rem] text-fg-dim px-2 py-1 outline-none">
+          <select value={labelFilter} onChange={(e) => setLabelFilter(e.target.value)} className="bg-bg/70 border border-line text-[0.78rem] text-fg-dim px-2 py-1 outline-none">
             <option value="">any label</option>
             {labels.map((l) => (
               <option key={l} value={l}>
@@ -622,10 +622,10 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         ) : null}
         {t.estimate ? <span className="font-mono text-[0.55rem] text-fg-ghost shrink-0 tnum">{t.estimate}pt</span> : null}
         {t.recurrence ? <span className="font-mono text-[0.6rem] text-fg-ghost shrink-0" title={`Repeats ${RECURRENCE_META[t.recurrence].label.toLowerCase()}`}>↻</span> : null}
-        {t.planned_for === day && !done ? <span className="font-mono text-[0.52rem] uppercase tracking-[0.15em] text-accent shrink-0">today</span> : null}
-        {isSnoozed(t) ? <span className="font-mono text-[0.52rem] uppercase tracking-[0.15em] text-fg-ghost shrink-0" title={`Snoozed until ${fmtDate(t.snoozed_until)}`}>zz</span> : null}
+        {t.planned_for === day && !done ? <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent shrink-0">today</span> : null}
+        {isSnoozed(t) ? <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-fg-ghost shrink-0" title={`Snoozed until ${fmtDate(t.snoozed_until)}`}>zz</span> : null}
         {ready ? (
-          <span className="font-mono text-[0.52rem] uppercase tracking-[0.15em] text-accent border border-accent px-1 shrink-0" title="Unblocked: an agent can start this now">
+          <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent border border-accent px-1 shrink-0" title="Unblocked: an agent can start this now">
             ready
           </span>
         ) : null}
@@ -647,7 +647,7 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         <select
           value={t.status}
           onChange={(e) => rp.patchTask(t.id, { status: e.target.value as TaskStatus })}
-          className={`font-mono text-[0.55rem] uppercase tracking-[0.12em] border px-1 py-0.5 outline-none shrink-0 ${STATUS_STYLE[t.status]}`}
+          className={`font-medium text-[0.68rem] uppercase tracking-[0.12em] border px-1 py-0.5 outline-none shrink-0 ${STATUS_STYLE[t.status]}`}
         >
           {TASK_STATUSES.map((s) => (
             <option key={s} value={s} className="text-fg bg-bg">
@@ -658,7 +658,7 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         <select
           value={t.agent ?? ""}
           onChange={(e) => rp.patchTask(t.id, { agent: e.target.value || null })}
-          className={`font-mono text-[0.6rem] bg-transparent outline-none max-w-[8rem] shrink-0 ${
+          className={`text-[0.78rem] bg-transparent outline-none max-w-[8rem] shrink-0 ${
             t.agent ? "text-accent" : "text-fg-ghost opacity-0 group-hover:opacity-100"
           }`}
           title="Assigned agent"
@@ -675,7 +675,7 @@ function TaskRow({ task: t, depth, ...rp }: { task: Task; depth: number } & RowP
         </span>
         <Link
           href={taskHref(t.id)}
-          className={`font-mono text-[0.55rem] uppercase tracking-[0.15em] shrink-0 hover:text-fg ${
+          className={`font-medium text-[0.68rem] uppercase tracking-[0.08em] shrink-0 hover:text-fg ${
             isMine(t) ? "text-accent" : "text-fg-ghost opacity-0 group-hover:opacity-100"
           }`}
           title="Open the task map: steps, links and text to paste"

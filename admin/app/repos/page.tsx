@@ -97,7 +97,7 @@ export default async function ReposPage() {
             href="https://claude.ai/admin-settings/skills?tab=inventory"
             target="_blank"
             rel="noreferrer"
-            className="inline-block font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-2 border border-line text-fg-dim hover:text-fg hover:border-fg-dim"
+            className="inline-block font-medium text-[0.68rem] tracking-[0.08em] uppercase px-3 py-2 border border-line text-fg-dim hover:text-fg hover:border-fg-dim"
           >
             Open org settings ↗
           </a>
@@ -118,7 +118,7 @@ export default async function ReposPage() {
             href={`https://github.com/${brainRepo}/blob/main/AGENTS.md`}
             target="_blank"
             rel="noreferrer"
-            className="inline-block font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-2 border border-line text-fg-dim hover:text-fg hover:border-fg-dim"
+            className="inline-block font-medium text-[0.68rem] tracking-[0.08em] uppercase px-3 py-2 border border-line text-fg-dim hover:text-fg hover:border-fg-dim"
           >
             Read AGENTS.md ↗
           </a>
@@ -133,7 +133,7 @@ export default async function ReposPage() {
             Set GITHUB_TOKEN and PM_DATA_REPO (a private repo) in Vercel. Tracked
             repos are stored in repos.json there.
           </p>
-          <Link href={fixHref("source:store")} className="inline-block mt-3 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-accent hover:text-fg">
+          <Link href={fixHref("source:store")} className="inline-block mt-3 font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent hover:text-fg">
             Fix it step by step →
           </Link>
         </div>
@@ -170,7 +170,7 @@ function Path({
   return (
     <div className="bg-bg/80 p-6 flex flex-col gap-4">
       <div>
-        <div className="font-mono text-[0.6rem] tracking-[0.3em] uppercase text-accent mb-3">
+        <div className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-accent mb-3">
           Path {num} · {tag}
         </div>
         <div className="serif-display text-[1.5rem] leading-tight mb-2">

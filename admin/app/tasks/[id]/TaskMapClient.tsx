@@ -318,7 +318,7 @@ export default function TaskMapClient({
             type="date"
             value={task.due_date ?? ""}
             onChange={(e) => patch(task.id, { due_date: e.target.value || null })}
-            className="bg-transparent font-mono text-[0.65rem] text-fg outline-none border border-line px-2 py-1"
+            className="bg-transparent text-[0.78rem] text-fg outline-none border border-line px-2 py-1"
           />
         </label>
         {saving ? <span className="font-mono text-[0.58rem] text-fg-ghost">saving…</span> : null}
@@ -398,7 +398,7 @@ export default function TaskMapClient({
                     <Link href={taskHref(s.id)} className={`flex-1 min-w-0 text-[0.9rem] hover:text-accent ${s.status === "done" ? "line-through text-fg-ghost" : ""}`}>
                       {s.title}
                     </Link>
-                    <span className="font-mono text-[0.58rem] text-fg-ghost">
+                    <span className="text-[0.78rem] text-fg-ghost">
                       {s.agent && s.agent !== ME ? (
                         <>
                           <Link href={facetHref("agent", s.agent)} className="hover:text-accent">@{s.agent}</Link>
@@ -509,7 +509,7 @@ export default function TaskMapClient({
             {links.length ? (
               links.map((g) => (
                 <div key={g.title} className="mb-4">
-                  <div className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-fg-ghost mb-1">{g.title}</div>
+                  <div className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-fg-ghost mb-1">{g.title}</div>
                   <ul className="flex flex-col">
                     {g.items.map((l) => (
                       <li key={l.url + l.label}>
@@ -590,13 +590,13 @@ export default function TaskMapClient({
             </dl>
             {proposed.length ? (
               <div className="mt-4">
-                <div className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-fg mb-1">Decisions waiting on you</div>
+                <div className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-fg mb-1">Decisions waiting on you</div>
                 <EntryLinks projectId={project.id} entries={proposed} fix />
               </div>
             ) : null}
             {decisions.length ? (
               <div className="mt-4">
-                <div className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-fg-ghost mb-1">Decisions to respect</div>
+                <div className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-fg-ghost mb-1">Decisions to respect</div>
                 <EntryLinks projectId={project.id} entries={decisions.slice(0, 6)} />
               </div>
             ) : null}
@@ -626,7 +626,7 @@ export default function TaskMapClient({
             ) : (
               <p className="text-fg-ghost text-[0.8rem]">Nothing else is assigned to @{ME}.</p>
             )}
-            <Link href="/tasks" className="block mt-3 font-mono text-[0.58rem] uppercase tracking-[0.18em] text-accent hover:text-fg">All my tasks →</Link>
+            <Link href="/tasks" className="block mt-3 font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent hover:text-fg">All my tasks →</Link>
           </Side>
         </aside>
       </div>
@@ -661,7 +661,7 @@ function StepList({ id, steps }: { id: string; steps: string[] }) {
         return (
           <li key={i} className="flex items-baseline gap-3 py-2 border-b border-line">
             <input type="checkbox" checked={on} onChange={() => toggle(i)} className="accent-[#8b7355] shrink-0" />
-            <span className="font-mono text-[0.6rem] text-fg-ghost w-4 shrink-0">{i + 1}</span>
+            <span className="text-[0.78rem] text-fg-ghost w-4 shrink-0">{i + 1}</span>
             <span className={`flex-1 min-w-0 text-[0.92rem] break-words ${on ? "line-through text-fg-ghost" : "text-fg"}`}>
               {s.split(/(`[^`]+`)/).map((part, j) =>
                 /^`[^`]+`$/.test(part) ? <CopyChip key={j} text={part.slice(1, -1)} /> : part
@@ -716,7 +716,7 @@ function Side({ title, children }: { title: string; children: React.ReactNode })
 function Fact({ k, children }: { k: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-fg-ghost">{k}</dt>
+      <dt className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-fg-ghost">{k}</dt>
       <dd className="text-fg-dim leading-relaxed">{children}</dd>
     </div>
   );

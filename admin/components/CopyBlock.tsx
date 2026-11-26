@@ -22,7 +22,7 @@ export default function CopyBlock({ text }: { text: string }) {
       </pre>
       <button
         onClick={copy}
-        className="absolute top-2 right-2 font-mono text-[0.55rem] tracking-[0.2em] uppercase px-2 py-1 border border-line bg-bg text-fg-dim hover:text-fg hover:border-fg-dim"
+        className="absolute top-2 right-2 font-medium text-[0.68rem] tracking-[0.08em] uppercase px-2 py-1 border border-line bg-bg text-fg-dim hover:text-fg hover:border-fg-dim"
         style={{
           transition:
             "color var(--motion-base) var(--ease-mythic), border-color var(--motion-base) var(--ease-mythic)",

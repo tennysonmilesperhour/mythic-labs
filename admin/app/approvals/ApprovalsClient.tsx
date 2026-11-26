@@ -219,7 +219,7 @@ export default function ApprovalsClient({ initial, projects }: { initial: Approv
                           {i.title}
                         </Link>
                         {i.link ? (
-                          <a href={i.link} target="_blank" rel="noreferrer" className="font-mono text-[0.58rem] text-accent hover:text-fg">
+                          <a href={i.link} target="_blank" rel="noreferrer" className="text-[0.78rem] text-accent hover:text-fg">
                             {/\/pull\/\d+/.test(i.link) ? "pull request ↗" : "link ↗"}
                           </a>
                         ) : null}

@@ -14,7 +14,7 @@ export function HealthChip({ health, size = "sm" }: { health: Health; size?: "sm
   return (
     <span
       title={[HEALTH_META[health.level].hint, ...health.reasons].join("\n")}
-      className={`inline-flex items-center gap-1.5 font-mono uppercase tracking-[0.12em] border ${size === "md" ? "text-[0.6rem] px-2 py-1" : "text-[0.52rem] px-1.5 py-0.5"} ${tone}`}
+      className={`inline-flex items-center gap-1.5 font-medium uppercase tracking-[0.12em] border ${size === "md" ? "text-[0.68rem] px-2 py-1" : "text-[0.68rem] px-1.5 py-0.5"} ${tone}`}
     >
       <span className="text-[0.6em]">{mark}</span>
       {HEALTH_META[health.level].label}

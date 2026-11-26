@@ -80,7 +80,7 @@ function ToastView({ t, onDone }: { t: Toast; onDone: () => void }) {
               onDone();
             }
           }}
-          className="font-mono text-[0.6rem] tracking-[0.18em] uppercase text-accent hover:text-fg disabled:opacity-50 shrink-0"
+          className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-accent hover:text-fg disabled:opacity-50 shrink-0"
         >
           {busy ? "…" : t.action.label}
         </button>

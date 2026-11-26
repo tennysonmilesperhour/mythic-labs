@@ -23,7 +23,7 @@ export function Freshness({ loadedAt }: { loadedAt: string }) {
         onClick={() => start(() => router.refresh())}
         disabled={pending}
         title="Re-read the project store, the marketplace and the repo list"
-        className="border border-line px-2.5 py-1 uppercase tracking-[0.18em] text-fg-dim hover:text-fg disabled:opacity-50"
+        className="border border-line px-2.5 py-1 uppercase tracking-[0.08em] text-fg-dim hover:text-fg disabled:opacity-50"
       >
         Reload data
       </button>

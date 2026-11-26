@@ -270,15 +270,15 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
                   <td className="py-2 pr-2">
                     {w.status === "unbilled" ? <input type="checkbox" checked={selected.has(w.id)} onChange={() => toggle(w.id)} aria-label={`Select ${w.title}`} /> : null}
                   </td>
-                  <td className="py-2 pr-3 font-mono text-xs whitespace-nowrap">{day(w.merged_at)}</td>
+                  <td className="py-2 pr-3 text-xs whitespace-nowrap">{day(w.merged_at)}</td>
                   <td className="py-2 pr-3 min-w-[14rem]">
                     {w.pr_url ? <a href={w.pr_url} target="_blank" rel="noreferrer" className="hover:text-accent">#{w.pr_number} {w.title}</a> : <span>{w.title}</span>}
                     <div className="text-[0.7rem] text-fg-dim mt-0.5">{countsSummary(w.counts)}{w.note ? ` · ${w.note}` : ""}</div>
                   </td>
-                  <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{w.kind === "expense" ? "cost" : hoursLabel(w.estimate_hours)}</td>
+                  <td className="py-2 pr-3 text-right text-xs whitespace-nowrap">{w.kind === "expense" ? "cost" : hoursLabel(w.estimate_hours)}</td>
                   <td className="py-2 pr-3 text-right">
                     {w.kind === "expense" ? (
-                      <span className="font-mono text-xs text-fg-dim">none</span>
+                      <span className="text-xs text-fg-dim">none</span>
                     ) : w.status === "unbilled" ? (
                       <input
                         value={hours[w.id] ?? String(w.hours)}

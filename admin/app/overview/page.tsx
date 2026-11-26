@@ -293,7 +293,7 @@ export default async function Overview() {
                           href={`/projects/${m.project_id}?tab=plan`}
                           className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent"
                         >
-                          <span className="font-mono text-[0.55rem] uppercase tracking-[0.15em] text-accent shrink-0">
+                          <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent shrink-0">
                             Milestone
                           </span>
                           <span className="flex-1 min-w-0 truncate text-[0.85rem]">
@@ -450,7 +450,7 @@ export default async function Overview() {
                   }
                   className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent"
                 >
-                  <span className="font-mono text-[0.55rem] uppercase tracking-[0.15em] text-fg-dim w-20 shrink-0">
+                  <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-fg-dim w-20 shrink-0">
                     {e.kind === "decision" ? e.decision_status ?? "decision" : e.kind === "update" ? (e.health ? HEALTH_META[e.health].label : "update") : e.change_type ?? "change"}
                   </span>
                   <span className="flex-1 min-w-0 truncate text-[0.85rem]">
@@ -511,7 +511,7 @@ function Section({
         {action ? (
           <Link
             href={action.href}
-            className="font-mono text-[0.6rem] tracking-[0.18em] uppercase text-accent hover:text-fg"
+            className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-accent hover:text-fg"
           >
             {action.label} →
           </Link>
@@ -527,7 +527,7 @@ function SubHead({ label, note }: { label: string; note: string }) {
   return (
     <div className="flex items-baseline justify-between border-b border-line pb-1.5 mb-1">
       <span className="mono-label">{label}</span>
-      <span className="font-mono text-[0.55rem] text-fg-ghost uppercase tracking-[0.15em]">{note}</span>
+      <span className="font-medium text-[0.68rem] text-fg-ghost uppercase tracking-[0.08em]">{note}</span>
     </div>
   );
 }
@@ -589,14 +589,14 @@ function Source({
     <Link href={href} className="block bg-bg p-4 hover:bg-bg-warm">
       <div className="flex items-baseline justify-between gap-3 mb-1.5">
         <span className="text-[0.85rem] text-fg">{name}</span>
-        <span className={`font-mono text-[0.58rem] uppercase tracking-[0.15em] ${ok ? "text-accent" : "text-fg"}`}>
+        <span className={`font-medium text-[0.68rem] uppercase tracking-[0.08em] ${ok ? "text-accent" : "text-fg"}`}>
           {ok ? "● " : "✕ "}
           {ok ? okLabel : offLabel}
         </span>
       </div>
       <p className="font-mono text-[0.62rem] text-fg-dim leading-relaxed break-words">{detail}</p>
       {fix ? <p className="font-mono text-[0.6rem] text-fg-ghost leading-relaxed mt-1.5">{fix}</p> : null}
-      {ok ? null : <p className="font-mono text-[0.58rem] uppercase tracking-[0.18em] text-accent mt-2">Fix it step by step →</p>}
+      {ok ? null : <p className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent mt-2">Fix it step by step →</p>}
     </Link>
   );
 }

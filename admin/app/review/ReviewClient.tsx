@@ -179,7 +179,7 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
                 {cur.ready.length ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {cur.ready.map((t) => (
-                      <button key={t} onClick={() => setNextAction(t)} className="font-mono text-[0.58rem] px-1.5 py-0.5 border border-line text-fg-dim hover:text-accent hover:border-accent">
+                      <button key={t} onClick={() => setNextAction(t)} className="text-[0.78rem] px-1.5 py-0.5 border border-line text-fg-dim hover:text-accent hover:border-accent">
                         {t}
                       </button>
                     ))}
@@ -238,7 +238,7 @@ export default function ReviewClient({ rows, startId, checklist }: { rows: Revie
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-1">
                     {HEALTH_LEVELS.filter((h) => h !== "paused" && h !== "idle").map((h) => (
-                      <button key={h} onClick={() => setHealth(h)} className={`font-mono text-[0.6rem] uppercase tracking-[0.15em] px-2 py-1 border ${health === h ? "bg-fg text-bg border-fg" : "border-line text-fg-dim hover:text-fg"}`}>
+                      <button key={h} onClick={() => setHealth(h)} className={`font-medium text-[0.68rem] uppercase tracking-[0.08em] px-2 py-1 border ${health === h ? "bg-fg text-bg border-fg" : "border-line text-fg-dim hover:text-fg"}`}>
                         {HEALTH_META[h].label}
                       </button>
                     ))}
