@@ -92,6 +92,8 @@ export async function saveClient(input: Record<string, unknown>): Promise<Billin
   const since = "since" in input ? str(input.since, 10, "since") : undefined;
   if (since && !DATE_RE.test(since)) throw new Invalid("since must be a date (YYYY-MM-DD)");
   const rate = "rate" in input && input.rate !== "" && input.rate !== null ? rateOf(input.rate) : undefined;
+  const mode = "mode" in input ? input.mode : undefined;
+  if (mode !== undefined && mode !== "pr" && mode !== "time") throw new Invalid("mode must be pr or time");
   return mutate(
     (c) => `Billing: ${c.client_name || "client"} at $${c.rate}/h`,
     (s) => {
@@ -106,6 +108,7 @@ export async function saveClient(input: Record<string, unknown>): Promise<Billin
           client_email: email || "",
           rate: rate ?? s.billing.default_rate,
           since: since || today(),
+          ...(mode === "time" ? { mode: "time" as const } : {}),
           created_at: stamp,
           updated_at: stamp,
         };
@@ -114,6 +117,8 @@ export async function saveClient(input: Record<string, unknown>): Promise<Billin
         if (name !== undefined) c.client_name = name || d.project.name;
         if (email !== undefined) c.client_email = email;
         if (since) c.since = since;
+        if (mode === "time") c.mode = "time";
+        if (mode === "pr") delete c.mode;
         if (rate !== undefined && rate !== c.rate) {
           c.rate = rate;
           // Work not yet invoiced follows the new rate; invoices keep the rate they were made with.
@@ -270,7 +275,7 @@ async function fetchNewPulls(client: BillingClient, repoName: string, known: Set
     const res = await gh().pulls.list({ owner: r.owner, repo: r.repo, state: "closed", sort: "updated", direction: "desc", per_page: 100, page });
     for (const p of res.data) {
       if (!p.merged_at || p.merged_at.slice(0, 10) < client.since) continue;
-      if (known.has(`${r.owner}/${r.repo}#${p.number}`.toLowerCase())) continue;
+      if (known.has(`${client.project_id}:${r.owner}/${r.repo}#${p.number}`.toLowerCase())) continue;
       found.push({ number: p.number, url: p.html_url, title: p.title, author: p.user?.login || "unknown", bot: p.user?.type === "Bot", merged_at: p.merged_at });
     }
     const last = res.data[res.data.length - 1];
@@ -296,7 +301,7 @@ export type SyncResult = {
 /** Record every newly merged pull request on a client project, with its estimate. */
 export async function syncBilling(): Promise<SyncResult> {
   const s = await readSnapshot();
-  const known = new Set(s.billing.work.filter((w) => w.pr_number > 0).map((w) => `${w.repo}#${w.pr_number}`.toLowerCase()));
+  const known = new Set(s.billing.work.filter((w) => w.pr_number > 0).map((w) => `${w.project_id}:${w.repo}#${w.pr_number}`.toLowerCase()));
   const fetched: Array<{ client: BillingClient; pulls: FetchedPull[] }> = [];
   const errors: SyncResult["errors"] = [];
   let more = false;
@@ -322,13 +327,13 @@ export async function syncBilling(): Promise<SyncResult> {
   const added = await mutate<SyncResult["added"]>(
     (r) => `Billing: ${r.length} merged pull request${r.length === 1 ? "" : "s"} estimated`,
     (draft) => {
-      const have = new Set(draft.billing.work.map((w) => `${w.repo}#${w.pr_number}`.toLowerCase()));
+      const have = new Set(draft.billing.work.filter((w) => w.pr_number > 0).map((w) => `${w.project_id}:${w.repo}#${w.pr_number}`.toLowerCase()));
       const out: SyncResult["added"] = [];
       for (const { client, pulls } of fetched) {
         const current = draft.billing.clients.find((c) => c.project_id === client.project_id);
         if (!current) continue;
         for (const p of pulls) {
-          if (have.has(`${p.repo}#${p.number}`.toLowerCase())) continue;
+          if (have.has(`${client.project_id}:${p.repo}#${p.number}`.toLowerCase())) continue;
           const hours = estimateHours(p.counts);
           const stamp = now();
           draft.billing.work.push({
@@ -344,10 +349,11 @@ export async function syncBilling(): Promise<SyncResult> {
             estimate_hours: hours,
             hours,
             rate: current.rate,
-            // Dependency bots are not your hours; they stay listed so you can include one.
-            status: p.bot ? "excluded" : "unbilled",
+            // Dependency bots are not your hours, and a client billed by your time pays for time entered by hand.
+            // Both stay listed so you can include one.
+            status: p.bot || current.mode === "time" ? "excluded" : "unbilled",
             invoice_id: null,
-            note: p.bot ? "Opened by a bot" : "",
+            note: p.bot ? "Opened by a bot" : current.mode === "time" ? "Billed by your time; add it with Add time" : "",
             created_at: stamp,
             updated_at: stamp,
           });

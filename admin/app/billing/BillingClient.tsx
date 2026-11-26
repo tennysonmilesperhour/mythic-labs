@@ -145,8 +145,9 @@ function Clients({ state, name, onChange }: { state: BillingState; name: (id: st
 function ClientRow({ client, projectName, onChange }: { client: Client; projectName: string; onChange: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ client_name: client.client_name, client_email: client.client_email, rate: String(client.rate), since: client.since });
-  useEffect(() => setForm({ client_name: client.client_name, client_email: client.client_email, rate: String(client.rate), since: client.since }), [client]);
+  const initial = () => ({ client_name: client.client_name, client_email: client.client_email, rate: String(client.rate), since: client.since, mode: client.mode || "pr" });
+  const [form, setForm] = useState(initial);
+  useEffect(() => setForm(initial()), [client]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -179,7 +180,7 @@ function ClientRow({ client, projectName, onChange }: { client: Client; projectN
         <Chip tone="accent">Client work</Chip>
         <span className="font-mono text-xs">{money(client.rate)}/h</span>
         <span className="text-fg-dim text-xs">
-          Bill to {client.client_name}{client.client_email ? ` · ${client.client_email}` : " · no email yet"} · PRs merged since {client.since}
+          {client.mode === "time" ? "Billed by your time · " : ""}Bill to {client.client_name}{client.client_email ? ` · ${client.client_email}` : " · no email yet"} · PRs merged since {client.since}
         </span>
         <button onClick={() => setOpen((o) => !o)} className={`${btnGhost} ml-auto`}>{open ? "Close" : "Edit"}</button>
       </div>
@@ -188,6 +189,12 @@ function ClientRow({ client, projectName, onChange }: { client: Client; projectN
           <label className="text-xs text-fg-dim">Client name<input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} className={`${inputBase} w-full mt-1`} /></label>
           <label className="text-xs text-fg-dim">Client email<input value={form.client_email} onChange={(e) => setForm({ ...form, client_email: e.target.value })} type="email" className={`${inputBase} w-full mt-1`} /></label>
           <label className="text-xs text-fg-dim">Rate per hour ($)<input value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} inputMode="decimal" className={`${inputBase} w-full mt-1`} /></label>
+          <label className="text-xs text-fg-dim sm:col-span-2">How this client is billed
+            <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as "pr" | "time" })} className={`${inputBase} w-full mt-1`}>
+              <option value="pr">Estimate each merged PR from its size</option>
+              <option value="time">My time only (PRs are listed but not billed)</option>
+            </select>
+          </label>
           <label className="text-xs text-fg-dim">Bill PRs merged on or after<input value={form.since} onChange={(e) => setForm({ ...form, since: e.target.value })} type="date" className={`${inputBase} w-full mt-1`} /></label>
           <div className="flex gap-2 sm:col-span-2">
             <button onClick={save} disabled={busy} className={btnPrimary}>Save</button>
