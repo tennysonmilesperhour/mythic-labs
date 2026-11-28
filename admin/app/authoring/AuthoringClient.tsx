@@ -31,7 +31,7 @@ export default function AuthoringClient({
             key={key}
             onClick={() => setTab(key)}
             data-active={tab === key}
-            className={`accent-sweep relative flex-1 py-4 px-6 font-mono text-[0.7rem] tracking-[0.25em] uppercase ease-mythic ${
+            className={`accent-sweep relative flex-1 py-4 px-6 font-medium text-[0.7rem] tracking-[0.08em] uppercase ease-mythic ${
               tab === key
                 ? "bg-[rgba(139,115,85,0.08)] text-accent"
                 : "bg-bg/70 text-fg-ghost hover:text-fg"
@@ -121,7 +121,7 @@ function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRe
           <select
             value={plugin}
             onChange={(e) => setPlugin(e.target.value)}
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg"
           >
             {marketplace.plugins.map((p) => (
               <option key={p.name} value={p.name}>
@@ -135,7 +135,7 @@ function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRe
             value={serverName}
             onChange={(e) => setServerName(e.target.value)}
             placeholder="e.g. github"
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -144,7 +144,7 @@ function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRe
         <input
           value={command}
           onChange={(e) => setCommand(e.target.value)}
-          className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg"
+          className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg"
         />
       </Field>
 
@@ -155,7 +155,7 @@ function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRe
             onChange={(e) => setArgsText(e.target.value)}
             rows={3}
             placeholder={"@anthropic-ai/github-mcp-server"}
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -167,7 +167,7 @@ function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRe
             onChange={(e) => setEnvText(e.target.value)}
             rows={3}
             placeholder={"GITHUB_TOKEN=${env:GITHUB_TOKEN}"}
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -177,7 +177,7 @@ function McpForm({ marketplace, brainRepo }: { marketplace: Marketplace; brainRe
         <button
           onClick={submit}
           disabled={busy || !plugin || !serverName || !command}
-          className="lift-on-hover font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 py-3 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
+          className="lift-on-hover font-medium text-[0.7rem] tracking-[0.08em] uppercase px-8 py-3 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? "Committing…" : "Commit to brain"}
         </button>
@@ -251,7 +251,7 @@ function CommandForm({ marketplace, brainRepo }: { marketplace: Marketplace; bra
           <select
             value={plugin}
             onChange={(e) => setPlugin(e.target.value)}
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg"
           >
             {marketplace.plugins.map((p) => (
               <option key={p.name} value={p.name}>
@@ -265,7 +265,7 @@ function CommandForm({ marketplace, brainRepo }: { marketplace: Marketplace; bra
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. diagnose"
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -275,7 +275,7 @@ function CommandForm({ marketplace, brainRepo }: { marketplace: Marketplace; bra
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Run an archetypal diagnosis on the provided artifact."
-          className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+          className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg placeholder:text-fg-ghost"
         />
       </Field>
 
@@ -285,7 +285,7 @@ function CommandForm({ marketplace, brainRepo }: { marketplace: Marketplace; bra
             value={argHint}
             onChange={(e) => setArgHint(e.target.value)}
             placeholder="<brand-name | URL | paste artifact>"
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -299,7 +299,7 @@ function CommandForm({ marketplace, brainRepo }: { marketplace: Marketplace; bra
             placeholder={
               "Steps:\n\n1. Do X with $ARGUMENTS\n2. Then Y\n3. Report in the format …"
             }
-            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 font-mono text-sm text-fg leading-relaxed placeholder:text-fg-ghost"
+            className="w-full bg-bg/70 border border-line focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] px-4 py-3 text-sm text-fg leading-relaxed placeholder:text-fg-ghost"
           />
         </Field>
       </div>
@@ -309,7 +309,7 @@ function CommandForm({ marketplace, brainRepo }: { marketplace: Marketplace; bra
         <button
           onClick={submit}
           disabled={busy || !plugin || !name || !description || !body}
-          className="lift-on-hover font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 py-3 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
+          className="lift-on-hover font-medium text-[0.7rem] tracking-[0.08em] uppercase px-8 py-3 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? "Committing…" : "Create command"}
         </button>
@@ -383,12 +383,12 @@ function VerifyForm() {
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           placeholder="owner/repo"
-          className="flex-1 bg-bg border border-line px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-ghost"
+          className="flex-1 bg-bg border border-line px-4 py-3 text-sm text-fg placeholder:text-fg-ghost"
         />
         <button
           onClick={submit}
           disabled={busy || !target.trim()}
-          className="lift-on-hover font-mono text-[0.7rem] tracking-[0.25em] uppercase px-8 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
+          className="lift-on-hover font-medium text-[0.7rem] tracking-[0.08em] uppercase px-8 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? "Checking…" : "Verify"}
         </button>
@@ -508,7 +508,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="font-mono text-[0.6rem] tracking-[0.25em] uppercase text-accent mb-2">
+      <div className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-accent mb-2">
         {label}
       </div>
       {children}

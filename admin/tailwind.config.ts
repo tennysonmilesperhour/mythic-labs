@@ -25,8 +25,9 @@ const config: Config = {
         "line-soft": "var(--hairline-soft)",
       },
       fontFamily: {
-        display: ['"Cormorant Garamond"', "serif"],
-        body: ['"Space Grotesk"', "sans-serif"],
+        display: ["Fraunces", "Georgia", "serif"],
+        body: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Inter", "system-ui", "sans-serif"],
         mono: ['"JetBrains Mono"', "monospace"],
       },
     },

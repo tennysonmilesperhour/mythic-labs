@@ -82,7 +82,7 @@ export default async function MyTasksPage() {
                           {a.detail}
                         </span>
                       </span>
-                      <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent shrink-0">Open map →</span>
+                      <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent shrink-0">Open map →</span>
                     </Link>
                   </li>
                 ))}
@@ -137,7 +137,7 @@ function Group({ title, rows, empty }: { title: string; rows: Row[]; empty: stri
                     ))}
                   </span>
                 </span>
-                <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent shrink-0">Open map →</span>
+                <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent shrink-0">Open map →</span>
               </Link>
             </li>
           ))}

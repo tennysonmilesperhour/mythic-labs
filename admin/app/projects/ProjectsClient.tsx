@@ -228,7 +228,7 @@ export default function ProjectsClient({
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`px-4 py-3 font-mono text-[0.62rem] tracking-[0.22em] uppercase flex items-center gap-2 ${
+            className={`px-4 py-3 font-medium text-[0.68rem] tracking-[0.08em] uppercase flex items-center gap-2 ${
               statusFilter === s ? "bg-[rgba(139,115,85,0.08)] text-accent" : "bg-bg/70 text-fg-dim hover:text-fg"
             }`}
           >
@@ -242,13 +242,13 @@ export default function ProjectsClient({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="search…"
-            className="w-full bg-transparent outline-none font-mono text-xs text-fg placeholder:text-fg-ghost py-3"
+            className="w-full bg-transparent outline-none text-xs text-fg placeholder:text-fg-ghost py-3"
           />
         </div>
         <select
           value={healthFilter}
           onChange={(e) => setHealthFilter(e.target.value as HealthLevel | "")}
-          className="bg-bg/70 font-mono text-[0.62rem] text-fg-dim px-3 outline-none"
+          className="bg-bg/70 text-[0.78rem] text-fg-dim px-3 outline-none"
           aria-label="Health"
         >
           <option value="">any health</option>
@@ -261,7 +261,7 @@ export default function ProjectsClient({
         <select
           value={facet}
           onChange={(e) => setFacet(e.target.value)}
-          className="bg-bg/70 font-mono text-[0.62rem] text-fg-dim px-3 outline-none"
+          className="bg-bg/70 text-[0.78rem] text-fg-dim px-3 outline-none"
         >
           <option value="">any agent / tool / tag</option>
           {facets.map((f) => (
@@ -278,7 +278,7 @@ export default function ProjectsClient({
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-4 py-2 font-mono text-[0.6rem] tracking-[0.22em] uppercase ${
+              className={`px-4 py-2 font-medium text-[0.68rem] tracking-[0.08em] uppercase ${
                 view === v ? "bg-fg text-bg" : "bg-bg/80 text-fg-dim hover:text-fg"
               }`}
             >
@@ -429,7 +429,7 @@ function ProjectCard({
       {p.summary ? <p className="text-fg-dim text-[0.8rem] leading-[1.55] mb-3 line-clamp-2">{p.summary}</p> : null}
       {p.next_action ? (
         <div className="text-[0.78rem] leading-snug mb-3 border-l-2 border-accent pl-2">
-          <span className="font-mono text-[0.55rem] tracking-[0.2em] uppercase text-accent block">Next</span>
+          <span className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-accent block">Next</span>
           {p.next_action}
         </div>
       ) : null}
@@ -686,7 +686,7 @@ function NewProjectForm({
         </select>
       </Field>
       <div className="md:col-span-2 flex items-center justify-between">
-        <span className="font-mono text-[0.6rem] text-fg-ghost">
+        <span className="text-[0.78rem] text-fg-ghost">
           Agents, tools, links and the plan live on the project page.
         </span>
         <div className="flex items-center gap-3">

@@ -31,7 +31,7 @@ export default async function ImportPage() {
         Paste a normalized, sanitized manifest. This page previews explicit project mappings and stable source keys before writing to the private dashboard store. It creates missing categories and tasks, adds deduplicated decision/report entries, and never executes tasks.
       </p>
       {error ? (
-        <div className="border border-line bg-bg-warm/80 p-6"><div className="mono-label mb-2">Import unavailable</div><p className="text-fg-dim text-sm">{error}</p><Link href={fixHref("source:store")} className="inline-block mt-3 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-accent hover:text-fg">Fix it step by step →</Link></div>
+        <div className="border border-line bg-bg-warm/80 p-6"><div className="mono-label mb-2">Import unavailable</div><p className="text-fg-dim text-sm">{error}</p><Link href={fixHref("source:store")} className="inline-block mt-3 font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent hover:text-fg">Fix it step by step →</Link></div>
       ) : <ImportClient projects={projects} />}
     </div>
   );

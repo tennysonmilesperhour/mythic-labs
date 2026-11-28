@@ -14,6 +14,8 @@ export type BillingClient = {
   rate: number;
   /** Pull requests merged on or after this day (YYYY-MM-DD) are billable. */
   since: string;
+  /** "time": bill only time and costs entered by hand; merged pull requests are listed but excluded. Absent means "pr". */
+  mode?: "pr" | "time";
   created_at: string;
   updated_at: string;
 };

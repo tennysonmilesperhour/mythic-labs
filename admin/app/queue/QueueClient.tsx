@@ -338,17 +338,17 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
           <button
             key={p.label}
             onClick={() => preset(p.patch)}
-            className={`px-3 py-2.5 font-mono text-[0.6rem] tracking-[0.18em] uppercase ${activePreset === p.label ? "bg-[rgba(139,115,85,0.08)] text-accent" : "bg-bg/70 text-fg-dim hover:text-fg"}`}
+            className={`px-3 py-2.5 font-medium text-[0.68rem] tracking-[0.08em] uppercase ${activePreset === p.label ? "bg-[rgba(139,115,85,0.08)] text-accent" : "bg-bg/70 text-fg-dim hover:text-fg"}`}
           >
             {p.label}
           </button>
         ))}
         <div className="flex-1 min-w-[10rem] bg-bg/70 flex items-center px-3">
-          <input value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder="search…" className="w-full bg-transparent outline-none font-mono text-xs text-fg placeholder:text-fg-ghost py-2" />
+          <input value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder="search…" className="w-full bg-transparent outline-none text-xs text-fg placeholder:text-fg-ghost py-2" />
         </div>
       </div>
       {/* filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-6 font-mono text-[0.62rem]">
+      <div className="flex flex-wrap items-center gap-2 mb-6 text-[0.78rem]">
         <select value={f.project} onChange={(e) => set({ project: e.target.value })} className={inputBase} aria-label="Project">
           <option value="">any project</option>
           {projects.map((p) => (
@@ -502,7 +502,7 @@ export default function QueueClient({ rows: initialRows, projects, agents, label
                         <select
                           value={t.agent ?? ""}
                           onChange={(e) => patchOne(t, { agent: e.target.value || null })}
-                          className={`font-mono text-[0.6rem] bg-transparent outline-none max-w-[7rem] shrink-0 ${t.agent ? "text-accent" : "text-fg-ghost"}`}
+                          className={`text-[0.78rem] bg-transparent outline-none max-w-[7rem] shrink-0 ${t.agent ? "text-accent" : "text-fg-ghost"}`}
                           aria-label="Assignee"
                         >
                           <option value="">@ unassigned</option>

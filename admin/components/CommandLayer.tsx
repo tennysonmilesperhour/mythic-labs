@@ -310,7 +310,7 @@ function Palette({ seed, onClose, onCapture }: { seed: string; onClose: () => vo
                 onClick={() => run(r)}
                 className={`w-full text-left flex items-baseline gap-3 px-4 py-2 ${i === cursor ? "bg-[rgba(139,115,85,0.1)]" : "hover:bg-[rgba(139,115,85,0.05)]"}`}
               >
-                <span className={`font-mono text-[0.52rem] uppercase tracking-[0.15em] w-16 shrink-0 ${r.kind === "capture" ? "text-fg" : "text-accent"}`}>{r.kind}</span>
+                <span className={`font-medium text-[0.68rem] uppercase tracking-[0.08em] w-16 shrink-0 ${r.kind === "capture" ? "text-fg" : "text-accent"}`}>{r.kind}</span>
                 <span className="flex-1 min-w-0 truncate text-[0.9rem] text-fg">{r.title}</span>
                 {r.meta ? <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0 truncate max-w-[40%]">{r.meta}</span> : null}
               </button>
@@ -416,12 +416,12 @@ function Capture({ seed, onClose }: { seed: string; onClose: () => void }) {
             ))}
           </select>
         </label>
-        <span className="font-mono text-[0.55rem] text-fg-ghost hidden md:inline">
+        <span className="text-[0.78rem] text-fg-ghost hidden md:inline">
           #project @agent !high due:fri plan:tomorrow ~3 +label every week
         </span>
         <div className="ml-auto flex items-center gap-3">
           {err ? <span className="font-mono text-xs text-fg">{err}</span> : null}
-          <button onClick={submit} disabled={busy || !parsed.title.trim()} className="lift-on-hover font-mono text-[0.62rem] tracking-[0.22em] uppercase px-4 py-2 bg-fg text-bg disabled:opacity-40">
+          <button onClick={submit} disabled={busy || !parsed.title.trim()} className="lift-on-hover font-medium text-[0.68rem] tracking-[0.08em] uppercase px-4 py-2 bg-fg text-bg disabled:opacity-40">
             {busy ? "Saving…" : target ? `Add to ${target.name}` : "Capture"}
           </button>
         </div>

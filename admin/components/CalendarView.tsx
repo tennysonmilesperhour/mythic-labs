@@ -57,7 +57,7 @@ export default function CalendarView({ dated, timeline, projects }: { dated: Tas
           <h2 className="serif-display text-[1.6rem]">{label}</h2>
           <button onClick={() => shift(1)} className="font-mono text-[0.7rem] text-fg-dim hover:text-fg px-2" aria-label="Next month">→</button>
           {month !== day.slice(0, 7) ? (
-            <button onClick={() => setMonth(day.slice(0, 7))} className="font-mono text-[0.58rem] uppercase tracking-[0.18em] text-accent hover:text-fg">today</button>
+            <button onClick={() => setMonth(day.slice(0, 7))} className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent hover:text-fg">today</button>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-x-4 font-mono text-[0.58rem] text-fg-ghost">
@@ -107,7 +107,7 @@ export default function CalendarView({ dated, timeline, projects }: { dated: Tas
               <li key={i.key}>
                 <Link href={i.href} className="flex items-baseline gap-3 py-1.5 border-b border-line hover:text-accent text-[0.85rem]">
                   <span className={`font-mono text-[0.6rem] w-16 shrink-0 ${i.late ? "text-fg" : "text-fg-ghost"}`}>{new Date(`${i.date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}</span>
-                  <span className="font-mono text-[0.55rem] uppercase tracking-[0.15em] text-accent w-16 shrink-0">{i.kind}</span>
+                  <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent w-16 shrink-0">{i.kind}</span>
                   <span className="flex-1 min-w-0 truncate">{i.title}</span>
                   <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0 flex items-center gap-1.5">
                     {projects.find((p) => p.name === i.sub.split(" · ")[0]) ? <StatusDot status={projects.find((p) => p.name === i.sub.split(" · ")[0])!.status} /> : null}

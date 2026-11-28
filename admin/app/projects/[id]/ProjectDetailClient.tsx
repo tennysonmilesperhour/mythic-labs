@@ -190,7 +190,7 @@ export default function ProjectDetailClient({
       </div>
       {update ? (
         <Link href={`?tab=activity`} className="block mb-4 text-[0.85rem] text-fg-dim hover:text-accent">
-          <span className="font-mono text-[0.58rem] uppercase tracking-[0.15em] text-fg-ghost mr-2">
+          <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-fg-ghost mr-2">
             Update {relTime(update.created_at)}{update.health ? ` · ${HEALTH_META[update.health].label}` : ""}
           </span>
           {update.body.split("\n")[0]}
@@ -241,7 +241,7 @@ export default function ProjectDetailClient({
           <select
             value={project.priority}
             onChange={(e) => patchProject({ priority: e.target.value as Project["priority"] })}
-            className="bg-transparent font-mono text-xs text-fg outline-none"
+            className="bg-transparent text-xs text-fg outline-none"
           >
             {PRIORITIES.map((p) => (
               <option key={p}>{p}</option>
@@ -270,7 +270,7 @@ export default function ProjectDetailClient({
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-3 font-mono text-[0.62rem] tracking-[0.22em] uppercase flex items-center gap-2 ${
+            className={`px-4 py-3 font-medium text-[0.68rem] tracking-[0.08em] uppercase flex items-center gap-2 ${
               tab === t ? "bg-fg text-bg" : "bg-bg/80 text-fg-dim hover:text-fg"
             }`}
           >
@@ -342,7 +342,7 @@ export function DateInput({
       type="date"
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || null)}
-      className="bg-transparent font-mono text-[0.6rem] text-fg-dim outline-none w-[6.8rem]"
+      className="bg-transparent text-[0.78rem] text-fg-dim outline-none w-[6.8rem]"
     />
   );
 }
@@ -412,7 +412,7 @@ function SetupTab({
       <Section title="Links" hint="Production URL, staging, docs, designs, boards.">
         <div className="flex flex-col gap-1.5 mb-3">
           {project.links.map((l, i) => (
-            <div key={i} className="flex items-center gap-3 font-mono text-xs">
+            <div key={i} className="flex items-center gap-3 text-xs">
               <span className="text-fg w-28 truncate">{l.label}</span>
               <a href={l.url} target="_blank" rel="noreferrer" className="text-fg-dim hover:text-accent truncate flex-1">
                 {l.url}

@@ -61,7 +61,7 @@ export default function BrainClient({
               }}
             >
               <div
-                className={`font-mono text-[0.55rem] tracking-[0.3em] uppercase mb-2 ${
+                className={`font-medium text-[0.68rem] tracking-[0.08em] uppercase mb-2 ${
                   isActive ? "text-accent" : "text-fg-ghost"
                 }`}
               >
@@ -74,7 +74,7 @@ export default function BrainClient({
               >
                 {p.name}
               </div>
-              <div className="font-mono text-[0.55rem] text-fg-ghost tracking-[0.15em]">
+              <div className="font-mono text-[0.55rem] text-fg-ghost tracking-[0.08em]">
                 <span className="tnum">{total}</span>{" "}
                 item{total === 1 ? "" : "s"}{" "}
                 <span className="text-fg-ghost/70">·</span> v{p.version}
@@ -233,7 +233,7 @@ function KindChip({
     <button
       onClick={onClick}
       className={`
-        relative px-4 py-3 font-mono text-[0.65rem] tracking-[0.25em] uppercase
+        relative px-4 py-3 font-medium text-[0.65rem] tracking-[0.08em] uppercase
         flex items-center gap-2 ease-mythic
         ${
           active
@@ -300,7 +300,7 @@ function ItemCard({
           </span>
         </div>
         <span
-          className={`font-mono text-[0.55rem] tracking-[0.25em] uppercase ${meta.color} shrink-0`}
+          className={`font-medium text-[0.68rem] tracking-[0.08em] uppercase ${meta.color} shrink-0`}
         >
           {meta.label}
         </span>

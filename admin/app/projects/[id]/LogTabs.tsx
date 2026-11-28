@@ -175,7 +175,7 @@ export function ChangelogTab({ store }: { store: Store }) {
                     <select
                       value={e.change_type ?? "changed"}
                       onChange={(ev) => patch(e.id, { change_type: ev.target.value as ChangeType })}
-                      className="font-mono text-[0.55rem] uppercase tracking-[0.15em] text-accent bg-transparent outline-none w-20 shrink-0"
+                      className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent bg-transparent outline-none w-20 shrink-0"
                     >
                       {CHANGE_TYPES.map((c) => (
                         <option key={c}>{c}</option>
@@ -584,7 +584,7 @@ function UpdateForm({ store }: { store: Store }) {
     <div className="border border-line bg-bg-warm/80 p-4 mb-6 flex flex-col gap-3">
       <div className="flex flex-wrap gap-1">
         {HEALTH_LEVELS.filter((h) => h !== "paused" && h !== "idle").map((h) => (
-          <button key={h} onClick={() => setHealth(h)} className={`font-mono text-[0.6rem] uppercase tracking-[0.15em] px-2 py-1 border ${health === h ? "bg-fg text-bg border-fg" : "border-line text-fg-dim hover:text-fg"}`}>
+          <button key={h} onClick={() => setHealth(h)} className={`font-medium text-[0.68rem] uppercase tracking-[0.08em] px-2 py-1 border ${health === h ? "bg-fg text-bg border-fg" : "border-line text-fg-dim hover:text-fg"}`}>
             {HEALTH_META[h].label}
           </button>
         ))}
@@ -627,7 +627,7 @@ export function ActivityTab({ store }: { store: Store }) {
     <>
     <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
       <UpdateForm store={store} />
-      <Link href={`/history?project=${project.id}`} className="font-mono text-[0.6rem] tracking-[0.18em] uppercase text-accent hover:text-fg mb-6" title="Every commit that touched this project, with preview and restore">
+      <Link href={`/history?project=${project.id}`} className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-accent hover:text-fg mb-6" title="Every commit that touched this project, with preview and restore">
         Versions and restore →
       </Link>
     </div>
@@ -638,7 +638,7 @@ export function ActivityTab({ store }: { store: Store }) {
           <span className="font-mono text-[0.58rem] text-fg-ghost w-28 shrink-0" title={new Date(r.at).toLocaleString()}>
             {fmtDate(r.at)}
           </span>
-          <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent w-20 shrink-0">{r.kind}</span>
+          <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent w-20 shrink-0">{r.kind}</span>
           <span className="text-[0.88rem] text-fg min-w-0">
             {r.who ? (
               <>

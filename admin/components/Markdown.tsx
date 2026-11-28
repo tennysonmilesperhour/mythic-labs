@@ -220,7 +220,7 @@ export function EditableMarkdown({ value, onSave, placeholder = "Click to writeâ
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit();
         }}
         rows={rows ?? Math.min(24, Math.max(4, draft.split("\n").length + 1))}
-        className={`w-full bg-bg/80 border border-accent outline-none px-2 py-1 font-mono text-[0.85em] leading-relaxed ${className}`}
+        className={`w-full bg-bg/80 border border-accent outline-none px-2 py-1 text-[0.85em] leading-relaxed ${className}`}
       />
     );
   }

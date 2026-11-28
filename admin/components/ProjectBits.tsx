@@ -91,10 +91,10 @@ export function StatusToggle({
               e.stopPropagation();
               if (!on) onChange(s);
             }}
-            className={`flex items-center gap-1.5 font-mono uppercase ${
+            className={`flex items-center gap-1.5 font-medium uppercase ${
               size === "sm"
-                ? "text-[0.52rem] tracking-[0.14em] px-2 py-1"
-                : "text-[0.6rem] tracking-[0.2em] px-3 py-2"
+                ? "text-[0.68rem] tracking-[0.14em] px-2 py-1"
+                : "text-[0.68rem] tracking-[0.08em] px-3 py-2"
             } ${on ? "bg-fg text-bg" : "bg-bg/80 text-fg-ghost hover:text-fg"}`}
             style={T("color, background-color")}
           >
@@ -156,7 +156,7 @@ export function Chip({
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 font-mono text-[0.6rem] tracking-[0.08em] px-2 py-0.5 border ${cls}`}
+      className={`inline-flex items-center gap-1.5 font-medium text-[0.68rem] tracking-[0.02em] px-2 py-0.5 border ${cls}`}
     >
       {children}
       {onRemove ? (
@@ -312,12 +312,12 @@ export function InlineText({
 }
 
 export const inputBase =
-  "bg-bg/70 border border-line px-3 py-2 font-mono text-xs text-fg placeholder:text-fg-ghost focus:outline-none focus:border-accent";
+  "bg-bg/70 border border-line px-3 py-2 text-sm text-fg placeholder:text-fg-ghost focus:outline-none focus:border-accent";
 
 export const inputCls = `${inputBase} w-full`;
 
 export const btnPrimary =
-  "lift-on-hover font-mono text-[0.62rem] tracking-[0.22em] uppercase px-4 py-2 bg-fg text-bg disabled:opacity-40";
+  "lift-on-hover text-[0.72rem] font-semibold tracking-[0.06em] uppercase px-4 py-2 bg-fg text-bg disabled:opacity-40";
 
 export const btnGhost =
-  "font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim disabled:opacity-40";
+  "text-[0.7rem] font-medium tracking-[0.06em] uppercase px-3 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim disabled:opacity-40";

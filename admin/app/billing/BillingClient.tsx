@@ -145,8 +145,9 @@ function Clients({ state, name, onChange }: { state: BillingState; name: (id: st
 function ClientRow({ client, projectName, onChange }: { client: Client; projectName: string; onChange: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ client_name: client.client_name, client_email: client.client_email, rate: String(client.rate), since: client.since });
-  useEffect(() => setForm({ client_name: client.client_name, client_email: client.client_email, rate: String(client.rate), since: client.since }), [client]);
+  const initial = () => ({ client_name: client.client_name, client_email: client.client_email, rate: String(client.rate), since: client.since, mode: client.mode || "pr" });
+  const [form, setForm] = useState(initial);
+  useEffect(() => setForm(initial()), [client]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -179,7 +180,7 @@ function ClientRow({ client, projectName, onChange }: { client: Client; projectN
         <Chip tone="accent">Client work</Chip>
         <span className="font-mono text-xs">{money(client.rate)}/h</span>
         <span className="text-fg-dim text-xs">
-          Bill to {client.client_name}{client.client_email ? ` · ${client.client_email}` : " · no email yet"} · PRs merged since {client.since}
+          {client.mode === "time" ? "Billed by your time · " : ""}Bill to {client.client_name}{client.client_email ? ` · ${client.client_email}` : " · no email yet"} · PRs merged since {client.since}
         </span>
         <button onClick={() => setOpen((o) => !o)} className={`${btnGhost} ml-auto`}>{open ? "Close" : "Edit"}</button>
       </div>
@@ -188,6 +189,12 @@ function ClientRow({ client, projectName, onChange }: { client: Client; projectN
           <label className="text-xs text-fg-dim">Client name<input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} className={`${inputBase} w-full mt-1`} /></label>
           <label className="text-xs text-fg-dim">Client email<input value={form.client_email} onChange={(e) => setForm({ ...form, client_email: e.target.value })} type="email" className={`${inputBase} w-full mt-1`} /></label>
           <label className="text-xs text-fg-dim">Rate per hour ($)<input value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} inputMode="decimal" className={`${inputBase} w-full mt-1`} /></label>
+          <label className="text-xs text-fg-dim sm:col-span-2">How this client is billed
+            <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as "pr" | "time" })} className={`${inputBase} w-full mt-1`}>
+              <option value="pr">Estimate each merged PR from its size</option>
+              <option value="time">My time only (PRs are listed but not billed)</option>
+            </select>
+          </label>
           <label className="text-xs text-fg-dim">Bill PRs merged on or after<input value={form.since} onChange={(e) => setForm({ ...form, since: e.target.value })} type="date" className={`${inputBase} w-full mt-1`} /></label>
           <div className="flex gap-2 sm:col-span-2">
             <button onClick={save} disabled={busy} className={btnPrimary}>Save</button>
@@ -270,15 +277,15 @@ function ClientWork({ client, projectName, work, syncing, onSync, onChange }: {
                   <td className="py-2 pr-2">
                     {w.status === "unbilled" ? <input type="checkbox" checked={selected.has(w.id)} onChange={() => toggle(w.id)} aria-label={`Select ${w.title}`} /> : null}
                   </td>
-                  <td className="py-2 pr-3 font-mono text-xs whitespace-nowrap">{day(w.merged_at)}</td>
+                  <td className="py-2 pr-3 text-xs whitespace-nowrap">{day(w.merged_at)}</td>
                   <td className="py-2 pr-3 min-w-[14rem]">
                     {w.pr_url ? <a href={w.pr_url} target="_blank" rel="noreferrer" className="hover:text-accent">#{w.pr_number} {w.title}</a> : <span>{w.title}</span>}
                     <div className="text-[0.7rem] text-fg-dim mt-0.5">{countsSummary(w.counts)}{w.note ? ` · ${w.note}` : ""}</div>
                   </td>
-                  <td className="py-2 pr-3 text-right font-mono text-xs whitespace-nowrap">{w.kind === "expense" ? "cost" : hoursLabel(w.estimate_hours)}</td>
+                  <td className="py-2 pr-3 text-right text-xs whitespace-nowrap">{w.kind === "expense" ? "cost" : hoursLabel(w.estimate_hours)}</td>
                   <td className="py-2 pr-3 text-right">
                     {w.kind === "expense" ? (
-                      <span className="font-mono text-xs text-fg-dim">none</span>
+                      <span className="text-xs text-fg-dim">none</span>
                     ) : w.status === "unbilled" ? (
                       <input
                         value={hours[w.id] ?? String(w.hours)}

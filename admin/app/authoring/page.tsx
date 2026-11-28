@@ -66,7 +66,7 @@ export default async function AuthoringPage() {
         <div className="border border-line bg-bg-warm/80 p-6 mb-8">
           <div className="mono-label mb-2">Marketplace unavailable</div>
           <p className="text-fg-dim text-sm">{error}</p>
-          <Link href={fixHref("source:market")} className="inline-block mt-3 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-accent hover:text-fg">
+          <Link href={fixHref("source:market")} className="inline-block mt-3 font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent hover:text-fg">
             Fix it step by step →
           </Link>
         </div>

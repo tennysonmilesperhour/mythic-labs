@@ -39,7 +39,7 @@ export default async function FixPage({ searchParams }: { searchParams: Promise<
                     <span className="text-[0.92rem] text-fg">{a.project_name}</span>
                     <span className="block font-mono text-[0.58rem] text-fg-ghost">{a.title} · {a.detail}</span>
                   </span>
-                  <span className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-accent">Fix →</span>
+                  <span className="font-medium text-[0.68rem] uppercase tracking-[0.08em] text-accent">Fix →</span>
                 </Link>
               </li>
             ))}

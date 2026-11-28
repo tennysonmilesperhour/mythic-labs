@@ -192,12 +192,12 @@ export default function ReposClient({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="search by name…"
-            className="w-full bg-transparent border-0 outline-none font-mono text-xs text-fg placeholder:text-fg-ghost py-3"
+            className="w-full bg-transparent border-0 outline-none text-xs text-fg placeholder:text-fg-ghost py-3"
           />
         </div>
         <button
           onClick={() => setShowAdd((v) => !v)}
-          className="lift-on-hover flex items-center gap-2 font-mono text-[0.65rem] tracking-[0.25em] uppercase px-5 py-3 bg-fg text-bg"
+          className="lift-on-hover flex items-center gap-2 font-medium text-[0.65rem] tracking-[0.08em] uppercase px-5 py-3 bg-fg text-bg"
         >
           {showAdd ? "Close" : (
             <>
@@ -215,7 +215,7 @@ export default function ReposClient({
             onChange={(e) => setInput(e.target.value)}
             rows={4}
             placeholder={"owner/repo\nhttps://github.com/owner/another-repo\n…"}
-            className="w-full bg-bg/70 border border-line p-3 font-mono text-sm leading-relaxed text-fg placeholder:text-fg-ghost focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] transition"
+            className="w-full bg-bg/70 border border-line p-3 text-sm leading-relaxed text-fg placeholder:text-fg-ghost focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] transition"
             style={{ transition: "border-color var(--motion-base) var(--ease-mythic), box-shadow var(--motion-base) var(--ease-mythic)" }}
           />
           <div className="flex items-center justify-between mt-3">
@@ -226,7 +226,7 @@ export default function ReposClient({
             <button
               onClick={addRepos}
               disabled={busy || !input.trim()}
-              className="lift-on-hover font-mono text-[0.65rem] tracking-[0.25em] uppercase px-6 py-2.5 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
+              className="lift-on-hover font-medium text-[0.65rem] tracking-[0.08em] uppercase px-6 py-2.5 bg-accent text-bg disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
             >
               {busy ? "Adding…" : "Add"}
             </button>
@@ -311,7 +311,7 @@ function FilterChip({
     <button
       onClick={onClick}
       className={`
-        relative px-4 py-3 font-mono text-[0.65rem] tracking-[0.25em] uppercase
+        relative px-4 py-3 font-medium text-[0.65rem] tracking-[0.08em] uppercase
         flex items-baseline gap-2 ease-mythic
         ${
           active
@@ -402,7 +402,7 @@ function RepoCard({
           </a>
           <div className="flex items-center gap-2 mt-2">
             {repo.is_fork === true ? (
-              <span className="font-mono text-[0.55rem] tracking-[0.2em] uppercase text-fg-ghost border border-line px-1.5 py-0.5 flex items-center gap-1">
+              <span className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-fg-ghost border border-line px-1.5 py-0.5 flex items-center gap-1">
                 <GlyphFork size={10} /> fork
               </span>
             ) : null}
@@ -492,7 +492,7 @@ function RepoCard({
             onClick={onCheck}
             disabled={status?.kind === "checking"}
             title="Compare this repo's .claude/settings.json on GitHub with the chips above (read-only)"
-            className="font-mono text-[0.6rem] tracking-[0.2em] uppercase px-2.5 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim ease-mythic disabled:opacity-40"
+            className="font-medium text-[0.68rem] tracking-[0.08em] uppercase px-2.5 py-1.5 border border-line text-fg-dim hover:text-fg hover:border-fg-dim ease-mythic disabled:opacity-40"
             style={{
               transition:
                 "color var(--motion-base) var(--ease-mythic), border-color var(--motion-base) var(--ease-mythic)",
@@ -504,7 +504,7 @@ function RepoCard({
             onClick={onCopy}
             disabled={!marketplace}
             title="Copy a .claude/settings.json for this repo to commit yourself"
-            className="lift-on-hover font-mono text-[0.6rem] tracking-[0.2em] uppercase px-3 py-1.5 bg-fg text-bg disabled:opacity-40"
+            className="lift-on-hover font-medium text-[0.68rem] tracking-[0.08em] uppercase px-3 py-1.5 bg-fg text-bg disabled:opacity-40"
           >
             Copy JSON
           </button>

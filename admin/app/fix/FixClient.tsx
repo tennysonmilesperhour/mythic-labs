@@ -301,7 +301,7 @@ function Decision({
         <Link href={projectHref} className={btnGhost}>See all decisions</Link>
       </div>
       <div>
-        <div className="font-mono text-[0.58rem] text-fg-ghost mb-1">Need more before deciding? Paste this back to the agent:</div>
+        <div className="text-[0.78rem] text-fg-ghost mb-1">Need more before deciding? Paste this back to the agent:</div>
         <CopyBlock text={`Before I decide on "${e.title}": what breaks if we don't do this, what does each alternative cost, and is it reversible? Keep it under 10 lines.`} />
       </div>
     </div>
@@ -315,7 +315,7 @@ function NextAction({ current, suggestions, saving, onSave }: { current: string;
       <input value={v} onChange={(e) => setV(e.target.value)} placeholder="The very next thing to do" className={inputCls} />
       {suggestions.length ? (
         <div>
-          <div className="font-mono text-[0.58rem] text-fg-ghost mb-2">From the plan, click to use:</div>
+          <div className="text-[0.78rem] text-fg-ghost mb-2">From the plan, click to use:</div>
           <div className="flex flex-wrap gap-2">
             {Array.from(new Set(suggestions)).map((s) => (
               <button key={s} onClick={() => setV(s)} className={btnGhost}>{s}</button>
@@ -344,7 +344,7 @@ function Instructions({ project, saving, onSave }: { project: Project; saving: b
       <p className="text-fg-dim text-sm">Started from the template. Edit the commands and rules to match the repo, then save.</p>
       <textarea value={v} onChange={(e) => setV(e.target.value)} rows={9} className={`${inputCls} leading-relaxed`} />
       {project.owner && project.repo ? (
-        <p className="font-mono text-[0.6rem] text-fg-ghost">
+        <p className="text-[0.78rem] text-fg-ghost">
           Check the real commands in{" "}
           <a href={`https://github.com/${project.owner}/${project.repo}/blob/HEAD/package.json`} target="_blank" rel="noreferrer" className="text-accent">package.json ↗</a>{" "}
           or the{" "}
@@ -424,7 +424,7 @@ function DateFix({
         <Link href={labelHref} className="hover:text-accent">{label}</Link>: was {fmtDate(current)} ({dueLabel(current)})
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <input type="date" value={v} onChange={(e) => setV(e.target.value)} className="bg-transparent font-mono text-xs text-fg border border-line px-3 py-2" />
+        <input type="date" value={v} onChange={(e) => setV(e.target.value)} className="bg-transparent text-xs text-fg border border-line px-3 py-2" />
         <button className={btnPrimary} disabled={saving || !v || v === current} onClick={() => onSave(v)}>Move date</button>
         {done ? <button className={btnGhost} disabled={saving} onClick={done.onClick}>{done.label}</button> : null}
         <button className={btnGhost} disabled={saving} onClick={() => onSave(null)}>Clear date</button>

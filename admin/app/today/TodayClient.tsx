@@ -310,7 +310,7 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
           <h2 className="text-[1.05rem] font-medium text-fg">
             Pull in <span className="ml-2 font-mono text-[0.75rem] text-fg-ghost tnum">{pool.length}</span>
           </h2>
-          <button onClick={() => setShowPool((v) => !v)} className="font-mono text-[0.6rem] tracking-[0.18em] uppercase text-accent hover:text-fg">
+          <button onClick={() => setShowPool((v) => !v)} className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-accent hover:text-fg">
             {showPool ? "Hide" : "Show"}
           </button>
         </div>
@@ -356,7 +356,7 @@ export default function TodayClient({ hub, suggestions, day }: { hub: Hub; sugge
               <li key={t.id} className="flex items-center gap-3 px-4 py-2">
                 <input type="checkbox" checked readOnly disabled={busy === t.id} onClick={() => reopen(t)} className="shrink-0" aria-label={`Reopen ${t.title}`} />
                 <Link href={taskHref(t.id)} className="flex-1 min-w-0 truncate text-[0.88rem] text-fg-ghost line-through hover:text-accent">{t.title}</Link>
-                <span className="font-mono text-[0.58rem] text-fg-ghost shrink-0">
+                <span className="text-[0.78rem] text-fg-ghost shrink-0">
                   {t.agent ? `@${t.agent} · ` : ""}
                   {t.project_name} · {relTime(t.done_at)}
                 </span>

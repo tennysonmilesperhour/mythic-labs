@@ -235,7 +235,7 @@ export default function ImportClient({ projects }: { projects: ImportProjectStat
           <button type="button" className="mono-label text-accent hover:text-fg" onClick={() => setRaw(JSON.stringify(template, null, 2))}>Load schema example</button>
         </div>
         <p className="text-fg-ghost text-xs leading-relaxed mb-4">Use explicit project source keys or owner/repo mappings. Each task must have a stable source key and a clear project key. Do not include secrets, customer identities, account identifiers, or raw private messages.</p>
-        <textarea value={raw} onChange={(e) => { setRaw(e.target.value); setMessage(""); }} spellCheck={false} aria-label="Sanitized import JSON" placeholder="Paste the reviewed mythic-import-v1 JSON manifest" className="w-full min-h-[24rem] border border-line bg-bg p-4 font-mono text-xs leading-relaxed text-fg outline-none focus:border-accent" />
+        <textarea value={raw} onChange={(e) => { setRaw(e.target.value); setMessage(""); }} spellCheck={false} aria-label="Sanitized import JSON" placeholder="Paste the reviewed mythic-import-v1 JSON manifest" className="w-full min-h-[24rem] border border-line bg-bg p-4 text-xs leading-relaxed text-fg outline-none focus:border-accent" />
       </section>
 
       {plan ? <section className="border border-line p-4 md:p-6">
@@ -256,7 +256,7 @@ export default function ImportClient({ projects }: { projects: ImportProjectStat
             return <div key={project.source_key} className="text-xs text-fg-dim"><span className="text-fg">{project.name}</span> · {project.source_key} → {existing ? <Link href={projectHref(existing.id)} className="text-fg hover:text-accent underline-offset-2 hover:underline">{existing.name} ({existing.id}) →</Link> : "create in private store"}</div>;
           })}</div>
         </div>
-        <button type="button" disabled={busy || !!plan.errors.length || !(plan.projectsToCreate.length || plan.tasksToCreate.size || plan.entriesToCreate.size)} onClick={importNow} className="border border-accent px-5 py-3 font-mono text-xs uppercase tracking-[0.18em] text-accent disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent/10">{busy ? "Importing…" : "Import reviewed manifest"}</button>
+        <button type="button" disabled={busy || !!plan.errors.length || !(plan.projectsToCreate.length || plan.tasksToCreate.size || plan.entriesToCreate.size)} onClick={importNow} className="border border-accent px-5 py-3 font-medium text-xs uppercase tracking-[0.08em] text-accent disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent/10">{busy ? "Importing…" : "Import reviewed manifest"}</button>
       </section> : null}
       {message ? <div role="status" className="border border-line bg-bg-warm/70 p-4 text-sm leading-relaxed text-fg-dim">{message}{touched.length ? <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{touched.map((p) => <Link key={p.id} href={projectHref(p.id)} className="font-mono text-xs text-accent hover:text-fg">{p.name} →</Link>)}</div> : null}</div> : null}
     </div>

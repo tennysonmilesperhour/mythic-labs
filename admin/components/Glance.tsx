@@ -63,7 +63,7 @@ export function AttentionList({
                     {a.detail}
                   </span>
                 </span>
-                <span className={`font-mono text-[0.52rem] uppercase tracking-[0.18em] shrink-0 ${sev.cls}`}>
+                <span className={`font-medium text-[0.68rem] uppercase tracking-[0.08em] shrink-0 ${sev.cls}`}>
                   {sev.label}
                 </span>
               </Link>
@@ -74,7 +74,7 @@ export function AttentionList({
       {items.length > limit ? (
         <button
           onClick={() => setAll((v) => !v)}
-          className="w-full border-t border-line py-2 font-mono text-[0.58rem] tracking-[0.2em] uppercase text-fg-dim hover:text-fg"
+          className="w-full border-t border-line py-2 font-medium text-[0.68rem] tracking-[0.08em] uppercase text-fg-dim hover:text-fg"
         >
           {all ? "Show fewer" : `Show all ${items.length}`}
         </button>

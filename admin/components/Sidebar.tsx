@@ -60,7 +60,7 @@ export default function Sidebar() {
       <div className="px-8 pt-8 pb-6 border-b border-line">
         <div className="flex items-center gap-3 mb-4">
           <GlyphMark size={16} className="text-accent" />
-          <div className="font-mono text-[0.6rem] tracking-[0.3em] uppercase text-fg">
+          <div className="font-medium text-[0.68rem] tracking-[0.08em] uppercase text-fg">
             Mythic <span className="text-accent">·</span> Labs
           </div>
         </div>
@@ -71,7 +71,7 @@ export default function Sidebar() {
           style={{ transition: "border-color var(--motion-base) var(--ease-mythic)" }}
           title="Search projects, tasks and decisions, or run a command"
         >
-          <span className="font-mono text-[0.62rem] text-fg-dim">Search or jump…</span>
+          <span className="text-[0.75rem] text-fg-dim">Search or jump…</span>
           <kbd className="font-mono text-[0.55rem] text-fg-ghost">⌘K</kbd>
         </button>
       </div>
@@ -79,14 +79,14 @@ export default function Sidebar() {
       <nav className="flex-1 py-4 overflow-y-auto">
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="mb-3">
-            <div className="px-8 pt-2 pb-1 font-mono text-[0.5rem] tracking-[0.3em] uppercase text-fg-ghost">{group.title}</div>
+            <div className="px-8 pt-2 pb-1 font-medium text-[0.5rem] tracking-[0.08em] uppercase text-fg-ghost">{group.title}</div>
             {group.items.map((item) => {
               const active = isActive(item.href, pathname);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`group relative flex items-baseline gap-3 pl-8 pr-6 py-2 font-mono text-[0.68rem] tracking-[0.2em] uppercase ${
+                  className={`group relative flex items-baseline gap-3 pl-8 pr-6 py-2 font-medium text-[0.68rem] tracking-[0.08em] uppercase ${
                     active ? "text-fg" : "text-fg-dim hover:text-fg hover:pl-9"
                   }`}
                   style={{
@@ -112,7 +112,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="px-8 py-5 border-t border-line flex flex-col gap-3">
-        <button onClick={() => open("capture")} className="lift-on-hover font-mono text-[0.6rem] tracking-[0.22em] uppercase px-3 py-2 bg-fg text-bg text-left flex items-center justify-between">
+        <button onClick={() => open("capture")} className="lift-on-hover font-medium text-[0.68rem] tracking-[0.08em] uppercase px-3 py-2 bg-fg text-bg text-left flex items-center justify-between">
           <span>Capture</span>
           <kbd className="font-mono text-[0.55rem] opacity-70 normal-case tracking-normal">c</kbd>
         </button>
